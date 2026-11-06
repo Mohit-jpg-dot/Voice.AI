@@ -108,14 +108,30 @@ public final class LocalModelDownloadManager: ObservableObject, @unchecked Senda
                     if installedNames.contains(where: { $0.contains("llama3.2:3b") || $0.contains("llama3.2") }) {
                         task.status = .ready
                         task.downloadedBytes = task.totalBytes
-                        tasks[id] = task
+                    } else if !task.status.isDownloading {
+                        task.status = .queued
+                        task.downloadedBytes = 0
                     }
+                    tasks[id] = task
                 } else if task.catalogItem.category == "vision" {
-                    if installedNames.contains(where: { $0.contains("qwen2-vl") || $0.contains("llama3.2-vision") }) {
+                    if installedNames.contains(where: { $0.contains("llava") || $0.contains("llama3.2-vision") || $0.contains("qwen2-vl") }) {
                         task.status = .ready
                         task.downloadedBytes = task.totalBytes
-                        tasks[id] = task
+                    } else if !task.status.isDownloading {
+                        task.status = .queued
+                        task.downloadedBytes = 0
                     }
+                    tasks[id] = task
+                } else if task.catalogItem.category == "voice" {
+                    let hasLocalVoice = FileManager.default.fileExists(atPath: "/usr/local/share/kokoro") || FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.voiceos/models/kokoro.onnx")
+                    if hasLocalVoice {
+                        task.status = .ready
+                        task.downloadedBytes = task.totalBytes
+                    } else if !task.status.isDownloading {
+                        task.status = .queued
+                        task.downloadedBytes = 0
+                    }
+                    tasks[id] = task
                 }
             }
             let list = Array(tasks.values).sorted { $0.catalogItem.ramRequiredGB < $1.catalogItem.ramRequiredGB }
@@ -222,10 +238,11 @@ public final class LocalModelDownloadManager: ObservableObject, @unchecked Senda
                 }
             } catch {
                 print("[LocalModelDownloadManager] Ollama pull error for \(modelTag): \(error)")
-                await simulateVerifiedDownload(for: item, totalMB: total)
+                updateTaskStatus(id: item.id, status: .failed(reason: error.localizedDescription), downloaded: 0)
+                return
             }
         } else {
-            // General direct binary download (e.g. Kokoro ONNX model)
+            // Kokoro ONNX model setup
             await simulateVerifiedDownload(for: item, totalMB: total)
         }
         

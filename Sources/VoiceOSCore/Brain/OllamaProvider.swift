@@ -115,6 +115,10 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
             
+            if let errorMsg = json["error"] as? String {
+                throw NSError(domain: "OllamaError", code: 404, userInfo: [NSLocalizedDescriptionKey: errorMsg])
+            }
+            
             let status = json["status"] as? String ?? "downloading"
             
             let totalVal: Double

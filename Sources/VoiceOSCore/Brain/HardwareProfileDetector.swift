@@ -151,20 +151,20 @@ public final class HardwareProfileDetector: @unchecked Sendable {
                 capabilities: ["hinglish", "hindi", "planning", "json_orchestration"]
             ),
             
-            // 2. The Eyes: Qwen2-VL-7B / Llama-3.2-Vision
+            // 2. The Eyes: LLaVA-7B / Vision
             ModelCatalogItem(
-                id: "vision.qwen2vl.7b",
-                name: "Qwen2-VL-7B",
+                id: "vision.llava.7b",
+                name: "LLaVA-7B",
                 roleTitle: "The Eyes",
                 category: "vision",
                 purposeDescription: "Inspects display screenshots, tracks clickable boundaries, and identifies target UI buttons via Set-of-Mark visual grounding.",
-                downloadSizeMB: 5200,
-                diskRequiredMB: 5800,
+                downloadSizeMB: 4100,
+                diskRequiredMB: 4700,
                 ramRequiredGB: 6.0,
                 sha256: "c5d6e7f8a90123456789abcdef0123456789abcdef0123456789abcdef012345",
                 license: "Apache 2.0",
-                command: "ollama pull qwen2-vl:7b",
-                downloadURL: "http://localhost:11434/api/pull?name=qwen2-vl:7b",
+                command: "ollama pull llava:7b",
+                downloadURL: "http://localhost:11434/api/pull?name=llava:7b",
                 isCore: true,
                 capabilities: ["vision", "set_of_mark", "screen_grounding", "ocr"]
             ),

@@ -382,13 +382,31 @@ private struct ModelCardRow: View {
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.purple)
                         
-                    case .queued, .paused, .failed:
+                    case .failed(let reason):
+                        HStack(spacing: 8) {
+                            Text(reason.isEmpty ? "Failed" : reason)
+                                .font(.system(size: 11))
+                                .foregroundColor(.red)
+                                .lineLimit(1)
+                            Button(action: onDownloadClicked) {
+                                Text("Retry")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 6)
+                                    .background(Color.red.opacity(0.2))
+                                    .foregroundColor(.white)
+                                    .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                    case .queued, .paused:
                         Button(action: onDownloadClicked) {
                             Text("Download")
                                 .font(.system(size: 12, weight: .semibold))
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 6)
-                                .background(Color.white.opacity(0.1))
+                                .background(Color.blue)
                                 .foregroundColor(.white)
                                 .cornerRadius(6)
                         }

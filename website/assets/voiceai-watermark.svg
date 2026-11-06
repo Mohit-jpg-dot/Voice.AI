@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 220" width="1024" height="220" fill="none">
+  <style>
+    .watermark-text {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      font-weight: 900;
+      font-size: 195px;
+      letter-spacing: -6px;
+      fill: #f2f2f2;
+    }
+    .watermark-rule {
+      stroke: rgba(0, 0, 0, 0.06);
+      stroke-width: 1.5;
+    }
+  </style>
+  <text x="512" y="165" text-anchor="middle" class="watermark-text">Voice.AI</text>
+  <line x1="0" y1="219" x2="1024" y2="219" class="watermark-rule" />
+</svg>

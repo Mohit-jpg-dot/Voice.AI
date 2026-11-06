@@ -54,6 +54,9 @@ namespace VoiceAI.Core.Tests
             TestEncryptedHistoryIsolation();
             await TestToolExecutionPlanner();
             await TestGoogleSearchFreeEngine();
+            TestHardwareProfileAndGuardrails();
+            await TestLLMIntentOrchestrator();
+            await TestVisualGroundingSoMEngine();
 
             Console.WriteLine("\n=================================================================");
             Console.WriteLine($"Test Run Completed: {_passed} PASSED, {_failed} FAILED");
@@ -224,6 +227,69 @@ namespace VoiceAI.Core.Tests
             var searchCard = await engine.AnswerQuestionAsync("quantum computing breakthroughs");
             AssertTrue(searchCard.SourceUrl.Contains("google.com/search"), "Fallback points to Google search URL");
             AssertTrue(searchCard.SourceUrl.Contains("quantum%20computing"), "Query is URL-encoded");
+        }
+
+        // -------------------------------------------------------------
+        // Suite 6: Hardware Guardrails & Model Catalog
+        // -------------------------------------------------------------
+        private static void TestHardwareProfileAndGuardrails()
+        {
+            Console.WriteLine("\n[Suite 6] Hardware Guardrails & Model Catalog");
+            var hw = HardwareProfileDetector.DetectHardware();
+            AssertTrue(hw.TotalRamGB > 0, "Hardware RAM detected successfully");
+            AssertTrue(hw.FreeDiskGB > 0, "Hardware disk space detected successfully");
+
+            var models = HardwareProfileDetector.GetCoreThreeModels();
+            AssertEqual(models.Count, 3, "Catalog contains exact 3 core models");
+            AssertEqual(models[0].Name, "Llama-3.2-3B", "Core Model 1 is Llama-3.2-3B (The Brain)");
+            AssertEqual(models[0].RoleTitle, "The Brain", "Model 1 Role is The Brain");
+            AssertEqual(models[1].Name, "Qwen2-VL-7B", "Core Model 2 is Qwen2-VL-7B (The Eyes)");
+            AssertEqual(models[1].RoleTitle, "The Eyes", "Model 2 Role is The Eyes");
+            AssertEqual(models[2].Name, "Kokoro-82M", "Core Model 3 is Kokoro-82M (The Voice)");
+            AssertEqual(models[2].RoleTitle, "The Voice", "Model 3 Role is The Voice");
+        }
+
+        // -------------------------------------------------------------
+        // Suite 7: Structured JSON LLM Orchestration
+        // -------------------------------------------------------------
+        private static async Task TestLLMIntentOrchestrator()
+        {
+            Console.WriteLine("\n[Suite 7] Structured JSON LLM Orchestration");
+            var orchestrator = new LLMIntentOrchestrator();
+
+            // 1. Blender multi-step workflow in colloquial Hinglish
+            var blenderPlan = await orchestrator.PlanAsync("Blender mein cube sculpt karo");
+            AssertEqual(blenderPlan.Intent, "software_automation", "Intent is software_automation");
+            AssertEqual(blenderPlan.TargetApplication, "Blender", "Target application is Blender");
+            AssertEqual(blenderPlan.Steps.Count, 3, "Formulated 3 execution steps");
+            AssertEqual(blenderPlan.Steps[0].Action, "focus_application", "Step 1 focuses application");
+            AssertEqual(blenderPlan.Steps[1].Action, "visual_locate_and_click", "Step 2 locates UI visually via SoM");
+            AssertEqual(blenderPlan.Steps[1].Param, "Sculpt Mode dropdown menu", "Step 2 targets Sculpt Mode menu");
+            AssertEqual(blenderPlan.Steps[2].Action, "keystroke", "Step 3 sends keystroke shortcut");
+
+            // 2. Spotify termination in Hinglish
+            var spotifyPlan = await orchestrator.PlanAsync("Spotify band kar do");
+            AssertEqual(spotifyPlan.Intent, "system_control", "Spotify intent is system_control");
+            AssertEqual(spotifyPlan.TargetApplication, "Spotify", "Spotify target application is Spotify");
+            AssertEqual(spotifyPlan.Steps[1].Action, "system_command", "Spotify step 2 closes application");
+        }
+
+        // -------------------------------------------------------------
+        // Suite 8: Universal Visual Grounding via Set-of-Mark (SoM)
+        // -------------------------------------------------------------
+        private static async Task TestVisualGroundingSoMEngine()
+        {
+            Console.WriteLine("\n[Suite 8] Universal Visual Grounding via Set-of-Mark (SoM)");
+            var som = new VisualGroundingSoMEngine();
+
+            var elements = som.DetectElements(1920, 1080);
+            AssertTrue(elements.Count > 0, "SoM detected interactive screen elements");
+            AssertTrue(elements[0].Id.Length >= 2, "Badge ID is alphanumeric tag (e.g. A1, B2)");
+
+            var result = await som.GroundTargetAsync("Sculpt Mode", 1920, 1080);
+            AssertTrue(!string.IsNullOrEmpty(result.MatchedBadge), "Target element grounded to alphanumeric badge");
+            AssertTrue(result.TargetScreenCoordinate.X > 0 && result.TargetScreenCoordinate.Y > 0, "Mapped badge back to valid screen coordinate");
+            AssertTrue(result.Confidence >= 0.7, "Grounding confidence >= 70%");
         }
     }
 }

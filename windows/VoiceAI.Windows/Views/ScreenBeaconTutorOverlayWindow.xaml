@@ -1,0 +1,26 @@
+<Window
+    x:Class="VoiceAI.Windows.Views.ScreenBeaconTutorOverlayWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Screen Beacon Tutor Guide"
+    Background="Transparent">
+
+    <Canvas x:Name="BeaconCanvas" Background="Transparent">
+        <!-- Animated Concentric Ripple Circles -->
+        <Ellipse x:Name="OuterRipple" Width="80" Height="80" Stroke="#00D2FF" StrokeThickness="2" Opacity="0.8" />
+        <Ellipse x:Name="InnerRing" Width="36" Height="36" Stroke="#FFFFFF" StrokeThickness="2" Fill="#3300D2FF" />
+        <Ellipse x:Name="CenterDot" Width="6" Height="6" Fill="#FFFFFF" />
+
+        <!-- Floating Tooltip Badge -->
+        <Border x:Name="InstructionBadge" Background="#E6000000" CornerRadius="8" BorderBrush="#00D2FF" BorderThickness="1.5" Padding="12,6">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="👇" FontSize="12" VerticalAlignment="Center" />
+                <TextBlock x:Name="TxtInstruction" Text="Click Here" Foreground="#FFFFFF" FontWeight="Bold" FontSize="12" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+    </Canvas>
+</Window>
+

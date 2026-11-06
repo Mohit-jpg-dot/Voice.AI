@@ -1,7 +1,7 @@
 @import url('../tokens.css');
 
 /* ==========================================================================
-   VoiceOS Native Tahoe Liquid Glass Desktop Stylesheet
+   Voice.AI Native Tahoe Liquid Glass Desktop Stylesheet
    ADD-ON: Continuous Notch-Attached Glass Island + Circle to Ask Overlay
    ========================================================================== */
 
@@ -718,7 +718,7 @@ body {
   flex-shrink: 0;
 }
 
-/* Main VoiceOS App Window */
+/* Main Voice.AI App Window */
 .app-window {
   position: absolute;
   top: 52%;
@@ -1747,7 +1747,7 @@ body {
   color: #1d1d1f;
 }
 
-.badge-verified-voiceos {
+.badge-verified-voice.ai {
   font-size: 10px;
   font-weight: 600;
   background: rgba(0, 122, 255, 0.1);

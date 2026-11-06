@@ -1,0 +1,61 @@
+<Window
+    x:Class="VoiceAI.Windows.Views.SetupWizardWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Voice.AI — Windows Setup Wizard"
+    Width="640"
+    Height="540">
+
+    <Grid Background="#181818" Padding="32">
+        <StackPanel Spacing="20">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock Text="🎙️" FontSize="28" VerticalAlignment="Center" />
+                <StackPanel>
+                    <TextBlock Text="Welcome to Voice.AI" FontSize="22" FontWeight="Bold" Foreground="#FFFFFF" />
+                    <TextBlock Text="Complete 3-step setup to enable voice control and offline intelligence." FontSize="13" Foreground="#888888" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Step 1: Account Selection -->
+            <Border Background="#222222" CornerRadius="12" Padding="16">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Step 1: Account Profile" FontWeight="SemiBold" Foreground="#FFFFFF" />
+                    <TextBox x:Name="TxtAccountId" PlaceholderText="Enter profile name (e.g. default, work, personal)" Text="default" />
+                </StackPanel>
+            </Border>
+
+            <!-- Step 2: Engine Mode Selection -->
+            <Border Background="#222222" CornerRadius="12" Padding="16">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Step 2: Choose AI Engine" FontWeight="SemiBold" Foreground="#FFFFFF" />
+                    <RadioButtons x:Name="EngineChoice">
+                        <RadioButton x:Name="RbFreeOffline" Content="Free Offline Mode (Local Ollama + Whisper — 100% Private, No Keys Needed)" IsChecked="True" />
+                        <RadioButton x:Name="RbGoogleSearch" Content="Google Search Only Mode (Free real-time answers without LLM)" />
+                        <RadioButton x:Name="RbPaidCloud" Content="Paid Cloud Mode (Bring your own OpenAI / Anthropic / Gemini API key)" />
+                    </RadioButtons>
+
+                    <StackPanel x:Name="CloudKeyPanel" Spacing="6" Visibility="Collapsed">
+                        <PasswordBox x:Name="TxtApiKey" PlaceholderText="Paste API Key (sk-...)" />
+                        <TextBlock Text="Key is stored securely via Windows DPAPI (CurrentUser)." FontSize="11" Foreground="#666666" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Step 3: Permissions & Hardware -->
+            <Border Background="#222222" CornerRadius="12" Padding="16">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Step 3: Microphone &amp; Hotkey" FontWeight="SemiBold" Foreground="#FFFFFF" />
+                    <TextBlock Text="Default Hotkey: Hold Right Ctrl (250ms) to speak" FontSize="13" Foreground="#AAAAAA" />
+                    <Button x:Name="BtnTestMic" Content="Check Microphone Permission" Click="BtnTestMic_Click" />
+                    <TextBlock x:Name="MicStatusLabel" Text="" FontSize="12" Foreground="#30D158" />
+                </StackPanel>
+            </Border>
+
+            <!-- Finish Button -->
+            <Button x:Name="BtnComplete" Content="Start Voice.AI" Click="BtnComplete_Click" HorizontalAlignment="Right" Background="#30D158" Foreground="#000000" FontWeight="Bold" Padding="24,10" />
+        </StackPanel>
+    </Grid>
+</Window>

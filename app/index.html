@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VoiceOS — Notch Glass Island & Circle to Ask</title>
+  <title>Voice.AI — Notch Glass Island & Circle to Ask</title>
   <link rel="stylesheet" href="../tokens.css">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -13,7 +13,7 @@
   <header class="macos-menubar">
     <div class="menubar-left">
       <span class="menubar-apple-logo"></span>
-      <span class="menubar-item active">VoiceOS</span>
+      <span class="menubar-item active">Voice.AI</span>
       <span class="menubar-item">File</span>
       <span class="menubar-item">Edit</span>
       <span class="menubar-item">View</span>
@@ -47,7 +47,7 @@
       <!-- 1. Resting State: Blends with MacBook Notch -->
       <div class="island-resting-content" id="islandResting">
         <div class="island-resting-dot" id="islandStateDot"></div>
-        <span class="island-resting-label">VoiceOS</span>
+        <span class="island-resting-label">Voice.AI</span>
         <span class="island-resting-badge" id="islandStateBadge">Active</span>
       </div>
 
@@ -61,7 +61,7 @@
               <line x1="2" y1="12" x2="22" y2="12"></line>
               <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
             </svg>
-            <span>VoiceOS Notch Island</span>
+            <span>Voice.AI Notch Island</span>
           </div>
 
           <div class="island-header-actions">
@@ -139,8 +139,8 @@
           <div class="meeting-card-time">Monday, June 15, 2026, 2:00 PM - 3:00 PM PDT</div>
           <div class="meeting-card-attendees">
             <span>Attendees: </span>
-            <a href="mailto:kai@voiceos.com" style="color: #4da3ff; text-decoration: underline;">kai@voiceos.com</a>, 
-            <a href="mailto:maksim@voiceos.com" style="color: #4da3ff; text-decoration: underline;">maksim@voiceos.com</a>
+            <a href="mailto:kai@voice.ai.com" style="color: #4da3ff; text-decoration: underline;">kai@voice.ai.com</a>, 
+            <a href="mailto:maksim@voice.ai.com" style="color: #4da3ff; text-decoration: underline;">maksim@voice.ai.com</a>
           </div>
           <div class="meeting-card-link-row">
             <a href="https://meet.google.com" target="_blank" class="gmeet-link" style="color: #4da3ff; font-size: 13px; text-decoration: underline;">Google Meet Link</a>
@@ -223,7 +223,7 @@
     <div class="drawer-threads-list" id="drawerThreadsList"></div>
   </aside>
 
-  <!-- Main VoiceOS Application Window -->
+  <!-- Main Voice.AI Application Window -->
   <main class="app-window" id="appWindow">
     
     <!-- Sidebar -->
@@ -428,7 +428,7 @@
 
         <div class="build-app-card">
           <h3 style="font-size: 16px; font-weight: bold;">Build an app</h3>
-          <p style="font-size: 13px; color: #6e6e73;">Describe in a sentence and VoiceOS builds it. Test, save, share.</p>
+          <p style="font-size: 13px; color: #6e6e73;">Describe in a sentence and Voice.AI builds it. Test, save, share.</p>
           <div class="build-input-row">
             <input type="text" class="build-input-field" placeholder="Type or hold fn shift to speak">
             <button class="btn-secondary" id="openAppBuilderBtn">Create</button>
@@ -444,7 +444,7 @@
             </div>
             <div class="powered-pill">
               <span style="opacity: 0.7;">Powered by</span>
-              <span style="font-weight: bold;">VoiceOS</span>
+              <span style="font-weight: bold;">Voice.AI</span>
             </div>
           </div>
           <div class="apps-grid" id="appsGrid"></div>
@@ -476,9 +476,9 @@
         <div id="sectionMcpServer" style="display: none; flex-direction: column; gap: 16px;">
           <div class="mode-card">
             <h3 style="font-size: 16px; font-weight: bold;">Connect Custom MCP Server</h3>
-            <p style="font-size: 12px; color: #6e6e73;">VoiceOS connects to any Model Context Protocol SSE/stdio endpoint, introspects its capabilities via tools/list, and creates a typed integration manifest.</p>
+            <p style="font-size: 12px; color: #6e6e73;">Voice.AI connects to any Model Context Protocol SSE/stdio endpoint, introspects its capabilities via tools/list, and creates a typed integration manifest.</p>
             <div style="display: flex; gap: 8px; margin-top: 6px;">
-              <input type="text" id="mcpEndpointInput" class="build-input-field" placeholder="http://localhost:8000/sse or say 'VoiceOS, add MCP server at ...'" value="http://localhost:8000/sse" style="flex: 1;">
+              <input type="text" id="mcpEndpointInput" class="build-input-field" placeholder="http://localhost:8000/sse or say 'Voice.AI, add MCP server at ...'" value="http://localhost:8000/sse" style="flex: 1;">
               <button class="btn-secondary" id="btnIntrospectMcp">Handshake & Introspect</button>
             </div>
           </div>
@@ -499,7 +499,7 @@
             </div>
             <button class="btn-apply-fix" id="btnApply1ClickFix">Apply 1-Click Fix</button>
           </div>
-          <p style="font-size: 12px; color: #6e6e73; margin: 0;">macOS system dictation is bound to double-tap 'fn'. VoiceOS hold-to-speak (250ms threshold) safely passes through short taps for Globe/Emoji, but applying the fix cleanly disables system double-tap.</p>
+          <p style="font-size: 12px; color: #6e6e73; margin: 0;">macOS system dictation is bound to double-tap 'fn'. Voice.AI hold-to-speak (250ms threshold) safely passes through short taps for Globe/Emoji, but applying the fix cleanly disables system double-tap.</p>
           <div style="font-size: 11px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #444;">
             Terminal: defaults write com.apple.HIToolbox AppleDictationAutoEnable -bool false
           </div>
@@ -544,7 +544,7 @@
           <!-- Interactive Tap vs Hold Tester -->
           <div class="key-tester-interactive-box" style="margin-top: 12px;">
             <button class="btn-press-hold-test" id="btnTestHoldKey">Press & Hold Test Key (fn)</button>
-            <div style="font-size: 12px; font-weight: 600;" id="keyTesterFeedback">Tap quickly (< 250ms) for Emoji passthrough or hold for VoiceOS</div>
+            <div style="font-size: 12px; font-weight: 600;" id="keyTesterFeedback">Tap quickly (< 250ms) for Emoji passthrough or hold for Voice.AI</div>
           </div>
         </div>
 
@@ -700,7 +700,7 @@
 
               <div class="transcript-pane" style="border-color: rgba(0, 122, 255, 0.3);">
                 <div class="transcript-pane-header">
-                  <span style="color: #007aff;">VoiceOS Polished Text</span>
+                  <span style="color: #007aff;">Voice.AI Polished Text</span>
                   <span id="cleanWordCount" style="color: #007aff;">0 words</span>
                 </div>
                 <div class="transcript-text" id="polishedTranscriptView" style="font-weight: 500;">—</div>
@@ -865,7 +865,7 @@
           <span id="permModalPublisher" style="font-size: 12px; color: #8e8e93;">Publisher</span>
         </div>
       </div>
-      <p style="font-size: 13px; color: #555; margin: 0;">Review minimal scopes requested before connecting. VoiceOS enforces payload-bound confirmations for consequential operations.</p>
+      <p style="font-size: 13px; color: #555; margin: 0;">Review minimal scopes requested before connecting. Voice.AI enforces payload-bound confirmations for consequential operations.</p>
       
       <div id="permScopesList" style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto;"></div>
 
@@ -891,7 +891,7 @@
       <div class="modal-body-sky">
         <div class="ripple-glow-ring"></div>
         <span class="badge-beta" style="margin-bottom: 12px;">BETA</span>
-        <h2 class="modal-title" style="font-size: 38px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px;">Tell VoiceOS what to build</h2>
+        <h2 class="modal-title" style="font-size: 38px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px;">Tell Voice.AI what to build</h2>
         <p class="modal-subtitle" style="font-size: 15px; color: #6e6e73; margin-bottom: 28px;">Describe it in your own words, or paste an MCP server URL.</p>
 
         <div class="modal-textarea-container" style="background: #ffffff; border-radius: 20px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.05); padding: 18px 20px; width: 100%; max-width: 540px;">
@@ -909,7 +909,7 @@
   </div>
 
   <!-- Toast Notice -->
-  <div class="toast-notice" id="toastNotice">VoiceOS Agent initialized</div>
+  <div class="toast-notice" id="toastNotice">Voice.AI Agent initialized</div>
 
   <script src="app.js"></script>
 </body>

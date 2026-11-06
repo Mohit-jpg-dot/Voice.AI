@@ -30,3 +30,8 @@ windows/VoiceOS.Windows/obj/
 # Temporary files
 *.tmp
 *.log
+
+.local/
+Library/
+windows/**/bin/
+windows/**/obj/

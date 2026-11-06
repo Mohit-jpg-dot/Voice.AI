@@ -1,9 +1,9 @@
 // ==========================================================================
-// VoiceOS Desktop Agent Runtime v3.2
+// Voice.AI Desktop Agent Runtime v3.2
 // ADD-ON: Continuous Notch Glass Island + Circle to Ask Screen Context
 // ==========================================================================
 
-const VoiceOSState = {
+const Voice.AIState = {
   activeNavTab: 'dashboard',
   isIslandExpanded: false,
   isPinned: false,
@@ -284,18 +284,18 @@ let hoverTimeout = null;
 
 function expandIsland() {
   clearTimeout(hoverTimeout);
-  VoiceOSState.isIslandExpanded = true;
+  Voice.AIState.isIslandExpanded = true;
   notchIsland.classList.add('expanded');
 }
 
 function collapseIsland(force = false) {
-  if (VoiceOSState.isPinned && !force) return;
+  if (Voice.AIState.isPinned && !force) return;
   // Don't collapse if user is actively typing in the input
   if (document.activeElement === islandInput && !force) return;
 
   clearTimeout(hoverTimeout);
   hoverTimeout = setTimeout(() => {
-    VoiceOSState.isIslandExpanded = false;
+    Voice.AIState.isIslandExpanded = false;
     notchIsland.classList.remove('expanded');
   }, 220);
 }
@@ -311,7 +311,7 @@ notchIsland.addEventListener('mouseleave', () => {
 
 // Click to toggle when resting
 notchIsland.addEventListener('click', (e) => {
-  if (!VoiceOSState.isIslandExpanded) {
+  if (!Voice.AIState.isIslandExpanded) {
     expandIsland();
   }
 });
@@ -319,16 +319,16 @@ notchIsland.addEventListener('click', (e) => {
 // Pin toggle
 btnPinIsland.addEventListener('click', (e) => {
   e.stopPropagation();
-  VoiceOSState.isPinned = !VoiceOSState.isPinned;
-  btnPinIsland.classList.toggle('pinned', VoiceOSState.isPinned);
-  btnPinIsland.title = VoiceOSState.isPinned ? "Unpin Island" : "Pin Island Open";
-  showToast(VoiceOSState.isPinned ? "Notch Island Pinned Open" : "Notch Island Unpinned");
+  Voice.AIState.isPinned = !Voice.AIState.isPinned;
+  btnPinIsland.classList.toggle('pinned', Voice.AIState.isPinned);
+  btnPinIsland.title = Voice.AIState.isPinned ? "Unpin Island" : "Pin Island Open";
+  showToast(Voice.AIState.isPinned ? "Notch Island Pinned Open" : "Notch Island Unpinned");
 });
 
 // Manual Collapse button
 btnCollapseIsland.addEventListener('click', (e) => {
   e.stopPropagation();
-  VoiceOSState.isPinned = false;
+  Voice.AIState.isPinned = false;
   btnPinIsland.classList.remove('pinned');
   collapseIsland(true);
 });
@@ -398,7 +398,7 @@ function submitUserPrompt(promptText) {
     }
     // 3. GitHub
     else if (lower.includes("github") || lower.includes("pr") || lower.includes("pull request")) {
-      dialogAgentReply.textContent = `Boss, 3 open PRs hain VoiceOS repo pe. Review ke liye ready hain. (${elapsed} seconds)`;
+      dialogAgentReply.textContent = `Boss, 3 open PRs hain Voice.AI repo pe. Review ke liye ready hain. (${elapsed} seconds)`;
       deepLinkCard.style.display = 'flex';
       deepLinkIcon.textContent = "🐙";
       deepLinkTitle.textContent = "GitHub: 3 Open PRs (#142, #145, #148)";
@@ -425,18 +425,18 @@ function submitUserPrompt(promptText) {
       deepLinkCard.style.display = 'none';
     }
 
-    VoiceOSState.totalSessions += 1;
-    VoiceOSState.totalWords += promptText.split(' ').length;
-    VoiceOSState.timeSavedMinutes += 1;
+    Voice.AIState.totalSessions += 1;
+    Voice.AIState.totalWords += promptText.split(' ').length;
+    Voice.AIState.timeSavedMinutes += 1;
     
-    totalSessionsEl.textContent = VoiceOSState.totalSessions;
-    totalWordsEl.textContent = VoiceOSState.totalWords;
-    timeSavedEl.textContent = `${VoiceOSState.timeSavedMinutes}m`;
+    totalSessionsEl.textContent = Voice.AIState.totalSessions;
+    totalWordsEl.textContent = Voice.AIState.totalWords;
+    timeSavedEl.textContent = `${Voice.AIState.timeSavedMinutes}m`;
   }, 1300);
 }
 
 function setIslandState(state) {
-  VoiceOSState.voiceMode = state;
+  Voice.AIState.voiceMode = state;
   switch (state) {
     case 'listening':
       islandStateDot.style.background = '#38bdf8';
@@ -468,7 +468,7 @@ function setIslandState(state) {
 // Voice Toggle on Island Mic
 btnMicToggle.addEventListener('click', (e) => {
   e.stopPropagation();
-  if (VoiceOSState.voiceMode === 'listening') {
+  if (Voice.AIState.voiceMode === 'listening') {
     finishVoiceInput();
   } else {
     startVoiceInput('Agent Mode');
@@ -538,7 +538,7 @@ btnCircleTrigger.addEventListener('click', (e) => {
 });
 
 function triggerCircleToAsk() {
-  VoiceOSState.isScreenCaptureActive = true;
+  Voice.AIState.isScreenCaptureActive = true;
   screenOverlay.classList.add('active');
   captureIndicator.classList.add('active');
   collapseIsland(true);
@@ -547,7 +547,7 @@ function triggerCircleToAsk() {
 }
 
 function closeCircleToAsk() {
-  VoiceOSState.isScreenCaptureActive = false;
+  Voice.AIState.isScreenCaptureActive = false;
   screenOverlay.classList.remove('active');
   captureIndicator.classList.remove('active');
   isDrawing = false;
@@ -565,9 +565,9 @@ document.querySelectorAll('.selection-tool-btn').forEach(btn => {
     e.stopPropagation();
     document.querySelectorAll('.selection-tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    VoiceOSState.activeSelectionTool = btn.dataset.tool;
+    Voice.AIState.activeSelectionTool = btn.dataset.tool;
 
-    if (VoiceOSState.activeSelectionTool === 'window') {
+    if (Voice.AIState.activeSelectionTool === 'window') {
       completeCapture({ x: 100, y: 100, width: 800, height: 500 }, 'Whole Window');
     }
   });
@@ -589,7 +589,7 @@ selectionCanvas.addEventListener('mousemove', (e) => {
 
   ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
 
-  if (VoiceOSState.activeSelectionTool === 'lasso') {
+  if (Voice.AIState.activeSelectionTool === 'lasso') {
     // Draw glowing lasso path
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 3;
@@ -603,7 +603,7 @@ selectionCanvas.addEventListener('mousemove', (e) => {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.stroke();
-  } else if (VoiceOSState.activeSelectionTool === 'rectangle' || VoiceOSState.activeSelectionTool === 'element') {
+  } else if (Voice.AIState.activeSelectionTool === 'rectangle' || Voice.AIState.activeSelectionTool === 'element') {
     // Draw glowing rectangle
     const w = curX - startX;
     const h = curY - startY;
@@ -622,7 +622,7 @@ selectionCanvas.addEventListener('mouseup', (e) => {
   isDrawing = false;
   
   let box = null;
-  if (VoiceOSState.activeSelectionTool === 'lasso') {
+  if (Voice.AIState.activeSelectionTool === 'lasso') {
     const xs = points.map(p => p.x);
     const ys = points.map(p => p.y);
     box = {
@@ -641,7 +641,7 @@ selectionCanvas.addEventListener('mouseup', (e) => {
   }
 
   if (box.width > 15 && box.height > 15) {
-    completeCapture(box, VoiceOSState.activeSelectionTool);
+    completeCapture(box, Voice.AIState.activeSelectionTool);
   } else {
     closeCircleToAsk();
   }
@@ -655,7 +655,7 @@ function completeCapture(box, toolName) {
   const redactedContext = rawContext.replace(/sk-[a-zA-Z0-9_]{15,}/g, '[REDACTED_API_KEY]');
   const redactionCount = 1;
 
-  VoiceOSState.activeCrop = {
+  Voice.AIState.activeCrop = {
     box: box,
     tool: toolName,
     ocr: redactedContext,
@@ -728,8 +728,8 @@ function showToast(message) {
 // History Drawer Toggle
 document.getElementById('drawerToggleBtn').addEventListener('click', (e) => {
   e.stopPropagation();
-  VoiceOSState.isDrawerOpen = !VoiceOSState.isDrawerOpen;
-  historyDrawer.classList.toggle('closed', !VoiceOSState.isDrawerOpen);
+  Voice.AIState.isDrawerOpen = !Voice.AIState.isDrawerOpen;
+  historyDrawer.classList.toggle('closed', !Voice.AIState.isDrawerOpen);
 });
 
 // Navigation Tabs Handling
@@ -739,7 +739,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
     item.classList.add('active');
     
     const tab = item.dataset.tab;
-    VoiceOSState.activeNavTab = tab;
+    Voice.AIState.activeNavTab = tab;
     
     document.querySelectorAll('.view-panel').forEach(panel => {
       panel.classList.remove('active');
@@ -761,16 +761,16 @@ actionConfirmBtn.addEventListener('click', () => {
   actionCheckbox.classList.add('checked');
   
   // Update stats
-  VoiceOSState.totalSessions += 1;
-  VoiceOSState.totalWords += 14;
-  VoiceOSState.timeSavedMinutes += 1;
+  Voice.AIState.totalSessions += 1;
+  Voice.AIState.totalWords += 14;
+  Voice.AIState.timeSavedMinutes += 1;
 
-  totalSessionsEl.textContent = VoiceOSState.totalSessions;
-  totalWordsEl.textContent = VoiceOSState.totalWords;
-  timeSavedEl.textContent = `${VoiceOSState.timeSavedMinutes}m`;
+  totalSessionsEl.textContent = Voice.AIState.totalSessions;
+  totalWordsEl.textContent = Voice.AIState.totalWords;
+  timeSavedEl.textContent = `${Voice.AIState.timeSavedMinutes}m`;
 
   // Prepend to history
-  VoiceOSState.history.unshift({
+  Voice.AIState.history.unshift({
     id: `h_${Date.now()}`,
     app: "Things 3",
     icon: "✓",
@@ -790,7 +790,7 @@ actionCheckbox.addEventListener('click', () => {
 // Render History
 function renderHistoryDrawer(filter = '') {
   drawerThreadsList.innerHTML = '';
-  const filtered = VoiceOSState.history.filter(h => 
+  const filtered = Voice.AIState.history.filter(h => 
     h.prompt.toLowerCase().includes(filter.toLowerCase()) || 
     h.app.toLowerCase().includes(filter.toLowerCase())
   );
@@ -820,7 +820,7 @@ drawerSearchInput.addEventListener('input', (e) => {
 // Render Connected Apps Grid
 function renderAppsGrid() {
   appsGrid.innerHTML = '';
-  VoiceOSState.connectedApps.forEach(app => {
+  Voice.AIState.connectedApps.forEach(app => {
     const card = document.createElement('div');
     card.className = 'connected-app-card';
     card.innerHTML = `
@@ -864,7 +864,7 @@ document.getElementById('generateAppBtn').addEventListener('click', () => {
     btn.disabled = false;
     modalOverlay.classList.remove('open');
 
-    VoiceOSState.connectedApps.unshift({
+    Voice.AIState.connectedApps.unshift({
       id: `custom_${Date.now()}`,
       name: "Things 3 Custom MCP",
       desc: "Custom inbox task adder built via voice prompt.",
@@ -882,7 +882,7 @@ document.getElementById('generateAppBtn').addEventListener('click', () => {
 window.addEventListener('keydown', (e) => {
   // Cmd+Shift+C or 'c' alone when not in input: Trigger Circle to Ask
   if (((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'c') ||
-      (e.key.toLowerCase() === 'c' && document.activeElement !== islandInput && !VoiceOSState.isScreenCaptureActive)) {
+      (e.key.toLowerCase() === 'c' && document.activeElement !== islandInput && !Voice.AIState.isScreenCaptureActive)) {
     e.preventDefault();
     triggerCircleToAsk();
   }
@@ -898,7 +898,7 @@ window.addEventListener('keydown', (e) => {
   }
   // Escape cancels selection or collapses unpinned island
   if (e.key === 'Escape') {
-    if (VoiceOSState.isScreenCaptureActive) {
+    if (Voice.AIState.isScreenCaptureActive) {
       closeCircleToAsk();
     } else {
       modalOverlay.classList.remove('open');
@@ -1114,7 +1114,7 @@ function polishText(raw, profile) {
   // 2. Apply phonetic hints
   const hints = {
     'wako ai': 'WakoAI',
-    'voice os': 'VoiceOS',
+    'voice os': 'Voice.AI',
     'vs code': 'VS Code',
     'github': 'GitHub'
   };
@@ -1362,7 +1362,7 @@ const MarketplaceManifests = [
       { id: "list_my_issues", name: "List My Issues", riskLevel: "Read-Only" }
     ],
     deepLinkTemplate: "https://linear.app/issue/{id}",
-    verificationBadge: "Verified by VoiceOS",
+    verificationBadge: "Verified by Voice.AI",
     platformSupport: ["macOS", "Windows", "Web"]
   },
   {
@@ -1382,7 +1382,7 @@ const MarketplaceManifests = [
       { id: "play_playlist", name: "Play Playlist", riskLevel: "Reversible" }
     ],
     deepLinkTemplate: "spotify:playlist/{id}",
-    verificationBadge: "Verified by VoiceOS",
+    verificationBadge: "Verified by Voice.AI",
     platformSupport: ["macOS", "Windows", "Web"]
   },
   {
@@ -1402,7 +1402,7 @@ const MarketplaceManifests = [
       { id: "send_message", name: "Send Message", riskLevel: "Consequential" }
     ],
     deepLinkTemplate: "slack://channel?team={team}&id={channel}",
-    verificationBadge: "Verified by VoiceOS",
+    verificationBadge: "Verified by Voice.AI",
     platformSupport: ["macOS", "Windows", "Web"]
   },
   {
@@ -1421,7 +1421,7 @@ const MarketplaceManifests = [
       { id: "list_prs", name: "List Pull Requests", riskLevel: "Read-Only" }
     ],
     deepLinkTemplate: "https://github.com/{repo}/pull/{pr}",
-    verificationBadge: "Verified by VoiceOS",
+    verificationBadge: "Verified by Voice.AI",
     platformSupport: ["macOS", "Windows", "Web"]
   },
   {
@@ -1440,7 +1440,7 @@ const MarketplaceManifests = [
       { id: "append_note", name: "Append Note", riskLevel: "Reversible" }
     ],
     deepLinkTemplate: "https://notion.so/{pageId}",
-    verificationBadge: "Verified by VoiceOS",
+    verificationBadge: "Verified by Voice.AI",
     platformSupport: ["macOS", "Windows", "Web"]
   },
   {
@@ -1459,7 +1459,7 @@ const MarketplaceManifests = [
       { id: "get_stats", name: "Get Channel Stats", riskLevel: "Read-Only" }
     ],
     deepLinkTemplate: "https://studio.youtube.com/channel/{channelId}",
-    verificationBadge: "Verified by VoiceOS",
+    verificationBadge: "Verified by Voice.AI",
     platformSupport: ["macOS", "Windows", "Web"]
   },
   {
@@ -1478,7 +1478,7 @@ const MarketplaceManifests = [
       { id: "open_file", name: "Open File", riskLevel: "Read-Only" }
     ],
     deepLinkTemplate: "vscode://file/{path}:{line}",
-    verificationBadge: "Verified by VoiceOS",
+    verificationBadge: "Verified by Voice.AI",
     platformSupport: ["macOS", "Windows"]
   },
   {
@@ -1497,7 +1497,7 @@ const MarketplaceManifests = [
       { id: "transition_ticket", name: "Transition Ticket", riskLevel: "Consequential" }
     ],
     deepLinkTemplate: "https://atlassian.net/browse/{key}",
-    verificationBadge: "Verified by VoiceOS",
+    verificationBadge: "Verified by Voice.AI",
     platformSupport: ["macOS", "Windows", "Web"]
   },
   {
@@ -1516,7 +1516,7 @@ const MarketplaceManifests = [
       { id: "post_message", name: "Post Message", riskLevel: "Consequential" }
     ],
     deepLinkTemplate: "discord://discord.com/channels/{guild}/{channel}",
-    verificationBadge: "Verified by VoiceOS",
+    verificationBadge: "Verified by Voice.AI",
     platformSupport: ["macOS", "Windows", "Web"]
   },
   {
@@ -1535,7 +1535,7 @@ const MarketplaceManifests = [
       { id: "create_draft", name: "Create Draft", riskLevel: "Reversible" }
     ],
     deepLinkTemplate: "https://mail.google.com/mail/u/0/#inbox/{threadId}",
-    verificationBadge: "Verified by VoiceOS",
+    verificationBadge: "Verified by Voice.AI",
     platformSupport: ["macOS", "Windows", "Web"]
   }
 ];
@@ -1569,7 +1569,7 @@ function renderMarketplaceGrid() {
     const isCustomMcp = manifest.verificationBadge === "Custom MCP";
     const badgeHtml = isCustomMcp
       ? `<span class="badge-custom-mcp-chip">🔌 Custom MCP</span>`
-      : `<span class="badge-verified-voiceos">✓ Verified</span>`;
+      : `<span class="badge-verified-voice.ai">✓ Verified</span>`;
 
     card.innerHTML = `
       <div>
@@ -1734,7 +1734,7 @@ if (btnIntrospectMcp) {
               authType: "mcp",
               summary: `Dynamically connected Model Context Protocol server at ${urlStr}`,
               permissionsRequired: [
-                { scope: "network:connect", justification: `Allow VoiceOS to call tools at ${urlStr}` }
+                { scope: "network:connect", justification: `Allow Voice.AI to call tools at ${urlStr}` }
               ],
               actions: discoveredTools.map(t => ({ id: t.name, name: t.name, riskLevel: t.risk })),
               deepLinkTemplate: urlStr,
@@ -1804,7 +1804,7 @@ const TaskHistoryData = [
     status: "Done",
     progress: 1.0,
     elapsedSeconds: 0.9,
-    deepLinkURL: "https://github.com/voiceos/agent/pulls",
+    deepLinkURL: "https://github.com/voice.ai/agent/pulls",
     day: "Today",
     timeStr: "11:20 AM"
   },
@@ -2025,7 +2025,7 @@ if (btnExportJson) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'voiceos_task_history.json';
+    a.download = 'voice.ai_task_history.json';
     a.click();
     showToast('Exported Task History to JSON (Encrypted-at-Rest schema)');
   });
@@ -2034,7 +2034,7 @@ if (btnExportJson) {
 const btnExportMd = document.getElementById('btnExportMd');
 if (btnExportMd) {
   btnExportMd.addEventListener('click', () => {
-    let md = '# VoiceOS Task & Session History\n\n| Day | App | Prompt | Action | Status | Duration |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n';
+    let md = '# Voice.AI Task & Session History\n\n| Day | App | Prompt | Action | Status | Duration |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n';
     TaskHistoryData.forEach(t => {
       md += `| ${t.day} | ${t.appName} | ${t.prompt} | ${t.actionName} | ${t.status} | ${t.elapsedSeconds}s |\n`;
     });
@@ -2042,7 +2042,7 @@ if (btnExportMd) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'voiceos_task_history.md';
+    a.download = 'voice.ai_task_history.md';
     a.click();
     showToast('Exported Task History to Markdown');
   });
@@ -2077,7 +2077,7 @@ if (btnApply1ClickFix && hotkeyConflictBanner) {
     hotkeyConflictBanner.style.background = 'rgba(52, 199, 89, 0.08)';
     hotkeyConflictBanner.style.borderColor = 'rgba(52, 199, 89, 0.3)';
 
-    showToast("Applied 1-Click Fix: 'fn fn' double-tap reassigned. VoiceOS holds active.");
+    showToast("Applied 1-Click Fix: 'fn fn' double-tap reassigned. Voice.AI holds active.");
   });
 }
 
@@ -2138,10 +2138,10 @@ if (btnTestHoldKey && keyTesterFeedback) {
       keyTesterFeedback.style.color = '#ff9500';
       showToast(`Short tap (${duration}ms): Passed through to system Emoji/Globe`);
     } else {
-      keyTesterFeedback.innerHTML = `<b>Hold (${duration}ms >= 250ms)</b> ➜ VoiceOS Dictation Triggered!`;
+      keyTesterFeedback.innerHTML = `<b>Hold (${duration}ms >= 250ms)</b> ➜ Voice.AI Dictation Triggered!`;
       keyTesterFeedback.style.color = '#34c759';
       setIslandState('listening');
-      showToast(`Hold detected (${duration}ms): VoiceOS Dictation Active`);
+      showToast(`Hold detected (${duration}ms): Voice.AI Dictation Active`);
       setTimeout(() => setIslandState('idle'), 1800);
     }
   };

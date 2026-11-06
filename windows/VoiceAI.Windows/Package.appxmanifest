@@ -6,14 +6,14 @@
   IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="WakoAI.VoiceOS"
-    Publisher="CN=WakoAI Inc"
-    Version="3.0.0.0"
+    Name="VoiceAI.Windows"
+    Publisher="CN=VoiceAI Inc"
+    Version="1.0.0.0"
     ProcessorArchitecture="x64" />
 
   <Properties>
-    <DisplayName>VoiceOS — Voice Assistant for Windows</DisplayName>
-    <PublisherDisplayName>WakoAI, Inc.</PublisherDisplayName>
+    <DisplayName>Voice.AI — Voice Assistant for Windows</DisplayName>
+    <PublisherDisplayName>Voice.AI Team</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
@@ -32,14 +32,13 @@
       Executable="$targetnametarget$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="VoiceOS"
+        DisplayName="Voice.AI"
         Description="Voice-First Computer Agent for Windows 10 &amp; 11"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
-        <uap:DefaultTile ShortName="VoiceOS" />
+        <uap:DefaultTile ShortName="Voice.AI" />
       </uap:VisualElements>
     </Application>
   </Applications>
 </Package>
-

@@ -1,13 +1,13 @@
 using System;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
 using H.NotifyIcon;
+using VoiceAI.Windows.Views;
 
-namespace VoiceOS.Windows
+namespace VoiceAI.Windows
 {
     public partial class App : Application
     {
-        private Window? _mainWindow;
+        private TopCenterIslandWindow? _islandWindow;
         private TaskbarIcon? _trayIcon;
 
         public App()
@@ -17,8 +17,8 @@ namespace VoiceOS.Windows
 
         protected override void OnLaunched(LaunchActivatedEventArgs args)
         {
-            _mainWindow = new MainWindow();
-            _mainWindow.Activate();
+            _islandWindow = new TopCenterIslandWindow();
+            _islandWindow.Activate();
 
             SetupSystemTray();
         }
@@ -27,21 +27,17 @@ namespace VoiceOS.Windows
         {
             _trayIcon = new TaskbarIcon
             {
-                ToolTipText = "VoiceOS — Voice Assistant for Windows 11",
+                ToolTipText = "Voice.AI — Top-Center Floating Voice Island",
                 IconSource = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri("ms-appx:///Assets/Square44x44Logo.png"))
             };
 
             _trayIcon.TrayLeftMouseDown += (s, e) =>
             {
-                if (_mainWindow != null)
+                if (_islandWindow != null)
                 {
-                    if (_mainWindow.Visible)
-                        _mainWindow.Hide();
-                    else
-                        _mainWindow.Show();
+                    _islandWindow.Activate();
                 }
             };
         }
     }
 }
-

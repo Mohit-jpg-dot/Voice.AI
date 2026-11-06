@@ -62,18 +62,25 @@ public final class LocalModelDownloadManager: ObservableObject, @unchecked Senda
     
     private init() {
         let coreItems = HardwareProfileDetector.shared.getCoreThreeModels()
-        let hasLocalVoice = UserDefaults.standard.bool(forKey: "voiceos.model.kokoro.installed") ||
-                            FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.voiceos/models/kokoro.onnx") ||
-                            FileManager.default.fileExists(atPath: "/usr/local/share/kokoro")
+        let hasVoice = Self.checkRealKokoroOnDisk()
         
         for item in coreItems {
             let total = Int64(item.downloadSizeMB) * 1024 * 1024
-            let isKokoroReady = (item.category == "voice" && hasLocalVoice)
+            let isKokoroReady = (item.category == "voice" && hasVoice)
             let initialStatus: DownloadItemStatus = isKokoroReady ? .ready : .queued
             let initialBytes: Int64 = isKokoroReady ? total : 0
             tasks[item.id] = ActiveDownloadTask(catalogItem: item, status: initialStatus, downloadedBytes: initialBytes, totalBytes: total)
         }
         self.tasksList = Array(tasks.values).sorted { $0.catalogItem.ramRequiredGB < $1.catalogItem.ramRequiredGB }
+    }
+    
+    public static func checkRealKokoroOnDisk() -> Bool {
+        let path = NSHomeDirectory() + "/.voiceos/models/kokoro.onnx"
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+           let size = attrs[.size] as? Int64 {
+            return size > 1_000_000 // Real ONNX file must be > 1MB (real weights are ~86MB)
+        }
+        return false
     }
     
     // MARK: - Queue & Execution
@@ -137,6 +144,7 @@ public final class LocalModelDownloadManager: ObservableObject, @unchecked Senda
                     }
                     tasks[id] = task
                 } else if task.catalogItem.category == "voice" {
+                    let hasLocalVoice = Self.checkRealKokoroOnDisk()
                     if hasLocalVoice {
                         task.status = .ready
                         task.downloadedBytes = task.totalBytes
@@ -294,28 +302,84 @@ public final class LocalModelDownloadManager: ObservableObject, @unchecked Senda
         try? FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
         let targetFile = modelsDir.appendingPathComponent("kokoro.onnx")
         
-        let steps = 25
-        let delay = UInt64(0.04 * 1_000_000_000)
-        for i in 1...steps {
-            if isCancelled { break }
-            let progress = Double(i) / Double(steps)
-            let downloadedMB = progress * totalMB
-            let speed = 48.0
-            let remainingMB = totalMB - downloadedMB
-            let eta = Int(remainingMB / speed)
-            
-            updateTaskStatus(
-                id: item.id,
-                status: .downloading(progress: progress, speedMBps: speed, etaSeconds: eta),
-                downloaded: Int64(downloadedMB * 1024 * 1024)
-            )
-            try? await Task.sleep(nanoseconds: delay)
+        guard let url = URL(string: item.downloadURL) else {
+            updateTaskStatus(id: item.id, status: .failed(reason: "Invalid download URL"), downloaded: 0)
+            return
         }
         
-        if !isCancelled {
-            let metadata = "Kokoro-82M ONNX Runtime Neural Voice Engine Model v0.19\nLicense: Apache-2.0\nSHA256: \(item.sha256)\n"
-            try? metadata.data(using: .utf8)?.write(to: targetFile)
+        do {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 600
+            config.timeoutIntervalForResource = 3600
+            let session = URLSession(configuration: config)
+            
+            let request = URLRequest(url: url)
+            let (bytes, response) = try await session.bytes(for: request)
+            
+            let expectedBytes: Int64
+            if let http = response as? HTTPURLResponse, http.expectedContentLength > 0 {
+                expectedBytes = http.expectedContentLength
+            } else {
+                expectedBytes = Int64(totalMB * 1024 * 1024)
+            }
+            
+            let tempFile = modelsDir.appendingPathComponent("kokoro.onnx.tmp")
+            try? FileManager.default.removeItem(at: tempFile)
+            FileManager.default.createFile(atPath: tempFile.path, contents: nil)
+            guard let fileHandle = try? FileHandle(forWritingTo: tempFile) else {
+                throw NSError(domain: "VoiceOS", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed to open local file for writing."])
+            }
+            
+            var receivedBytes: Int64 = 0
+            let startTime = Date()
+            var buffer = Data()
+            buffer.reserveCapacity(65536)
+            var lastUpdate = Date()
+            
+            for try await byte in bytes {
+                if isCancelled {
+                    try? fileHandle.close()
+                    try? FileManager.default.removeItem(at: tempFile)
+                    return
+                }
+                buffer.append(byte)
+                receivedBytes += 1
+                
+                if buffer.count >= 65536 {
+                    fileHandle.write(buffer)
+                    buffer.removeAll(keepingCapacity: true)
+                }
+                
+                let now = Date()
+                if now.timeIntervalSince(lastUpdate) >= 0.25 {
+                    lastUpdate = now
+                    let elapsed = max(0.5, now.timeIntervalSince(startTime))
+                    let speed = (Double(receivedBytes) / (1024 * 1024)) / elapsed
+                    let progress = Double(receivedBytes) / Double(expectedBytes)
+                    let remainingMB = max(0.0, (Double(expectedBytes) - Double(receivedBytes)) / (1024 * 1024))
+                    let eta = speed > 0 ? Int(remainingMB / speed) : 0
+                    
+                    updateTaskStatus(
+                        id: item.id,
+                        status: .downloading(progress: min(0.99, max(0.01, progress)), speedMBps: (speed * 10).rounded() / 10, etaSeconds: eta),
+                        downloaded: receivedBytes
+                    )
+                }
+            }
+            
+            if !buffer.isEmpty {
+                fileHandle.write(buffer)
+            }
+            try? fileHandle.close()
+            
+            try? FileManager.default.removeItem(at: targetFile)
+            try FileManager.default.moveItem(at: tempFile, to: targetFile)
+            
+            updateTaskStatus(id: item.id, status: .ready, downloaded: receivedBytes)
             UserDefaults.standard.set(true, forKey: "voiceos.model.kokoro.installed")
+        } catch {
+            print("[LocalModelDownloadManager] Failed downloading Kokoro: \(error)")
+            updateTaskStatus(id: item.id, status: .failed(reason: error.localizedDescription), downloaded: 0)
         }
     }
     

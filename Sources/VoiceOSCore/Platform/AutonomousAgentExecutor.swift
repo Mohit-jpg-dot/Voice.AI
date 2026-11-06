@@ -70,19 +70,22 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         
         // 2b. AI Brain Reasoning & Automation Routing (Llama 3.2, LLaVA, Hybrid)
         if ModelRouter.shared.currentMode != .googleSearch {
-            // Check for explicit local OS tool actions first (open app, close app, media playback, brightness)
-            let parsedTool = AgentToolParser.parse(query: trimmed)
-            let isExplicitOSCommand: Bool = {
-                guard let tool = parsedTool else { return false }
-                switch tool {
-                case .openApp, .closeApp, .mediaPlay, .adjustBrightness, .runTerminalCommand, .createCodeFile:
-                    return true
-                default:
-                    return false
-                }
-            }()
-            
-            if !isExplicitOSCommand {
+            // Check for explicit local OS tool actions first (volume, apps, media, screenshots, brightness)
+            if let _ = AgentToolParser.parse(query: trimmed) {
+                let dispatchResult = await AgentActionDispatcher.shared.dispatch(transcript: trimmed)
+                LocalMemoryManager.shared.remember(
+                    content: "\(trimmed) -> \(dispatchResult.summary)",
+                    category: "task",
+                    tags: [dispatchResult.appName]
+                )
+                return AutonomousExecutionResult(
+                    success: dispatchResult.success,
+                    summary: dispatchResult.summary,
+                    targetAppName: dispatchResult.appName,
+                    targetURL: dispatchResult.deepLinkURL,
+                    executedSteps: ["Executed native macOS system command", dispatchResult.summary]
+                )
+            }
                 // If it's a software automation or multi-step workflow command (e.g. Blender, Hinglish action)
                 let lower = trimmed.lowercased()
                 if lower.contains("blender") ||
@@ -133,7 +136,6 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 } catch {
                     print("[AutonomousAgentExecutor] chatModel error: \(error)")
                 }
-            }
         }
         
         // 2c. Fallback or Google Search Mode Dispatch

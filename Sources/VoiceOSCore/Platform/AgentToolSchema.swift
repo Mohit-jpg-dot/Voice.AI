@@ -306,8 +306,14 @@ public enum AgentToolParser {
         if lower.contains("mute") || lower.contains("shant karo") {
             return .systemControl(action: "mute")
         }
-        if lower.contains("volume") || lower.contains("aawaz") || lower.contains("sound") {
-            if lower.contains("kam") || lower.contains("dheema") || lower.contains("ghata") || lower.contains("down") || lower.contains("lower") {
+        if lower.contains("volume") || lower.contains("aawaz") || lower.contains("sound") || lower.contains("mute") {
+            if lower.contains("mute") || lower.contains("silent") || lower.contains("zero") || lower.contains("off") {
+                return .setVolume(level: 0.0, delta: nil)
+            } else if lower.contains("full") || lower.contains("max") || lower.contains("100") || lower.contains("pura") || lower.contains("poora") {
+                return .setVolume(level: 1.0, delta: nil)
+            } else if lower.contains("half") || lower.contains("50") || lower.contains("aadha") {
+                return .setVolume(level: 0.5, delta: nil)
+            } else if lower.contains("kam") || lower.contains("dheema") || lower.contains("ghata") || lower.contains("down") || lower.contains("lower") || lower.contains("decrease") {
                 return .setVolume(level: nil, delta: -0.15)
             } else if lower.contains("badha") || lower.contains("tez") || lower.contains("up") || lower.contains("raise") || lower.contains("increase") {
                 return .setVolume(level: nil, delta: 0.15)

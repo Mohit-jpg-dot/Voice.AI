@@ -483,7 +483,10 @@ public final class AppState: ObservableObject, @unchecked Sendable {
 
                 self.currentExecutionTask?.cancel()
                 self.currentExecutionTask = Task {
-                    let result = await AutonomousAgentExecutor.shared.planAndExecute(taskDescription: polished.polishedText) { [weak self] stepMsg in
+                    let result = await AutonomousAgentExecutor.shared.planAndExecute(
+                        taskDescription: polished.polishedText,
+                        triggerMode: mode
+                    ) { [weak self] stepMsg in
                         Task { @MainActor in
                             self?.executionState = .executing(stepMsg)
                         }
@@ -775,7 +778,7 @@ public final class AppState: ObservableObject, @unchecked Sendable {
     /// Immediate barge-in / interruption:
     /// Halts ongoing execution or TTS speech, cancels background agent tasks,
     /// and either switches to active listening or immediately executes the user's new instruction.
-    public func interruptAndExecute(instruction: String) {
+    public func interruptAndExecute(instruction: String, mode: VoiceTriggerMode = .agent) {
         // 1. Cancel ongoing autonomous agent task
         currentExecutionTask?.cancel()
         currentExecutionTask = nil
@@ -791,8 +794,8 @@ public final class AppState: ObservableObject, @unchecked Sendable {
         
         // If the wake word was spoken without an immediate instruction ("voice", "the voice", "hey voice")
         if trimmed.isEmpty || lower == "voice" || lower == "the voice" || lower == "hey voice" || lower == "ok voice" {
-            // Switch to active listening state so user can immediately dictate command
-            triggerVoice(mode: .agent)
+            // Switch to active listening state with the chosen trigger mode
+            triggerVoice(mode: mode)
         } else {
             // User provided an immediate command: "voice open safari and search ..."
             var cleanedPrompt = trimmed

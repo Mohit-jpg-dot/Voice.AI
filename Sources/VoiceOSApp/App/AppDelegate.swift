@@ -87,7 +87,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 // Interrupt any active agent execution or speech playback
-                self.appState.interruptAndExecute(instruction: "")
+                let triggerMode: VoiceTriggerMode = (mode == .dictation) ? .dictation : .agent
+                self.appState.interruptAndExecute(instruction: "", mode: triggerMode)
                 self.notchHUDController?.positionUnderNotch()
                 self.notchHUDController?.window?.orderFrontRegardless()
             }
@@ -106,7 +107,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
                         self.appState.stopVoice()
                     } else {
                         // If idle or executing, tap interrupts and begins listening for user command
-                        self.appState.interruptAndExecute(instruction: "")
+                        self.appState.interruptAndExecute(instruction: "", mode: .agent)
                         self.notchHUDController?.positionUnderNotch()
                         self.notchHUDController?.window?.orderFrontRegardless()
                     }

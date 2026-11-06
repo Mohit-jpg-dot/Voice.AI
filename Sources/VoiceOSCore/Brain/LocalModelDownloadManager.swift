@@ -83,6 +83,40 @@ public final class LocalModelDownloadManager: @unchecked Sendable {
         return tasks[id]?.status.isReady ?? false
     }
     
+    public func refreshInstalledStatuses() async {
+        do {
+            let localOllamaModels = try await OllamaProvider.shared.listLocalModels()
+            let installedNames = Set(localOllamaModels.map { $0.name.lowercased() })
+            
+            lock.lock()
+            for (id, var task) in tasks {
+                if task.catalogItem.category == "brain" {
+                    if installedNames.contains(where: { $0.contains("llama3.2:3b") || $0.contains("llama3.2") }) {
+                        task.status = .ready
+                        task.downloadedBytes = task.totalBytes
+                        tasks[id] = task
+                    }
+                } else if task.catalogItem.category == "vision" {
+                    if installedNames.contains(where: { $0.contains("qwen2-vl") || $0.contains("llama3.2-vision") }) {
+                        task.status = .ready
+                        task.downloadedBytes = task.totalBytes
+                        tasks[id] = task
+                    }
+                }
+            }
+            lock.unlock()
+            
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                for task in self.getTasks() {
+                    self.onTaskUpdated?(task)
+                }
+            }
+        } catch {
+            // Ollama might not be running or no models yet
+        }
+    }
+    
     public func startDownload(for item: ModelCatalogItem) async {
         isCancelled = false
         await executeDownload(for: item)

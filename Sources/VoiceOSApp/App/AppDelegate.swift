@@ -16,6 +16,20 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         setupGlobalHotkey()
         _ = VisualCursorOverlayController.shared
         
+        let args = CommandLine.arguments
+        if args.contains("--model-setup") || args.contains("--models") {
+            launchNormalEnvironment()
+            ModelSetupWindowController.shared.showWindow()
+            return
+        }
+        
+        if args.contains("--setup") {
+            SetupWindowController.shared.showSetupWindow(appState: appState) { [weak self] in
+                self?.launchNormalEnvironment()
+            }
+            return
+        }
+        
         let isSetupDone = UserDefaults.standard.bool(forKey: "voiceos.setup.completed")
         if isSetupDone {
             launchNormalEnvironment()
@@ -142,6 +156,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         autoUpdateItem.state = UpdateManager.shared.automaticallyChecksForUpdates ? .on : .off
         menu.addItem(autoUpdateItem)
         
+        let modelSetupItem = NSMenuItem(title: "Model Setup & Downloads…", action: #selector(openModelSetup), keyEquivalent: "m")
+        modelSetupItem.target = self
+        menu.addItem(modelSetupItem)
+        
         let setupItem = NSMenuItem(title: "Setup Assistant…", action: #selector(rerunSetup), keyEquivalent: "")
         setupItem.target = self
         menu.addItem(setupItem)
@@ -156,6 +174,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     
     @objc private func checkForUpdates() {
         UpdateManager.shared.checkForUpdates(userInitiated: true)
+    }
+    
+    @objc private func openModelSetup() {
+        ModelSetupWindowController.shared.showWindow()
     }
     
     @objc private func rerunSetup() {

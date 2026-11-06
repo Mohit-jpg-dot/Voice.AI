@@ -513,6 +513,20 @@ public struct SetupFlowView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                
+                Spacer()
+                
+                Button(action: {
+                    ModelSetupWindowController.shared.showWindow()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.down.circle.fill")
+                        Text("Open Full Model Setup Dashboard")
+                    }
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.blue)
+                }
+                .buttonStyle(.plain)
             }
             
             // Transparency: Items to be installed

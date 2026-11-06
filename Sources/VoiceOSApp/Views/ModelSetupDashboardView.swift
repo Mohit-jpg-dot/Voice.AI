@@ -8,6 +8,12 @@ public struct ModelSetupDashboardView: View {
     @State private var isDownloadingAll = false
     @State private var selectedExecutionMode: RecommendedExecutionMode = .hybrid
     
+    // Ollama Detection State
+    @State private var isOllamaRunning: Bool = false
+    @State private var isCheckingOllama: Bool = false
+    @State private var installedOllamaModels: [OllamaModelInfo] = []
+    @State private var ollamaStatusMessage: String = "Probing http://localhost:11434..."
+    
     public init() {}
     
     public var body: some View {
@@ -92,6 +98,93 @@ public struct ModelSetupDashboardView: View {
                     .pickerStyle(.segmented)
                 }
                 
+                // Ollama Daemon Status Card
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(isOllamaRunning ? Color.green : Color.orange)
+                                .frame(width: 10, height: 10)
+                            
+                            Text("Ollama Runtime Engine")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.white)
+                            
+                            Text(isOllamaRunning ? "(localhost:11434 • Connected)" : "(Not Responding)")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(isOllamaRunning ? Color.green : Color.orange)
+                        }
+                        
+                        Spacer()
+                        
+                        if isCheckingOllama {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Button(action: {
+                                Task { await checkOllamaStatus() }
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                    Text("Check Status")
+                                }
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.white.opacity(0.1))
+                                .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                        if !isOllamaRunning {
+                            Button(action: {
+                                launchOllamaApp()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "play.circle.fill")
+                                    Text("Launch Ollama")
+                                }
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.white)
+                                .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    
+                    Text(ollamaStatusMessage)
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(white: 0.65))
+                    
+                    if !installedOllamaModels.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                Text("Installed locally:")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(Color(white: 0.5))
+                                
+                                ForEach(installedOllamaModels, id: \.name) { model in
+                                    Text(model.name)
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(Color.green)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.green.opacity(0.15))
+                                        .cornerRadius(4)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(14)
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(10)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(isOllamaRunning ? Color.green.opacity(0.3) : Color.orange.opacity(0.3), lineWidth: 1))
+                
                 // Core Models Catalog Section
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
@@ -149,6 +242,48 @@ public struct ModelSetupDashboardView: View {
                     tasks[idx] = updatedTask
                 }
             }
+            Task {
+                await checkOllamaStatus()
+            }
+        }
+    }
+    
+    private func checkOllamaStatus() async {
+        isCheckingOllama = true
+        defer { isCheckingOllama = false }
+        
+        do {
+            let running = await OllamaProvider.shared.isRunning()
+            if running {
+                let models = (try? await OllamaProvider.shared.listLocalModels()) ?? []
+                installedOllamaModels = models
+                isOllamaRunning = true
+                ollamaStatusMessage = "Ollama is running. \(models.count) local models discovered."
+                await LocalModelDownloadManager.shared.refreshInstalledStatuses()
+                tasks = LocalModelDownloadManager.shared.getTasks()
+            } else {
+                isOllamaRunning = false
+                installedOllamaModels = []
+                ollamaStatusMessage = "Ollama is not running. Launch the Ollama application or run 'ollama serve'."
+            }
+        }
+    }
+    
+    private func launchOllamaApp() {
+        if let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ollama.ollama") {
+            NSWorkspace.shared.openApplication(at: appUrl, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+        } else if FileManager.default.fileExists(atPath: "/Applications/Ollama.app") {
+            NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/Ollama.app"))
+        } else {
+            let script = "tell application \"Terminal\" to do script \"ollama serve\""
+            if let appleScript = NSAppleScript(source: script) {
+                var error: NSDictionary?
+                appleScript.executeAndReturnError(&error)
+            }
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await checkOllamaStatus()
         }
     }
 }

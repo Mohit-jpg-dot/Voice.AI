@@ -1,0 +1,100 @@
+:root {
+  /* =========================================================================
+     VoiceOS Design System Tokens (Generated strictly from DESIGN.md & Screenshots)
+     macOS Tahoe Liquid Glass & Restrained Editorial Web Palette
+     ========================================================================= */
+
+  /* Surface & Background Colors */
+  --color-bg-canvas: #09090b;
+  --color-bg-window-light: rgba(248, 249, 250, 0.88);
+  --color-bg-window-dark: rgba(18, 18, 20, 0.88);
+  --color-bg-surface-light: #ffffff;
+  --color-bg-surface-dark: #161618;
+  --color-bg-surface-elevated-light: #f4f4f5;
+  --color-bg-surface-elevated-dark: #222226;
+  --color-bg-hud: rgba(14, 14, 16, 0.94);
+  --color-bg-notch-pill: #000000;
+  --color-bg-input-dark: rgba(255, 255, 255, 0.07);
+  --color-bg-input-light: rgba(0, 0, 0, 0.04);
+
+  /* Typography Colors */
+  --color-text-primary-light: #111111;
+  --color-text-primary-dark: #f5f5f7;
+  --color-text-secondary-light: #6e6e73;
+  --color-text-secondary-dark: #a1a1aa;
+  --color-text-muted-light: #86868b;
+  --color-text-muted-dark: #71717a;
+  --color-text-accent: #0066cc;
+  --color-text-accent-dark: #2997ff;
+
+  /* Borders & Dividers */
+  --color-border-subtle-light: rgba(0, 0, 0, 0.06);
+  --color-border-subtle-dark: rgba(255, 255, 255, 0.08);
+  --color-border-strong-light: rgba(0, 0, 0, 0.12);
+  --color-border-strong-dark: rgba(255, 255, 255, 0.16);
+  --color-border-glass-specular: rgba(255, 255, 255, 0.22);
+
+  /* Semantic Accent & Status */
+  --color-accent-blue: #0071e3;
+  --color-accent-green: #34c759;
+  --color-accent-amber: #ff9f0a;
+  --color-accent-red: #ff453a;
+  --color-accent-purple: #af52de;
+
+  /* Typography Scale */
+  --font-family-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+  --font-family-mono: "SF Mono", Menlo, Monaco, Consolas, monospace;
+
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-md: 15px;
+  --font-size-lg: 17px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+  --font-size-3xl: 32px;
+  --font-size-4xl: 44px;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.15;
+  --line-height-normal: 1.45;
+  --line-height-relaxed: 1.6;
+
+  /* Radius Scale */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-pill: 9999px;
+
+  /* Spacing Scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+  --shadow-hud: 0 20px 48px rgba(0, 0, 0, 0.35);
+
+  /* Glass Blur & Transitions */
+  --blur-window: 30px;
+  --blur-hud: 40px;
+  --transition-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-duration: 220ms;
+}
+

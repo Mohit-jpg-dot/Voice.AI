@@ -99,3 +99,4 @@ Both shells share identical monochrome design tokens:
    - *Mitigation*: Voice.AI detects the active desktop switch, pauses automation, and gracefully resumes once the user confirms or cancels UAC.
 3. **No Hardware Notch on Windows**:
    - *Implementation*: Windows uses a floating **Top-Center Island Pill** docked 0px below the top screen bezel on the primary monitor. It auto-hides when a fullscreen DirectX or video app is frontmost.
+

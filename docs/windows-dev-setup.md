@@ -97,3 +97,4 @@ Import-Certificate -FilePath "VoiceAI-Dev.cer" -CertStoreLocation "Cert:\LocalMa
    - Non-elevated Voice.AI cannot send synthetic input to elevated windows (e.g. Task Manager). Run Voice.AI as Administrator if automating elevated administrator windows is required.
 3. **Mica Effect Fallback**:
    - On Windows 10, Mica material falls back automatically to solid dark acrylic (`#121214`).
+

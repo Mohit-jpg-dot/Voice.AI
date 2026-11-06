@@ -98,3 +98,4 @@ To verify that Voice.AI is strictly running offline without external calls:
 3. Voice.AI will immediately respond via the offline MathEngine and local TTS:
    > *"25 × 4 = 100"*
 4. Check history log file at `%APPDATA%\VoiceAI\EncryptedHistory\default_history.json`. All records are stored locally with zero cloud telemetry.
+

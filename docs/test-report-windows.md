@@ -125,3 +125,4 @@ To verify the Windows build on a physical PC:
 7. **Test 5: Consequential Action Approval:**
    - Speak: *"send a message on WhatsApp to Mom saying I am coming"*.
    - Confirm the confirmation card appears with exact preview and requires explicit **Approve** button click before launching or typing.
+

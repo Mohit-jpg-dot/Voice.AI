@@ -160,15 +160,25 @@ public struct ModelSetupDashboardView: View {
                         .font(.system(size: 11))
                         .foregroundColor(Color(white: 0.65))
                     
-                    if !installedOllamaModels.isEmpty {
+                    if !installedOllamaModels.isEmpty || downloadManager.isItemReady(id: "voice.kokoro.82m") {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
-                                Text("Installed locally:")
+                                Text("Ready on this device:")
                                     .font(.system(size: 10, weight: .bold))
                                     .foregroundColor(Color(white: 0.5))
                                 
                                 ForEach(installedOllamaModels, id: \.name) { model in
-                                    Text(model.name)
+                                    Text("\(model.name) (Ollama)")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(Color.green)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.green.opacity(0.15))
+                                        .cornerRadius(4)
+                                }
+                                
+                                if downloadManager.isItemReady(id: "voice.kokoro.82m") {
+                                    Text("kokoro-82m (Neural Audio)")
                                         .font(.system(size: 10, design: .monospaced))
                                         .foregroundColor(Color.green)
                                         .padding(.horizontal, 6)
@@ -236,10 +246,8 @@ public struct ModelSetupDashboardView: View {
         }
         .background(Color(red: 0.08, green: 0.08, blue: 0.09))
         .onAppear {
-            if downloadManager.tasksList.isEmpty {
-                downloadManager.queueDownloads(items: HardwareProfileDetector.shared.getCoreThreeModels())
-            }
             Task {
+                await downloadManager.refreshInstalledStatuses()
                 await checkOllamaStatus()
             }
         }

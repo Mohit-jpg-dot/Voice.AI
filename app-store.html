@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>App Store — Voice.AI Official Integrations</title>
+  <link rel="icon" type="image/png" href="assets/app-icon.png">
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .gradient-text-powered {
+      background: linear-gradient(90deg, #1d6199 0%, #eab308 45%, #60a5fa 90%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .app-store-filter-bar {
+      display: inline-flex;
+      background: #f5f5f7;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      border-radius: var(--radius-pill);
+      padding: 4px;
+      gap: 4px;
+      margin: 40px auto 48px auto;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .as-filter-btn {
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-pill);
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #555555;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .as-filter-btn.active {
+      background: #ffffff;
+      color: #000000;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      font-weight: 600;
+    }
+    .as-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      text-align: left;
+    }
+    .as-card {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: var(--radius-card);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 200px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+      transition: all 0.2s ease;
+      cursor: pointer;
+      position: relative;
+    }
+    .as-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+    }
+    .as-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+    }
+    .as-icon-box {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      background: #f2f2f7;
+    }
+    .as-beta-badge {
+      font-size: 10px;
+      font-weight: 700;
+      color: #007aff;
+      background: rgba(0, 122, 255, 0.1);
+      padding: 3px 8px;
+      border-radius: var(--radius-pill);
+    }
+    .as-card-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #000000;
+      margin-bottom: 6px;
+    }
+    .as-card-desc {
+      font-size: 14px;
+      color: #6e6e73;
+      line-height: 1.4;
+      margin-bottom: 20px;
+    }
+    .as-card-meta {
+      font-size: 12px;
+      color: #8e8e93;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Floating Notch Pill Navigation Header -->
+  <header class="site-nav" id="mainHeader">
+    <div class="nav-shell">
+      <div class="site-logo-wrap">
+        <a href="index.html" class="site-logo" title="Voice.AI">
+          <span class="logo-text">Voice.AI</span>
+          <span class="notch-logo-glyphs">
+            <span class="notch-glyph-triangle">▼</span>
+            <span class="notch-glyph-dot">●</span>
+          </span>
+        </a>
+      </div>
+
+      <nav class="nav-links-wrap" id="mainNavLinks">
+        <a href="index.html#features" class="nav-link">Product <svg width="9" height="5" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1L5 5L9 1"/></svg></a>
+        <a href="about.html" class="nav-link">About</a>
+        <a href="blog.html" class="nav-link">Blogs</a>
+        <a href="app-store.html" class="nav-link" style="color: #000; font-weight: 600;">App Store</a>
+        <a href="index.html#affiliates" class="nav-link">Affiliates</a>
+      </nav>
+
+      <div class="nav-cta-wrap">
+        <a href="download.html" class="btn-nav-download" id="headerDownloadBtn"> Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="site-container hero-wrap" style="padding-bottom: 20px;">
+      <div style="background: #f5f5f7; border-radius: var(--radius-pill); padding: 5px 14px; font-size: 11px; font-weight: 700; color: #6e6e73; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 20px;">
+        APP STORE
+      </div>
+
+      <h1 class="hero-main-heading" style="font-size: 72px; margin-bottom: 20px;">
+        The app ecosystem<br>
+        <span class="gradient-text-powered">powered by voice</span>
+      </h1>
+
+      <p class="section-subheadline" style="max-width: 680px; margin-bottom: 0;">
+        Official integrations, built into Voice.AI and maintained by us. Connect the apps you live in, then just say what you want done.
+      </p>
+
+      <!-- Category Filter Pills Bar -->
+      <div class="app-store-filter-bar">
+        <button class="as-filter-btn active" data-cat="all">All <span>21</span></button>
+        <button class="as-filter-btn" data-cat="Messaging">Messaging <span>2</span></button>
+        <button class="as-filter-btn" data-cat="Email">Email <span>3</span></button>
+        <button class="as-filter-btn" data-cat="Calendar">Calendar <span>2</span></button>
+        <button class="as-filter-btn" data-cat="Productivity">Productivity <span>9</span></button>
+        <button class="as-filter-btn" data-cat="Note Taking">Note Taking <span>3</span></button>
+        <button class="as-filter-btn" data-cat="Media">Media <span>1</span></button>
+        <button class="as-filter-btn" data-cat="Social">Social <span>1</span></button>
+      </div>
+
+      <!-- Integrations Cards Grid (21 Official Integrations) -->
+      <div class="as-grid" id="appStoreGrid">
+        
+        <!-- iMessage -->
+        <div class="as-card" data-cat="Messaging">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: linear-gradient(180deg, #3adb76 0%, #24b455 100%);">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="#ffffff">
+                  <path d="M12 3C6.5 3 2 6.8 2 11.5c0 2.6 1.4 4.9 3.6 6.4L4.5 21l3.5-1.2c1.2.4 2.6.7 4 .7 5.5 0 10-3.8 10-8.5S17.5 3 12 3z"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">iMessage</div>
+            <div class="as-card-desc">Read and send iMessages</div>
+          </div>
+          <div class="as-card-meta">5 voice actions · macOS</div>
+        </div>
+
+        <!-- Apple Mail -->
+        <div class="as-card" data-cat="Email">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: linear-gradient(180deg, #3aa3fc 0%, #007aff 100%);">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="#ffffff">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm0 3.5l8 5 8-5V6l-8 5-8-5v1.5z"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">Apple Mail</div>
+            <div class="as-card-desc">Read, search, send, and reply to email</div>
+          </div>
+          <div class="as-card-meta">7 voice actions · macOS</div>
+        </div>
+
+        <!-- Reminders -->
+        <div class="as-card" data-cat="Productivity">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #ffffff; border: 1px solid #e5e5ea;">
+                <svg width="28" height="28" viewBox="0 0 24 24">
+                  <circle cx="6" cy="6" r="3" fill="#FF9500"/>
+                  <rect x="11" y="5" width="9" height="2" rx="1" fill="#8e8e93"/>
+                  <circle cx="6" cy="12" r="3" fill="#007AFF"/>
+                  <rect x="11" y="11" width="9" height="2" rx="1" fill="#8e8e93"/>
+                  <circle cx="6" cy="18" r="3" fill="#FF2D55"/>
+                  <rect x="11" y="17" width="9" height="2" rx="1" fill="#8e8e93"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">Reminders</div>
+            <div class="as-card-desc">Read, create, and complete reminders</div>
+          </div>
+          <div class="as-card-meta">5 voice actions · macOS</div>
+        </div>
+
+        <!-- Finder -->
+        <div class="as-card" data-cat="Productivity">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: linear-gradient(180deg, #1fa2ff 0%, #12d8fa 100%);">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                  <rect x="2" y="2" width="20" height="20" rx="5" fill="#4facfe"/>
+                  <path d="M12 2v10m-3-4a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2zm-7 8c1.5 2 4.5 2 6 0" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">Finder</div>
+            <div class="as-card-desc">Search, read, and organize files on your Mac</div>
+          </div>
+          <div class="as-card-meta">12 voice actions · macOS</div>
+        </div>
+
+        <!-- Notes -->
+        <div class="as-card" data-cat="Note Taking">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #ffffff; border: 1px solid #e5e5ea; overflow: hidden; padding: 0;">
+                <div style="display:flex; flex-direction:column; width:100%; height:100%;">
+                  <div style="background:#FFCC00; height:12px; width:100%;"></div>
+                  <div style="padding:4px 6px; display:flex; flex-direction:column; gap:3px;">
+                    <div style="height:2px; background:#d1d1d6; width:90%; border-radius:1px;"></div>
+                    <div style="height:2px; background:#d1d1d6; width:70%; border-radius:1px;"></div>
+                    <div style="height:2px; background:#d1d1d6; width:80%; border-radius:1px;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="as-card-title">Notes</div>
+            <div class="as-card-desc">Read, create, and append notes</div>
+          </div>
+          <div class="as-card-meta">6 voice actions · macOS</div>
+        </div>
+
+        <!-- Spotify [BETA] -->
+        <div class="as-card" data-cat="Media">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #1DB954;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="#000000">
+                  <circle cx="12" cy="12" r="10" fill="#1DB954"/>
+                  <path d="M7 9.5c3.5-1 7.5-.7 10.5 1m-10 3c3-.8 6.5-.5 9 1m-8.5 3c2.3-.5 5-.3 7 .8" stroke="#000000" stroke-width="2" stroke-linecap="round" fill="none"/>
+                </svg>
+              </div>
+              <span class="as-beta-badge">BETA</span>
+            </div>
+            <div class="as-card-title">Spotify</div>
+            <div class="as-card-desc">Control playback, volume, and tracks in the desktop app</div>
+          </div>
+          <div class="as-card-meta">9 voice actions · macOS</div>
+        </div>
+
+        <!-- Slack [BETA] -->
+        <div class="as-card" data-cat="Messaging">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #ffffff; border: 1px solid #e5e5ea;">
+                <svg width="28" height="28" viewBox="0 0 24 24">
+                  <path d="M5.5 10.5a2 2 0 110-4 2 2 0 010 4zm0 2h4a2 2 0 110 4h-4a2 2 0 010-4z" fill="#E01E5A"/>
+                  <path d="M13.5 5.5a2 2 0 114 0 2 2 0 01-4 0zm-2 0v4a2 2 0 11-4 0v-4a2 2 0 014 0z" fill="#36C5F0"/>
+                  <path d="M18.5 13.5a2 2 0 110 4 2 2 0 010-4zm0-2h-4a2 2 0 110-4h4a2 2 0 010 4z" fill="#2EB67D"/>
+                  <path d="M10.5 18.5a2 2 0 11-4 0 2 2 0 014 0zm2 0v-4a2 2 0 114 0v4a2 2 0 01-4 0z" fill="#ECB22E"/>
+                </svg>
+              </div>
+              <span class="as-beta-badge">BETA</span>
+            </div>
+            <div class="as-card-title">Slack</div>
+            <div class="as-card-desc">Send messages, change status, and check unread mentions</div>
+          </div>
+          <div class="as-card-meta">8 voice actions · macOS</div>
+        </div>
+
+        <!-- Gmail -->
+        <div class="as-card" data-cat="Email">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #ffffff; border: 1px solid #e5e5ea;">
+                <svg width="28" height="28" viewBox="0 0 24 24">
+                  <path d="M3 6l9 6.5L21 6v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6z" fill="#F1F3F4"/>
+                  <path d="M3 6l9 6.5L21 6" fill="none" stroke="#EA4335" stroke-width="2.5"/>
+                  <path d="M3 6v12h4V10.5L3 6z" fill="#4285F4"/>
+                  <path d="M21 6v12h-4V10.5L21 6z" fill="#34A853"/>
+                  <path d="M7 18h10V9L12 12.5 7 9v9z" fill="#FBBC04"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">Gmail</div>
+            <div class="as-card-desc">Search message threads, draft replies, and summarize inbox</div>
+          </div>
+          <div class="as-card-meta">6 voice actions · macOS</div>
+        </div>
+
+        <!-- Google Calendar -->
+        <div class="as-card" data-cat="Calendar">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #ffffff; border: 1px solid #e5e5ea;">
+                <div style="display:flex; flex-direction:column; align-items:center; width:100%; height:100%; justify-content:center;">
+                  <span style="font-size:8px; font-weight:800; color:#1a73e8; text-transform:uppercase; line-height:1;">CAL</span>
+                  <span style="font-size:18px; font-weight:900; color:#1a73e8; line-height:1.1;">31</span>
+                </div>
+              </div>
+            </div>
+            <div class="as-card-title">Google Calendar</div>
+            <div class="as-card-desc">Schedule meetings, check free slots, and inspect upcoming agenda</div>
+          </div>
+          <div class="as-card-meta">5 voice actions · macOS</div>
+        </div>
+
+        <!-- Telegram -->
+        <div class="as-card" data-cat="Messaging">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #24A1DE;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="#ffffff">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.75-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .37z"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">Telegram</div>
+            <div class="as-card-desc">Send messages to contacts and channels via voice</div>
+          </div>
+          <div class="as-card-meta">4 voice actions · macOS</div>
+        </div>
+
+        <!-- WhatsApp -->
+        <div class="as-card" data-cat="Messaging">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #25D366;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="#ffffff">
+                  <path d="M12 2C6.5 2 2 6.5 2 12c0 1.9.5 3.6 1.4 5.1L2 22l5.1-1.3C8.5 21.5 10.2 22 12 22c5.5 0 10-4.5 10-10S17.5 2 12 2zm5.7 14.3c-.2.7-1.3 1.3-1.8 1.4-.5.1-1.1.1-3.6-.9-3.2-1.3-5.2-4.5-5.3-4.7-.2-.2-1.2-1.6-1.2-3.1 0-1.5.8-2.2 1-2.5.3-.3.6-.4.9-.4.2 0 .4 0 .6.1.2.1.5.7.7 1.2.2.5.4 1 .4 1.1 0 .2 0 .4-.1.6-.1.2-.2.3-.3.5-.2.2-.3.3-.4.5-.1.2-.3.4-.1.7.2.4.9 1.5 1.9 2.4 1.3 1.2 2.4 1.5 2.8 1.7.3.2.6.2.8 0 .3-.3.9-1 1.1-1.4.2-.4.5-.3.8-.2.3.1 2.1 1 2.5 1.2.4.2.6.3.7.5.1.2.1 1.2-.1 1.9z"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">WhatsApp</div>
+            <div class="as-card-desc">Dictate and send messages without touching your phone</div>
+          </div>
+          <div class="as-card-meta">4 voice actions · macOS</div>
+        </div>
+
+        <!-- Notion -->
+        <div class="as-card" data-cat="Note Taking">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #ffffff; border: 1px solid #e5e5ea;">
+                <svg width="26" height="26" viewBox="0 0 24 24">
+                  <path d="M4.5 4l12.5-1.5 2.5 2v14.5l-13.5 1.5-2.5-2V4zm3 3.5v9l2.5-.5V8.5l6 8 2.5-.5v-9l-2.5.5v7.5l-6-8-2.5.5z" fill="#000000"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">Notion</div>
+            <div class="as-card-desc">Capture meeting notes and query databases seamlessly</div>
+          </div>
+          <div class="as-card-meta">7 voice actions · macOS</div>
+        </div>
+
+        <!-- Google Drive -->
+        <div class="as-card" data-cat="Productivity">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #ffffff; border: 1px solid #e5e5ea;">
+                <svg width="28" height="28" viewBox="0 0 24 24">
+                  <path d="M8.5 3.5l7 12H23l-7-12z" fill="#FFC107"/>
+                  <path d="M1 21.5h15l3.5-6H4.5z" fill="#2196F3"/>
+                  <path d="M8.5 3.5L1 15.5l3.5 6 7.5-12z" fill="#4CAF50"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">Google Drive</div>
+            <div class="as-card-desc">Find spreadsheets and docs in seconds via voice search</div>
+          </div>
+          <div class="as-card-meta">6 voice actions · macOS</div>
+        </div>
+
+        <!-- Linear -->
+        <div class="as-card" data-cat="Productivity">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #12151B;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="#ffffff">
+                  <path d="M3.2 4.6l9.6 14.8c.4.6 1.3.6 1.7 0l6.3-9.7c.4-.6.4-1.4 0-2L14.5 2.3c-.4-.6-1.3-.6-1.7 0L3.2 4.6zm8.8 11.2L6.1 6.8l4.9-.8 5 7.7-4 2.1z"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">Linear</div>
+            <div class="as-card-desc">Create issues, update project cycles, and assign tasks via voice</div>
+          </div>
+          <div class="as-card-meta">8 voice actions · macOS</div>
+        </div>
+
+        <!-- VS Code -->
+        <div class="as-card" data-cat="Productivity">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #1E1E1E;">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="#007ACC">
+                  <path d="M17.5 2.5l4.5 2.2v14.6l-4.5 2.2-10-8.5 7-5.5-7-5.5 10 8.5zm-5 13l-4 3.5-6.5-5 6.5-5 4 3.5-3.5 1.5 3.5 1.5z"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">VS Code</div>
+            <div class="as-card-desc">Open files, trigger tasks, and jump to definition hands-free</div>
+          </div>
+          <div class="as-card-meta">10 voice actions · macOS</div>
+        </div>
+
+        <!-- Arc Browser -->
+        <div class="as-card" data-cat="Productivity">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #ffffff; border: 1px solid #e5e5ea;">
+                <svg width="28" height="28" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" fill="none" stroke="#FF4D4D" stroke-width="3"/>
+                  <circle cx="12" cy="12" r="7" fill="none" stroke="#FFB800" stroke-width="2.5"/>
+                  <circle cx="12" cy="12" r="4" fill="#3B82F6"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">Arc Browser</div>
+            <div class="as-card-desc">Switch spaces, pin tabs, and search without losing flow</div>
+          </div>
+          <div class="as-card-meta">6 voice actions · macOS</div>
+        </div>
+
+        <!-- Google Chrome -->
+        <div class="as-card" data-cat="Productivity">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #ffffff; border: 1px solid #e5e5ea;">
+                <svg width="28" height="28" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" fill="#EA4335"/>
+                  <path d="M12 12 L22 12 A10 10 0 0 1 7 20.6 Z" fill="#34A853"/>
+                  <path d="M12 12 L7 20.6 A10 10 0 0 1 7 3.4 Z" fill="#FBBC05"/>
+                  <circle cx="12" cy="12" r="5" fill="#ffffff"/>
+                  <circle cx="12" cy="12" r="4" fill="#4285F4"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">Google Chrome</div>
+            <div class="as-card-desc">Background tab searching and URL opening</div>
+          </div>
+          <div class="as-card-meta">6 voice actions · macOS</div>
+        </div>
+
+        <!-- Canvas LMS -->
+        <div class="as-card" data-cat="Productivity">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #E02424;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="#ffffff">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M12 2v4m0 12v4M2 12h4m12 0h4m-14.1-7.1l2.8 2.8m8.6 8.6l2.8 2.8m-14.2 0l2.8-2.8m8.6-8.6l2.8-2.8" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">Canvas LMS</div>
+            <div class="as-card-desc">List assignments, upcoming deadlines, and grades summary</div>
+          </div>
+          <div class="as-card-meta">5 voice actions · macOS</div>
+        </div>
+
+        <!-- Obsidian -->
+        <div class="as-card" data-cat="Note Taking">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #1B1528;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="#7C3AED">
+                  <path d="M16.5 2.5L7.5 5.5 4 15l8 6.5 8-4.5-3.5-14.5zm-5 15.5l-4-4 2-6 5 2.5-3 7.5z"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">Obsidian</div>
+            <div class="as-card-desc">Append to daily note and search your local Markdown vault</div>
+          </div>
+          <div class="as-card-meta">6 voice actions · macOS</div>
+        </div>
+
+        <!-- Google Maps -->
+        <div class="as-card" data-cat="Productivity">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #ffffff; border: 1px solid #e5e5ea;">
+                <svg width="28" height="28" viewBox="0 0 24 24">
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z" fill="#EA4335"/>
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 1.74.63 3.37 1.75 4.67L12 9V2z" fill="#4285F4"/>
+                  <path d="M12 9v13s7-7.75 7-13c0-1.74-.63-3.37-1.75-4.67L12 9z" fill="#34A853"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">Google Maps</div>
+            <div class="as-card-desc">Check traffic, directions, and ETA to saved destinations</div>
+          </div>
+          <div class="as-card-meta">4 voice actions · macOS</div>
+        </div>
+
+        <!-- X / Twitter -->
+        <div class="as-card" data-cat="Social">
+          <div>
+            <div class="as-card-top">
+              <div class="as-icon-box" style="background: #000000;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="#ffffff">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                </svg>
+              </div>
+            </div>
+            <div class="as-card-title">X / Twitter</div>
+            <div class="as-card-desc">Post tweets and check notifications without opening tabs</div>
+          </div>
+          <div class="as-card-meta">4 voice actions · macOS</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Section: Publish on the App Store Stadium Card (media_1793869222429_99c0ae03.jpg) -->
+    <section class="site-container section-publish-app-store">
+      <div class="panoramic-publish-card">
+        <div class="publish-badge-tag">PUBLISH ON THE APP STORE</div>
+        <h2 class="publish-card-heading">Got an integration to share?</h2>
+        <p class="publish-card-subheading">Publish your integration to the Voice.AI App Store.</p>
+
+        <form class="publish-form-wrap" onsubmit="event.preventDefault(); alert('Thank you! Your integration submission has been received for manual review.');">
+          <div class="publish-form-row">
+            <input type="text" class="publish-input" placeholder="Integration name" required>
+            <input type="email" class="publish-input" placeholder="Your email" required>
+          </div>
+          
+          <input type="url" class="publish-input" placeholder="Link to the code or a demo (optional)">
+          
+          <textarea class="publish-textarea" placeholder="What does it do? Which apps it controls, what you can say to it, and why Voice.AI users would want it." rows="3" required></textarea>
+          
+          <button type="submit" class="publish-submit-btn">Apply to publish</button>
+        </form>
+
+        <div class="publish-footer-note">
+          Reviewed by hand before anything is listed. <a href="blog.html" class="publish-build-guide-link">Read the build guide</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom CTA -->
+    <section class="site-container" style="text-align: center; padding: 60px 0 20px;">
+      <h3 style="font-size: 32px; font-weight: 700; margin-bottom: 20px;">Ready to automate your Mac with your voice?</h3>
+      <div class="hero-download-halo-wrap">
+        <a href="download.html" class="btn-mac-download-pill" title="Download Voice.AI">
+          <span class="btn-apple-logo"></span>
+          <span class="btn-text-main">Download for</span>
+          <span class="btn-text-muted">Mac</span>
+        </a>
+        <div style="font-size: 13px; color: #86868b; display: flex; align-items: center; gap: 8px; z-index: 1;">
+          <span>macOS 14.0+</span> · <span>Apple Silicon Native</span> · <a href="download.html" style="color: #0066cc; text-decoration: none;">Download Guide →</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 4-Column Footer -->
+  <footer class="site-footer" style="margin-top: 80px;">
+    <div class="site-container">
+      <div class="footer-nav-grid">
+        <div>
+          <div class="footer-col-title">Product</div>
+          <div class="footer-links-list">
+            <a href="download.html" class="footer-link">Download</a>
+            <a href="../app/index.html" class="footer-link" target="_blank">Try the demo</a>
+            <a href="../app/index.html" class="footer-link">Agent Mode</a>
+            <a href="../app/index.html" class="footer-link">Dictation Mode</a>
+            <a href="index.html#pricing" class="footer-link">Pricing</a>
+            <a href="app-store.html" class="footer-link">App Store</a>
+            <a href="blog.html" class="footer-link">Blog</a>
+          </div>
+        </div>
+
+        <div>
+          <div class="footer-col-title">Company</div>
+          <div class="footer-links-list">
+            <a href="about.html" class="footer-link">About</a>
+            <a href="about.html#contact" class="footer-link">Contact</a>
+            <a href="index.html#affiliates" class="footer-link">Affiliates</a>
+          </div>
+        </div>
+
+        <div>
+          <div class="footer-col-title">Resources</div>
+          <div class="footer-links-list">
+            <a href="index.html#features" class="footer-link">All features</a>
+            <a href="#glossary" class="footer-link">Voice glossary</a>
+            <a href="#changelog" class="footer-link">Changelog</a>
+            <a href="#docs" class="footer-link">Documentation</a>
+          </div>
+        </div>
+
+        <div>
+          <div class="footer-col-title">Legal</div>
+          <div class="footer-links-list">
+            <a href="#terms" class="footer-link">Terms of Use</a>
+            <a href="#privacy" class="footer-link">Privacy Policy</a>
+            <a href="#security" class="footer-link">Security</a>
+            <a href="#affiliate-policy" class="footer-link">Affiliate Policy</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="giant-footer-watermark">Voice.AI</div>
+
+      <div class="footer-bottom-bar">
+        <div>Copyright © 2026 Voice.AI Team. All Rights Reserved.</div>
+        <div class="footer-social-links">
+          <a href="#" class="footer-social-link">in</a>
+          <a href="#" class="footer-social-link">✉</a>
+          <a href="#" class="footer-social-link">𝕏</a>
+          <span style="color: #444; margin-left: 8px;">EN</span>
+          <a href="#" class="footer-social-link">JA</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Filter click handler
+    document.querySelectorAll('.as-filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.as-filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const cat = btn.dataset.cat;
+        document.querySelectorAll('.as-card').forEach(card => {
+          if (cat === 'all' || card.dataset.cat === cat) {
+            card.style.display = 'flex';
+          } else {
+            card.style.display = 'none';
+          }
+        });
+      });
+    });
+
+    function handleNavScroll() {
+      if (window.scrollY > 40) {
+        document.body.classList.add('scrolled');
+      } else {
+        document.body.classList.remove('scrolled');
+      }
+    }
+    window.addEventListener('scroll', handleNavScroll, { passive: true });
+    window.addEventListener('DOMContentLoaded', handleNavScroll);
+    handleNavScroll();
+  </script>
+  <script src="release.js"></script>
+</body>
+</html>
+

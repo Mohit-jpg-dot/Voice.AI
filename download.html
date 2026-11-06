@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download Voice.AI for Mac – Native AI Voice Operating System</title>
+  <link rel="icon" type="image/png" href="assets/app-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .download-hero {
+      padding-top: 130px;
+      padding-bottom: 40px;
+      text-align: center;
+    }
+    .download-card-tahoe {
+      background: #0d1117;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 28px;
+      padding: 48px;
+      color: #ffffff;
+      max-width: 760px;
+      margin: 32px auto 60px;
+      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35);
+      position: relative;
+      overflow: hidden;
+    }
+    .download-card-tahoe::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    }
+    .release-status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      margin-bottom: 24px;
+    }
+    .status-unsigned {
+      background: rgba(255, 179, 0, 0.15);
+      color: #ffca28;
+      border: 1px solid rgba(255, 179, 0, 0.3);
+    }
+    .status-verified {
+      background: rgba(76, 175, 80, 0.15);
+      color: #81c784;
+      border: 1px solid rgba(76, 175, 80, 0.3);
+    }
+    .meta-spec-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin: 32px 0 24px;
+      padding: 20px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      text-align: center;
+    }
+    .meta-spec-label {
+      font-size: 12px;
+      color: #86868b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .meta-spec-value {
+      font-size: 15px;
+      font-weight: 600;
+      color: #f5f5f7;
+    }
+    .sha-box {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 24px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #86868b;
+    }
+    .sha-box span.release-sha-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #a1a1a6;
+    }
+    .copy-sha-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: background 0.15s ease;
+      flex-shrink: 0;
+    }
+    .copy-sha-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    .platform-warning-pill {
+      display: none;
+      background: rgba(255, 255, 255, 0.08);
+      color: #a1a1a6;
+      border-radius: 9999px;
+      padding: 6px 16px;
+      font-size: 13px;
+      margin-top: 16px;
+    }
+    .guide-step-card {
+      background: #fbfbfd;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 20px;
+      padding: 28px 32px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+    .guide-step-num {
+      display: inline-block;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #000;
+      color: #fff;
+      text-align: center;
+      line-height: 28px;
+      font-size: 14px;
+      font-weight: 700;
+      margin-right: 10px;
+    }
+    .cmd-snippet {
+      background: #1c1c1e;
+      color: #30d158;
+      font-family: var(--font-mono);
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-top: 10px;
+      display: block;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Floating Notch Pill Navigation Header -->
+  <header class="site-nav" id="mainHeader">
+    <div class="nav-shell">
+      <div class="site-logo-wrap">
+        <a href="index.html" class="site-logo" title="Voice.AI">
+          <span class="logo-text">Voice.AI</span>
+          <span class="notch-logo-glyphs">
+            <span class="notch-glyph-triangle">▼</span>
+            <span class="notch-glyph-dot">●</span>
+          </span>
+        </a>
+      </div>
+
+      <nav class="nav-links-wrap" id="mainNavLinks">
+        <a href="index.html#features" class="nav-link">Product <svg width="9" height="5" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1L5 5L9 1"/></svg></a>
+        <a href="about.html" class="nav-link">About</a>
+        <a href="blog.html" class="nav-link">Blogs</a>
+        <a href="app-store.html" class="nav-link">App Store</a>
+        <a href="index.html#affiliates" class="nav-link">Affiliates</a>
+      </nav>
+
+      <div class="nav-cta-wrap">
+        <a href="downloads/Voice.AI-1.0.0.dmg" class="btn-nav-download" id="headerDownloadBtn" download="Voice.AI-1.0.0.dmg"> Download</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero & Primary Download Card -->
+  <main class="site-container download-hero">
+    <h1 class="hero-main-heading" style="font-size: 48px; margin-bottom: 12px;">
+      Install Voice.AI for macOS
+    </h1>
+    <p style="font-size: 18px; color: #6e6e73; max-width: 600px; margin: 0 auto 32px;">
+      Full native voice assistant running in the macOS notch with Liquid Glass styling, offline Whisper dictation, and multimodal agent execution.
+    </p>
+
+    <!-- Tahoe Glass Download Card -->
+    <div class="download-card-tahoe">
+      <!-- Status Badge -->
+      <div class="release-status-badge status-unsigned">
+        ⚠️ Unsigned development build, not notarized
+      </div>
+
+      <div style="font-size: 28px; font-weight: 800; margin-bottom: 8px;">
+        Voice.AI for Mac
+      </div>
+      <div style="font-size: 15px; color: #86868b; margin-bottom: 28px;">
+        Universal Apple Silicon Native Installer (.DMG)
+      </div>
+
+      <!-- Action Button (Water Droplet Liquid Glass Style) -->
+      <a href="downloads/Voice.AI-1.0.0.dmg" class="btn-mac-download-pill" download="Voice.AI-1.0.0.dmg" title="Download Voice.AI" style="display: inline-flex; font-size: 17px; padding: 15px 38px;">
+        <span class="btn-apple-logo"></span>
+        <span class="btn-text-main">Download for</span>
+        <span class="btn-text-muted">Mac</span>
+      </a>
+
+      <div class="platform-warning-pill">
+        Voice.AI is built natively for macOS. Windows version in preview.
+      </div>
+
+      <!-- Metadata Specs -->
+      <div class="meta-spec-grid">
+        <div>
+          <div class="meta-spec-label">Version</div>
+          <div class="meta-spec-value release-version-text">v1.0.0 (Build 42)</div>
+        </div>
+        <div>
+          <div class="meta-spec-label">File Size</div>
+          <div class="meta-spec-value release-size-text">6.4 MB</div>
+        </div>
+        <div>
+          <div class="meta-spec-label">Architecture</div>
+          <div class="meta-spec-value">Apple Silicon (arm64)</div>
+        </div>
+        <div>
+          <div class="meta-spec-label">Requires</div>
+          <div class="meta-spec-value">macOS 14.0+</div>
+        </div>
+      </div>
+
+      <!-- SHA-256 Checksum -->
+      <div class="sha-box">
+        <span style="font-weight: 600; color: #fff;">SHA-256:</span>
+        <span class="release-sha-text">4c1ab53d62e5fe177d123dbaf0a9a28620c8047a3d3b149dc5d33be6e396fede</span>
+        <button class="copy-sha-btn" onclick="copyReleaseSha(this)">Copy Hash</button>
+      </div>
+    </div>
+
+    <!-- Installation & Gatekeeper Guide -->
+    <section style="max-width: 760px; margin: 0 auto; text-align: left;">
+      <h2 style="font-size: 28px; font-weight: 800; margin-bottom: 20px;">Installation &amp; Setup Guide</h2>
+
+      <div class="guide-step-card">
+        <h3><span class="guide-step-num">1</span> Mount the Disk Image &amp; Drag to Applications</h3>
+        <p style="color: #6e6e73; margin-top: 8px;">
+          Double-click the downloaded <code>Voice.AI-1.0.0.dmg</code>. In the Tahoe glass installer window, drag the <strong>Voice.AI</strong> icon into your <strong>Applications</strong> folder shortcut.
+        </p>
+      </div>
+
+      <div class="guide-step-card">
+        <h3><span class="guide-step-num">2</span> Opening an Unsigned Development Build (macOS Gatekeeper)</h3>
+        <p style="color: #6e6e73; margin-top: 8px;">
+          Because this build is created without a paid Apple Developer ID certificate, macOS Gatekeeper protects your Mac by requiring a one-time approval on first launch:
+        </p>
+        <ul style="color: #444; margin: 12px 0 12px 24px; line-height: 1.8;">
+          <li><strong>Recommended (1-Click):</strong> In your <code>/Applications</code> folder, <strong>Control-click</strong> (or right-click) <code>Voice.AI.app</code> and select <strong>Open</strong>. Click <strong>Open</strong> when the prompt appears.</li>
+          <li><strong>Alternative:</strong> Go to <strong>System Settings → Privacy &amp; Security</strong>, scroll down to the <em>Security</em> section, and click <strong>Open Anyway</strong> next to Voice.AI.</li>
+          <li><strong>Developer Terminal:</strong> If preferred, remove quarantine metadata via terminal:
+            <code class="cmd-snippet">xattr -dr com.apple.quarantine /Applications/Voice.AI.app</code>
+          </li>
+        </ul>
+      </div>
+
+      <div class="guide-step-card">
+        <h3><span class="guide-step-num">3</span> Required System Permissions</h3>
+        <p style="color: #6e6e73; margin-top: 8px;">
+          During first launch, Voice.AI will request the following standard macOS permissions to deliver low-latency voice execution:
+        </p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+          <div style="background: #fff; padding: 16px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06);">
+            <div style="font-weight: 700; margin-bottom: 4px;">🎙️ Microphone</div>
+            <div style="font-size: 13px; color: #6e6e73;">Required for on-device Whisper transcription and streaming voice commands.</div>
+          </div>
+          <div style="background: #fff; padding: 16px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06);">
+            <div style="font-weight: 700; margin-bottom: 4px;">⌨️ Accessibility / Input</div>
+            <div style="font-size: 13px; color: #6e6e73;">Listens for the <code>fn</code> key (tap for dictation, hold 250ms for agent).</div>
+          </div>
+          <div style="background: #fff; padding: 16px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06);">
+            <div style="font-weight: 700; margin-bottom: 4px;">🖥️ Screen Capture</div>
+            <div style="font-size: 13px; color: #6e6e73;">Captures circled areas when visually querying on-screen content.</div>
+          </div>
+          <div style="background: #fff; padding: 16px; border-radius: 12px; border: 1px solid rgba(0,0,0,0.06);">
+            <div style="font-weight: 700; margin-bottom: 4px;">⚙️ Apple Events</div>
+            <div style="font-size: 13px; color: #6e6e73;">Automates actions in Calendar, Mail, Notes, Chrome, and Finder.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="guide-step-card">
+        <h3><span class="guide-step-num">4</span> Automatic Updates via Sparkle</h3>
+        <p style="color: #6e6e73; margin-top: 8px;">
+          Voice.AI checks for newer versions securely using Sparkle appcasts. You can check for updates anytime in the menu bar: <strong>Voice.AI → Check for Updates…</strong> or via the <a href="appcast.xml" style="color: #000; text-decoration: underline;">Appcast Feed</a>.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer" style="margin-top: 60px;">
+    <div class="site-container">
+      <div class="giant-footer-watermark">Voice.AI</div>
+      <div class="footer-bottom-bar">
+        <div>Copyright © 2026 Voice.AI Team. All Rights Reserved.</div>
+        <div class="footer-social-links">
+          <a href="#" class="footer-social-link" title="LinkedIn">in</a>
+          <a href="#" class="footer-social-link" title="Email">✉</a>
+          <a href="#" class="footer-social-link" title="X">𝕏</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    function handleNavScroll() {
+      if (window.scrollY > 40) {
+        document.body.classList.add('scrolled');
+      } else {
+        document.body.classList.remove('scrolled');
+      }
+    }
+    window.addEventListener('scroll', handleNavScroll, { passive: true });
+    window.addEventListener('DOMContentLoaded', handleNavScroll);
+    handleNavScroll();
+  </script>
+  <script src="release.js"></script>
+</body>
+</html>

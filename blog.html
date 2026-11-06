@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blog — Stories & Updates from Voice.AI</title>
+  <link rel="icon" type="image/png" href="assets/app-icon.png">
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .blog-featured-card {
+      background: #f9f9fb;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: var(--radius-card-lg);
+      padding: 40px;
+      display: flex;
+      gap: 48px;
+      align-items: center;
+      margin: 40px 0 60px 0;
+      text-align: left;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.2s ease;
+    }
+    .blog-featured-card:hover {
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.06);
+      transform: translateY(-2px);
+    }
+    .featured-graphic-box {
+      width: 480px;
+      height: 300px;
+      background: #0f1115;
+      border-radius: var(--radius-card-sm);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      flex-shrink: 0;
+      color: #ffffff;
+      padding: 24px;
+    }
+    .featured-keycaps-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .featured-keycap {
+      background: #1c1e24;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 16px 20px;
+      font-size: 28px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+    }
+    .blog-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+      text-align: left;
+      margin-bottom: 80px;
+    }
+    .blog-card {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: var(--radius-card);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      text-decoration: none;
+      color: inherit;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+      transition: all 0.2s ease;
+    }
+    .blog-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.06);
+    }
+    .blog-card-thumb {
+      height: 200px;
+      background: #f5f5f7;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+    }
+    .blog-card-body {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+    .blog-meta-tag {
+      font-size: 11px;
+      font-weight: 700;
+      color: #007aff;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .blog-card-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #000000;
+      line-height: 1.3;
+      margin-bottom: 12px;
+    }
+    .blog-card-summary {
+      font-size: 14px;
+      color: #6e6e73;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+    .newsletter-card {
+      background: #f5f5f7;
+      border-radius: var(--radius-card-lg);
+      padding: 48px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 80px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Floating Notch Pill Navigation Header -->
+  <header class="site-nav" id="mainHeader">
+    <div class="nav-shell">
+      <div class="site-logo-wrap">
+        <a href="index.html" class="site-logo" title="Voice.AI">
+          <span class="logo-text">Voice.AI</span>
+          <span class="notch-logo-glyphs">
+            <span class="notch-glyph-triangle">▼</span>
+            <span class="notch-glyph-dot">●</span>
+          </span>
+        </a>
+      </div>
+
+      <nav class="nav-links-wrap" id="mainNavLinks">
+        <a href="index.html#features" class="nav-link">Product <svg width="9" height="5" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1L5 5L9 1"/></svg></a>
+        <a href="about.html" class="nav-link">About</a>
+        <a href="blog.html" class="nav-link" style="color: #000; font-weight: 600;">Blogs</a>
+        <a href="app-store.html" class="nav-link">App Store</a>
+        <a href="index.html#affiliates" class="nav-link">Affiliates</a>
+      </nav>
+
+      <div class="nav-cta-wrap">
+        <a href="download.html" class="btn-nav-download" id="headerDownloadBtn"> Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="site-container hero-wrap" style="padding-bottom: 20px; text-align: left; align-items: flex-start;">
+      <h1 class="hero-main-heading" style="font-size: 72px; margin-bottom: 12px;">Blog</h1>
+      <p class="section-subheadline" style="margin-left: 0; margin-bottom: 0;">News, updates, and stories from the Voice.AI team.</p>
+
+      <!-- Featured Blog Article Card -->
+      <a href="#featured" class="blog-featured-card">
+        <div class="featured-graphic-box">
+          <div class="featured-keycaps-row">
+            <div class="featured-keycap">⊞</div>
+            <span style="font-size: 24px; color: #666;">+</span>
+            <div class="featured-keycap">🎙</div>
+          </div>
+          <div style="font-size: 14px; color: #8e8e93; margin-bottom: 12px;">Windows Voice Typing (Win+H)</div>
+          <div style="font-size: 16px; font-weight: 800; color: #fff;">▼ Voice.AI</div>
+        </div>
+
+        <div>
+          <div style="font-size: 12px; font-weight: 700; color: #007aff; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">
+            VOICE TYPING · October 2, 2026
+          </div>
+          <h2 style="font-size: 36px; font-weight: 800; line-height: 1.2; color: #000; margin-bottom: 16px;">
+            How to Use Windows Voice Typing (Win+H) in 2026
+          </h2>
+          <p style="font-size: 16px; color: #6e6e73; line-height: 1.6; margin-bottom: 20px;">
+            Press Win+H to dictate into any text box on Windows. Setup, commands, Fluid Dictation on Copilot+ PCs, Voice Access vs Voice Typing, and when a system-wide layer helps.
+          </p>
+          <span style="font-weight: 600; font-size: 14px; color: #000;">Read more &gt;</span>
+        </div>
+      </a>
+
+      <!-- Blog Articles Grid -->
+      <div class="blog-grid">
+        
+        <div class="blog-card" style="border: 1px solid rgba(0, 122, 255, 0.3); background: #fbfdff;">
+          <div class="blog-card-thumb" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: #fff;">📦</div>
+          <div class="blog-card-body">
+            <div class="blog-meta-tag" style="color: #0066cc;">RELEASE v1.0.0 · Nov 5, 2026</div>
+            <div class="blog-card-title">Voice.AI 1.0 Native macOS Release &amp; Sparkle Update Feed</div>
+            <div class="blog-card-summary">Universal arm64 installer with Tahoe glass notch overlay, 100+ language real-time Whisper dictation, and Sparkle appcast integration.</div>
+            <a href="download.html" style="font-weight: 700; font-size: 13px; color: #0066cc; text-decoration: none;">Download DMG &amp; Read Changelog →</a>
+          </div>
+        </div>
+        
+        <div class="blog-card">
+          <div class="blog-card-thumb" style="background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);">🎙</div>
+          <div class="blog-card-body">
+            <div class="blog-meta-tag">BENCHMARKS · Oct 14, 2026</div>
+            <div class="blog-card-title">macOS Dictation vs Voice.AI: Why Built-In Speech Falls Short</div>
+            <div class="blog-card-summary">We measured WER across 200 coding and conversational samples. Here is why local Whisper large-v3 changes everything.</div>
+            <span style="font-weight: 600; font-size: 13px;">Read story &gt;</span>
+          </div>
+        </div>
+
+        <div class="blog-card">
+          <div class="blog-card-thumb" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);">⚡️</div>
+          <div class="blog-card-body">
+            <div class="blog-meta-tag">ENGINEERING · Oct 8, 2026</div>
+            <div class="blog-card-title">Whisper Large v3 on Apple Silicon: Zero-WER Local Dictation</div>
+            <div class="blog-card-summary">How Voice.AI achieves sub-100ms real-time latency with 48kHz audio tokens and CoreML Neural Engine acceleration.</div>
+            <span style="font-weight: 600; font-size: 13px;">Read story &gt;</span>
+          </div>
+        </div>
+
+        <div class="blog-card">
+          <div class="blog-card-thumb" style="background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);">🇮🇳</div>
+          <div class="blog-card-body">
+            <div class="blog-meta-tag">MULTILINGUAL · Sep 28, 2026</div>
+            <div class="blog-card-title">Fluid Dictation: Code-Switching Between Hindi & English</div>
+            <div class="blog-card-summary">Handling Hinglish ("Spotify pe chill playlist laga do") without dropping Indian phrasing or forcing Latin transliteration.</div>
+            <span style="font-weight: 600; font-size: 13px;">Read story &gt;</span>
+          </div>
+        </div>
+
+        <div class="blog-card">
+          <div class="blog-card-thumb" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);">🚀</div>
+          <div class="blog-card-body">
+            <div class="blog-meta-tag">PRODUCTIVITY · Sep 20, 2026</div>
+            <div class="blog-card-title">Raycast vs Voice.AI: Why Voice-First Computer Control Wins</div>
+            <div class="blog-card-summary">Keyboard launchers still require memorizing command syntax. Voice.AI replaces manual navigation with spoken intent.</div>
+            <span style="font-weight: 600; font-size: 13px;">Read story &gt;</span>
+          </div>
+        </div>
+
+        <div class="blog-card">
+          <div class="blog-card-thumb" style="background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);">💻</div>
+          <div class="blog-card-body">
+            <div class="blog-meta-tag">DEVELOPER · Sep 12, 2026</div>
+            <div class="blog-card-title">Coding with Your Voice: Writing TypeScript Hands-Free</div>
+            <div class="blog-card-summary">How developers use camelCase spoken commands and the VS Code adapter to draft PRs and review diffs without repetitive strain.</div>
+            <span style="font-weight: 600; font-size: 13px;">Read story &gt;</span>
+          </div>
+        </div>
+
+        <div class="blog-card">
+          <div class="blog-card-thumb" style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);">🎨</div>
+          <div class="blog-card-body">
+            <div class="blog-meta-tag">DESIGN · Sep 4, 2026</div>
+            <div class="blog-card-title">The Architecture of Liquid Glass on macOS Tahoe</div>
+            <div class="blog-card-summary">Engineering the notch-attached glass island with real non-activating NSPanel levels, safe area insets, and specular blur.</div>
+            <span style="font-weight: 600; font-size: 13px;">Read story &gt;</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Newsletter Signup Card -->
+      <div class="newsletter-card" style="width: 100%;">
+        <h3 style="font-size: 28px; font-weight: 800; color: #000;">Stay in the loop with Voice.AI</h3>
+        <p style="font-size: 15px; color: #6e6e73; max-width: 480px;">Get engineering deep-dives, product releases, and voice automation tips delivered directly to your inbox.</p>
+        <div style="display: flex; gap: 8px; width: 100%; max-width: 440px; margin-top: 8px;">
+          <input type="email" placeholder="Enter your email" style="flex: 1; padding: 12px 18px; border-radius: var(--radius-pill); border: 1px solid #d1d1d6; font-size: 14px; outline: none;">
+          <button style="background: #000; color: #fff; border: none; border-radius: var(--radius-pill); padding: 12px 24px; font-weight: 600; font-size: 14px; cursor: pointer;">Subscribe</button>
+        </div>
+      </div>
+
+      <!-- Bottom CTA -->
+      <div style="text-align: center; margin-top: 60px;">
+        <h3 style="font-size: 32px; font-weight: 700; margin-bottom: 20px;">Experience true voice-first computing.</h3>
+        <div class="hero-download-halo-wrap">
+          <a href="download.html" class="btn-mac-download-pill" title="Download Voice.AI">
+            <span class="btn-apple-logo"></span>
+            <span class="btn-text-main">Download for</span>
+            <span class="btn-text-muted">Mac</span>
+          </a>
+          <div style="font-size: 13px; color: #86868b; display: flex; align-items: center; gap: 8px; z-index: 1;">
+            <span>macOS 14.0+</span> · <span>Apple Silicon Native</span> · <a href="download.html" style="color: #0066cc; text-decoration: none;">Installation Guide →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 4-Column Footer -->
+  <footer class="site-footer">
+    <div class="site-container">
+      <div class="footer-nav-grid">
+        <div>
+          <div class="footer-col-title">Product</div>
+          <div class="footer-links-list">
+            <a href="download.html" class="footer-link">Download</a>
+            <a href="../app/index.html" class="footer-link" target="_blank">Try the demo</a>
+            <a href="../app/index.html" class="footer-link">Agent Mode</a>
+            <a href="../app/index.html" class="footer-link">Dictation Mode</a>
+            <a href="index.html#pricing" class="footer-link">Pricing</a>
+            <a href="app-store.html" class="footer-link">App Store</a>
+            <a href="blog.html" class="footer-link">Blog</a>
+          </div>
+        </div>
+
+        <div>
+          <div class="footer-col-title">Company</div>
+          <div class="footer-links-list">
+            <a href="about.html" class="footer-link">About</a>
+            <a href="about.html#contact" class="footer-link">Contact</a>
+            <a href="index.html#affiliates" class="footer-link">Affiliates</a>
+          </div>
+        </div>
+
+        <div>
+          <div class="footer-col-title">Resources</div>
+          <div class="footer-links-list">
+            <a href="index.html#features" class="footer-link">All features</a>
+            <a href="#glossary" class="footer-link">Voice glossary</a>
+            <a href="#changelog" class="footer-link">Changelog</a>
+            <a href="#docs" class="footer-link">Documentation</a>
+          </div>
+        </div>
+
+        <div>
+          <div class="footer-col-title">Legal</div>
+          <div class="footer-links-list">
+            <a href="#terms" class="footer-link">Terms of Use</a>
+            <a href="#privacy" class="footer-link">Privacy Policy</a>
+            <a href="#security" class="footer-link">Security</a>
+            <a href="#affiliate-policy" class="footer-link">Affiliate Policy</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="giant-footer-watermark">Voice.AI</div>
+
+      <div class="footer-bottom-bar">
+        <div>Copyright © 2026 Voice.AI Team. All Rights Reserved.</div>
+        <div class="footer-social-links">
+          <a href="#" class="footer-social-link">in</a>
+          <a href="#" class="footer-social-link">✉</a>
+          <a href="#" class="footer-social-link">𝕏</a>
+          <span style="color: #444; margin-left: 8px;">EN</span>
+          <a href="#" class="footer-social-link">JA</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    function handleNavScroll() {
+      if (window.scrollY > 40) {
+        document.body.classList.add('scrolled');
+      } else {
+        document.body.classList.remove('scrolled');
+      }
+    }
+    window.addEventListener('scroll', handleNavScroll, { passive: true });
+    window.addEventListener('DOMContentLoaded', handleNavScroll);
+    handleNavScroll();
+  </script>
+  <script src="release.js"></script>
+</body>
+</html>
+

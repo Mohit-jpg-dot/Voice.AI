@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Voice.AI Changelog &amp; Updates</title>
+    <link>https://voice.ai/appcast.xml</link>
+    <description>Most recent updates for Voice.AI</description>
+    <language>en</language>
+    <item>
+      <title>Version 1.0.0</title>
+      <pubDate>Fri, 06 Nov 2026 22:41:07 +0530</pubDate>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <enclosure
+        url="https://voice.ai/downloads/Voice.AI-1.0.0.dmg"
+        sparkle:version="42"
+        sparkle:shortVersionString="1.0.0"
+        length="9894667"
+        type="application/octet-stream"
+        sparkle:edSignature="UNSIGNED_DEV_KEY" />
+    </item>
+  </channel>
+</rss>

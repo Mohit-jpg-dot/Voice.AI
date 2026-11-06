@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoiceOS — Notch Glass Island & Circle to Ask</title>
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- macOS Tahoe Top Menu Bar -->
+  <header class="macos-menubar">
+    <div class="menubar-left">
+      <span class="menubar-apple-logo"></span>
+      <span class="menubar-item active">VoiceOS</span>
+      <span class="menubar-item">File</span>
+      <span class="menubar-item">Edit</span>
+      <span class="menubar-item">View</span>
+      <span class="menubar-item">Window</span>
+      <span class="menubar-item">Help</span>
+    </div>
+    <div class="menubar-right">
+      <!-- Platform Switcher: macOS vs Windows 11 -->
+      <div id="platformSwitcher" style="display: flex; align-items: center; background: rgba(0, 0, 0, 0.08); border-radius: 9999px; padding: 2px; gap: 2px; margin-right: 8px;">
+        <button id="btnPlatformMac" style="background: #ffffff; border: none; border-radius: 9999px; padding: 2px 8px; font-size: 10px; font-weight: bold; cursor: pointer;"> macOS</button>
+        <button id="btnPlatformWin" style="background: none; border: none; border-radius: 9999px; padding: 2px 8px; font-size: 10px; font-weight: 500; cursor: pointer; color: #555;">⊞ Windows 11</button>
+      </div>
+
+      <!-- Visible Screen Capture Indicator -->
+      <div class="capture-indicator" id="captureIndicator">
+        <span class="capture-dot"></span>
+        <span>Screen Capture Active</span>
+      </div>
+      <span class="menubar-item">100%</span>
+      <span class="menubar-item" id="menubarClock">Mon Nov 5 11:20 AM</span>
+      <span class="menubar-item">🔍</span>
+    </div>
+  </header>
+
+  <!-- ======================================================================
+       CONTINUOUS NOTCH-ATTACHED GLASS ISLAND (Single Morphing Surface)
+       ====================================================================== -->
+  <div class="notch-island-wrapper">
+    <div class="notch-glass-island" id="notchGlassIsland">
+      
+      <!-- 1. Resting State: Blends with MacBook Notch -->
+      <div class="island-resting-content" id="islandResting">
+        <div class="island-resting-dot" id="islandStateDot"></div>
+        <span class="island-resting-label">VoiceOS</span>
+        <span class="island-resting-badge" id="islandStateBadge">Active</span>
+      </div>
+
+      <!-- 2. Expanded State: Morphs continuously on hover / voice / capture -->
+      <div class="island-expanded-content" id="islandExpanded">
+        <!-- Top Control Bar -->
+        <div class="island-header-bar">
+          <div class="island-brand">
+            <svg style="width: 14px; height: 14px; color: #38bdf8; fill: none; stroke: currentColor; stroke-width: 2;" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
+            <span>VoiceOS Notch Island</span>
+          </div>
+
+          <div class="island-header-actions">
+            <!-- Circle to Ask Quick Trigger Button -->
+            <button class="btn-circle-trigger" id="btnCircleTrigger" title="Circle anything on screen with cursor (Cmd+Shift+C)">
+              <span>⭕️</span>
+              <span>Circle to Ask</span>
+            </button>
+
+            <!-- Pin Control -->
+            <button class="btn-pin" id="btnPinIsland" title="Pin Island Open">📌</button>
+            
+            <!-- History Drawer Toggle -->
+            <button class="btn-pin" id="drawerToggleBtn" title="Session History">🕒</button>
+            
+            <!-- Collapse Button -->
+            <button class="btn-collapse" id="btnCollapseIsland" title="Collapse (Esc)">✕</button>
+          </div>
+        </div>
+
+        <!-- Unified Prompt Field (Type or Speak coexisting seamlessly) -->
+        <div class="island-prompt-box">
+          <input 
+            type="text" 
+            class="island-text-input" 
+            id="islandInput" 
+            placeholder="Ask or type an instruction... (Press Return to send)" 
+            autocomplete="off"
+          />
+          <button class="btn-mic-toggle" id="btnMicToggle" title="Click or Hold Hotkey to Speak">🎙</button>
+        </div>
+
+        <!-- Circle to Ask Selection Thumbnail & Redaction Info -->
+        <div class="circle-crop-preview" id="circleCropPreview">
+          <div class="crop-thumbnail-box">
+            <span>📷</span>
+          </div>
+          <div class="crop-details">
+            <div class="crop-meta-row">
+              <span id="cropToolBadge">SELECTION</span>
+              <span class="redaction-badge" id="redactionBadge">1 REDACTED</span>
+            </div>
+            <div class="crop-ocr-text" id="cropOcrText">
+              Things 3 — Project Feel Productive: Review thumbnail redesign concepts...
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Action Chips -->
+        <div class="quick-action-chips">
+          <button class="action-chip" data-query="Spotify pe meri chill playlist laga do">🎵 Spotify Playlist</button>
+          <button class="action-chip" data-query="Slack pe team ko bata do meeting late hai">💬 Slack Team Update</button>
+          <button class="action-chip" data-query="GitHub pe mere open PRs dikhao">🐙 GitHub Open PRs</button>
+          <button class="action-chip" data-query="Search karo: Apple Tahoe liquid glass design">🔍 Search Web</button>
+          <button class="action-chip" data-action="explain">Explain this</button>
+          <button class="action-chip" data-action="translate">Translate to Hindi</button>
+          <button class="action-chip" data-action="things">Add to Things 3</button>
+        </div>
+
+        <!-- Background Execution Status Chip -->
+        <div id="bgStatusChip" style="display: none; align-items: center; gap: 6px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: var(--radius-pill); padding: 4px 10px; font-size: 11px; color: #38bdf8; width: fit-content;">
+          <span class="capture-dot" style="background: #38bdf8;"></span>
+          <span id="bgStatusText">Running background task...</span>
+        </div>
+
+        <!-- Dialog Streams: User Prompt & Agent Answer -->
+        <div class="island-dialog-area">
+          <div class="dialog-user-speech" id="dialogUserPrompt">Can you schedule an appointment with Kai and Maxim tomo...</div>
+          <div class="dialog-agent-reply" id="dialogAgentReply">I have scheduled your meeting with Kai and Maxim.</div>
+        </div>
+
+        <!-- Meeting Confirmation Card (Exact match with reference screenshot) -->
+        <div class="hud-meeting-card" id="hudMeetingCard">
+          <div class="meeting-card-title">Roadmap Discussion with Kai & Maxim</div>
+          <div class="meeting-card-time">Monday, June 15, 2026, 2:00 PM - 3:00 PM PDT</div>
+          <div class="meeting-card-attendees">
+            <span>Attendees: </span>
+            <a href="mailto:kai@voiceos.com" style="color: #4da3ff; text-decoration: underline;">kai@voiceos.com</a>, 
+            <a href="mailto:maksim@voiceos.com" style="color: #4da3ff; text-decoration: underline;">maksim@voiceos.com</a>
+          </div>
+          <div class="meeting-card-link-row">
+            <a href="https://meet.google.com" target="_blank" class="gmeet-link" style="color: #4da3ff; font-size: 13px; text-decoration: underline;">Google Meet Link</a>
+            <button class="btn-copy-link" id="btnCopyMeetLink" title="Copy Google Meet Link" style="background: none; border: none; color: #a1a1aa; cursor: pointer; font-size: 14px;">❐</button>
+          </div>
+        </div>
+
+        <!-- Sources Row (from reference screenshot) -->
+        <div class="hud-sources-row">
+          <div class="source-icons-group">
+            <span class="source-icon-badge gcal" style="background: #ffffff; color: #4285f4; border-radius: 50%; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">G</span>
+            <span class="source-icon-badge gmail" style="background: #ea4335; color: #ffffff; border-radius: 50%; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">G</span>
+          </div>
+          <span class="source-label" style="font-size: 12px; color: #a1a1aa;">Sources</span>
+        </div>
+
+        <!-- Deep-Link Result Card (Spotify / Slack / GitHub / Notes) -->
+        <div id="deepLinkCard" style="display: none; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--color-border-subtle-dark); border-radius: var(--radius-md); padding: 10px 14px; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="deepLinkIcon" style="font-size: 14px;">🎵</span>
+            <div style="display: flex; flex-direction: column;">
+              <span id="deepLinkTitle" style="font-size: 12px; font-weight: 600; color: #ffffff;">Spotify Playback Started</span>
+              <span id="deepLinkElapsed" style="font-size: 10px; color: #a1a1aa;">Elapsed: 1.8s</span>
+            </div>
+          </div>
+          <a id="deepLinkBtn" href="#" target="_blank" style="background: #ffffff; color: #000000; padding: 4px 12px; border-radius: var(--radius-pill); font-size: 11px; font-weight: 600; text-decoration: none;">View in App ↗</a>
+        </div>
+
+        <!-- Embedded Interactive Confirmation Card (Things 3) -->
+        <div class="hud-action-card" id="hudActionCard" style="display: none;">
+          <div class="action-card-header">
+            <div class="action-card-type">
+              <span class="badge-tag">W</span>
+              <span>TO-DO</span>
+            </div>
+            <span class="badge-today">Today</span>
+          </div>
+
+          <div class="action-card-task">
+            <div class="checkbox-custom" id="actionCheckbox"></div>
+            <span id="actionTaskTitle">Review thumbnail concepts</span>
+          </div>
+
+          <input type="text" class="action-notes-input" placeholder="Notes (optional)" id="actionNotesInput" value="">
+
+          <div class="action-card-footer">
+            <span class="action-metadata">List: Feel Productive</span>
+            <button class="action-btn-primary" id="actionConfirmBtn">Add to-do</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       CIRCLE TO ASK FULL-SCREEN SELECTION OVERLAY (Canvas + Crosshair)
+       ====================================================================== -->
+  <div class="screen-selection-overlay" id="screenSelectionOverlay">
+    <canvas class="overlay-canvas" id="selectionCanvas"></canvas>
+    
+    <!-- Floating Tool Selector -->
+    <div class="selection-toolbar" id="selectionToolbar">
+      <button class="selection-tool-btn active" data-tool="lasso">✏️ Freehand Lasso</button>
+      <button class="selection-tool-btn" data-tool="rectangle">▢ Drag Rectangle</button>
+      <button class="selection-tool-btn" data-tool="element">⬚ Element Snap</button>
+      <button class="selection-tool-btn" data-tool="window">🗔 Whole Window</button>
+      <span style="color: rgba(255,255,255,0.2);">|</span>
+      <button class="selection-cancel-btn" id="cancelSelectionBtn">Cancel (Esc)</button>
+    </div>
+  </div>
+
+  <!-- Floating Obsidian History Side Pane (Docked on left as in reference screenshot) -->
+  <aside class="history-drawer" id="historyDrawer">
+    <div class="drawer-search-bar">
+      <span>🔍</span>
+      <input type="text" placeholder="Search" id="drawerSearchInput">
+      <span>🔒</span>
+    </div>
+    <div class="drawer-threads-list" id="drawerThreadsList"></div>
+  </aside>
+
+  <!-- Main VoiceOS Application Window -->
+  <main class="app-window" id="appWindow">
+    
+    <!-- Sidebar -->
+    <aside class="app-sidebar">
+      <div class="traffic-lights">
+        <div class="traffic-light tl-red"></div>
+        <div class="traffic-light tl-yellow"></div>
+        <div class="traffic-light tl-green"></div>
+      </div>
+
+      <div class="app-logo">
+        <span>voice</span>
+        <div class="logo-dot"></div>
+        <span>s</span>
+        <span class="logo-pro-badge">PRO</span>
+      </div>
+
+      <nav class="nav-list">
+        <div class="nav-item active" data-tab="dashboard">
+          <span>⊞</span>
+          <span>Dashboard</span>
+        </div>
+        <div class="nav-item" data-tab="insights">
+          <span>📊</span>
+          <span>Insights</span>
+        </div>
+        <div class="nav-item" data-tab="history">
+          <span>🕒</span>
+          <span>History</span>
+        </div>
+        <div class="nav-item" data-tab="dictation">
+          <span>🎙</span>
+          <span>Dictation</span>
+        </div>
+        <div class="nav-item" data-tab="agent">
+          <span>✨</span>
+          <span>Agent</span>
+        </div>
+        <div class="nav-item" data-tab="apps">
+          <span>📦</span>
+          <span>Apps</span>
+        </div>
+        <div class="nav-item" data-tab="settings">
+          <span>⚙</span>
+          <span>Settings</span>
+        </div>
+      </nav>
+
+      <!-- Pro Trial Progress -->
+      <div class="trial-card">
+        <div class="trial-header">
+          <span>0 / 14 days</span>
+          <span class="trial-pro-badge">PRO TRIAL</span>
+        </div>
+        <div class="trial-progress-track">
+          <div class="trial-progress-bar"></div>
+        </div>
+      </div>
+
+      <!-- User Card -->
+      <div class="user-profile-card">
+        <div class="user-avatar">J</div>
+        <div class="user-info">
+          <span class="user-name">Jonah Daian</span>
+          <span class="user-email">jonah@wako.ai</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <section class="app-content">
+
+      <!-- View 1: Dashboard -->
+      <div class="view-panel active" id="view-dashboard">
+        <div class="content-header">
+          <div class="greeting-row">
+            <span style="font-size: 22px;">🌐</span>
+            <h1 class="greeting-title">Good evening, Jonah</h1>
+          </div>
+
+          <button class="founders-btn">
+            <span style="display: flex; margin-right: -4px;">
+              <span style="width: 16px; height: 16px; border-radius: 50%; background: #d4a373; display: inline-block;"></span>
+              <span style="width: 16px; height: 16px; border-radius: 50%; background: #90a9b7; display: inline-block; margin-left: -5px;"></span>
+            </span>
+            <span>Meet the Founders</span>
+          </button>
+        </div>
+
+        <!-- Two Mode Cards (Hero) -->
+        <div class="hero-modes-grid">
+          <div class="mode-card" id="dictationModeCard" style="cursor: pointer;">
+            <div class="mode-card-header">
+              <span>🎙</span>
+              <span>Dictation Mode</span>
+            </div>
+            <div class="mode-hotkey-row">
+              <span>Hold</span>
+              <span class="keycap">fn</span>
+              <span>in any text field</span>
+            </div>
+            <p class="mode-description">Speak naturally, polishes into clean text.</p>
+          </div>
+
+          <div class="mode-card" id="agentModeCard" style="cursor: pointer;">
+            <div class="mode-card-header">
+              <span>✨</span>
+              <span>Agent Mode</span>
+            </div>
+            <div class="mode-hotkey-row">
+              <span>Hold</span>
+              <span class="keycap">command</span>
+              <span>to speak</span>
+            </div>
+            <p class="mode-description">Trigger AI actions in Slack, Gmail, and more</p>
+          </div>
+        </div>
+
+        <!-- Statistics Section -->
+        <div class="stats-section">
+          <h2 class="section-title">Statistics</h2>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon-box">🔄</div>
+              <div class="stat-meta">
+                <span class="stat-label">Total Sessions</span>
+                <span class="stat-value" id="totalSessions">47</span>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon-box">📝</div>
+              <div class="stat-meta">
+                <span class="stat-label">Total Words</span>
+                <span class="stat-value" id="totalWords">819</span>
+              </div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-icon-box">⏱</div>
+              <div class="stat-meta">
+                <span class="stat-label">Time Saved</span>
+                <span class="stat-value" id="timeSaved">15m</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Usage Section -->
+        <div class="usage-grid">
+          <div class="usage-card">
+            <h3 style="font-size: 15px; font-weight: bold; margin-bottom: 8px;">Apps Usage</h3>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div class="app-usage-row">
+                <div class="app-badge-pill">
+                  <div class="app-small-icon">&lt;/&gt;</div>
+                  <span>Cursor</span>
+                </div>
+                <span style="font-weight: 600; color: #555;">24</span>
+              </div>
+              <div class="app-usage-row">
+                <div class="app-badge-pill">
+                  <div class="app-small-icon" style="background: #5865F2;">💬</div>
+                  <span>Discord</span>
+                </div>
+                <span style="font-weight: 600; color: #555;">2</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="usage-card">
+            <h3 style="font-size: 15px; font-weight: bold; margin-bottom: 8px;">Modes Usage</h3>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div class="mode-bar-row">
+                <span>Dictation Mode</span>
+                <div class="bar-track">
+                  <div class="bar-fill-dictation"></div>
+                </div>
+              </div>
+              <div class="mode-bar-row">
+                <span>Agent Mode</span>
+                <div class="bar-track">
+                  <div class="bar-fill-agent"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- View 2: Apps -->
+      <div class="view-panel" id="view-apps">
+        <div class="content-header">
+          <h1 class="greeting-title">Apps & Connectors</h1>
+          <div class="subtabs-bar">
+            <button class="subtab-pill active" id="tabMyApps">My Apps</button>
+            <button class="subtab-pill" id="tabConnectors">Connector Registry (24)</button>
+            <button class="subtab-pill" id="tabMarketplace">App Store Marketplace (10)</button>
+            <button class="subtab-pill" id="tabMcpServer">Custom MCP Server</button>
+          </div>
+        </div>
+
+        <div class="build-app-card">
+          <h3 style="font-size: 16px; font-weight: bold;">Build an app</h3>
+          <p style="font-size: 13px; color: #6e6e73;">Describe in a sentence and VoiceOS builds it. Test, save, share.</p>
+          <div class="build-input-row">
+            <input type="text" class="build-input-field" placeholder="Type or hold fn shift to speak">
+            <button class="btn-secondary" id="openAppBuilderBtn">Create</button>
+          </div>
+        </div>
+
+        <!-- Section A: My Apps Grid -->
+        <div id="sectionMyApps">
+          <div class="apps-header-row">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h2 class="section-title">My Apps</h2>
+              <span style="font-size: 12px; color: #888;">Drag to rearrange</span>
+            </div>
+            <div class="powered-pill">
+              <span style="opacity: 0.7;">Powered by</span>
+              <span style="font-weight: bold;">VoiceOS</span>
+            </div>
+          </div>
+          <div class="apps-grid" id="appsGrid"></div>
+        </div>
+
+        <!-- Section B: Verified Connectors Registry -->
+        <div id="sectionConnectors" style="display: none; flex-direction: column; gap: 16px;">
+          <h2 class="section-title">Verified App Connectors</h2>
+          <div id="connectorsList" style="display: flex; flex-direction: column; gap: 10px;"></div>
+        </div>
+
+        <!-- Section C: In-App App Store Marketplace -->
+        <div id="sectionMarketplace" style="display: none; flex-direction: column; gap: 14px;">
+          <div class="marketplace-filter-bar">
+            <div class="marketplace-categories-row" id="marketCategoriesRow">
+              <button class="market-cat-pill active" data-cat="all">All</button>
+              <button class="market-cat-pill" data-cat="Productivity">Productivity</button>
+              <button class="market-cat-pill" data-cat="Developer">Developer</button>
+              <button class="market-cat-pill" data-cat="Communication">Communication</button>
+              <button class="market-cat-pill" data-cat="AI">AI</button>
+              <button class="market-cat-pill" data-cat="Music & Media">Music & Media</button>
+            </div>
+            <input type="text" class="marketplace-search-input" id="marketplaceSearchInput" placeholder="Search 10+ integrations...">
+          </div>
+          <div class="marketplace-grid" id="marketplaceGrid"></div>
+        </div>
+
+        <!-- Section D: Custom MCP Server Flow -->
+        <div id="sectionMcpServer" style="display: none; flex-direction: column; gap: 16px;">
+          <div class="mode-card">
+            <h3 style="font-size: 16px; font-weight: bold;">Connect Custom MCP Server</h3>
+            <p style="font-size: 12px; color: #6e6e73;">VoiceOS connects to any Model Context Protocol SSE/stdio endpoint, introspects its capabilities via tools/list, and creates a typed integration manifest.</p>
+            <div style="display: flex; gap: 8px; margin-top: 6px;">
+              <input type="text" id="mcpEndpointInput" class="build-input-field" placeholder="http://localhost:8000/sse or say 'VoiceOS, add MCP server at ...'" value="http://localhost:8000/sse" style="flex: 1;">
+              <button class="btn-secondary" id="btnIntrospectMcp">Handshake & Introspect</button>
+            </div>
+          </div>
+          <div id="mcpIntrospectionResult" style="display: none; flex-direction: column; gap: 10px;"></div>
+        </div>
+      </div>
+
+      <!-- View 3: Settings (with Circle to Ask & Remembered Permissions) -->
+      <div class="view-panel" id="view-settings">
+        <h1 class="greeting-title">Settings</h1>
+
+        <!-- Hotkey Conflict Warning Banner -->
+        <div class="conflict-warning-card" id="hotkeyConflictBanner">
+          <div class="conflict-header-row">
+            <div class="conflict-title">
+              <span>⚠️</span>
+              <span>macOS System Dictation (fn fn) Detected</span>
+            </div>
+            <button class="btn-apply-fix" id="btnApply1ClickFix">Apply 1-Click Fix</button>
+          </div>
+          <p style="font-size: 12px; color: #6e6e73; margin: 0;">macOS system dictation is bound to double-tap 'fn'. VoiceOS hold-to-speak (250ms threshold) safely passes through short taps for Globe/Emoji, but applying the fix cleanly disables system double-tap.</p>
+          <div style="font-size: 11px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; font-family: monospace; color: #444;">
+            Terminal: defaults write com.apple.HIToolbox AppleDictationAutoEnable -bool false
+          </div>
+        </div>
+
+        <!-- Hotkey Configuration & Tap vs Hold 250ms Tester -->
+        <div class="mode-card">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="font-size: 16px; font-weight: bold;">Hotkeys & Input Timing Engine</h3>
+            <span style="font-size: 11px; color: #007aff; background: rgba(0, 122, 255, 0.1); padding: 2px 8px; border-radius: 9999px; font-weight: 600;">250ms Threshold Active</span>
+          </div>
+          <p style="font-size: 12px; color: #6e6e73;">Customize the trigger keys for dictation and agent modes. Short taps (< 250ms) are passed directly through to macOS or Windows.</p>
+
+          <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
+            <div class="hotkey-picker-row">
+              <div>
+                <div style="font-weight: 600; font-size: 13px;">Dictation Mode Key</div>
+                <div style="color: #888; font-size: 11px;">Hold to speak, release to insert clean formatted text</div>
+              </div>
+              <select class="hotkey-select" id="selectDictationKey">
+                <option value="fn" selected>fn (Hold to Speak - Default)</option>
+                <option value="right_cmd">Right ⌘ (Hold)</option>
+                <option value="ctrl_space">⌃ Control + Space</option>
+                <option value="caps_lock">Caps Lock (Hold)</option>
+                <option value="win_h">Win + H (Windows 11)</option>
+              </select>
+            </div>
+
+            <div class="hotkey-picker-row">
+              <div>
+                <div style="font-weight: 600; font-size: 13px;">Agent Mode Key</div>
+                <div style="color: #888; font-size: 11px;">Hold to trigger background computer control actions</div>
+              </div>
+              <select class="hotkey-select" id="selectAgentKey">
+                <option value="cmd" selected>⌘ Command (Hold - Default)</option>
+                <option value="option_space">⌥ Option + Space</option>
+                <option value="alt_space">Alt + Space (Windows)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Interactive Tap vs Hold Tester -->
+          <div class="key-tester-interactive-box" style="margin-top: 12px;">
+            <button class="btn-press-hold-test" id="btnTestHoldKey">Press & Hold Test Key (fn)</button>
+            <div style="font-size: 12px; font-weight: 600;" id="keyTesterFeedback">Tap quickly (< 250ms) for Emoji passthrough or hold for VoiceOS</div>
+          </div>
+        </div>
+
+        <!-- Remembered Permissions Table -->
+        <div class="mode-card">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="font-size: 16px; font-weight: bold;">Remembered Permissions (Scoped Grants)</h3>
+            <span style="font-size: 11px; color: #34c759; background: rgba(52, 199, 89, 0.15); padding: 2px 8px; border-radius: 9999px; font-weight: 600;">Active Safety Protocol</span>
+          </div>
+          <p style="font-size: 12px; color: #6e6e73;">Voice and click grants approved by you. Consequential actions still require exact payload confirmation.</p>
+          
+          <div id="permissionsTable" style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;"></div>
+        </div>
+        
+        <div class="mode-card">
+          <h3 style="font-size: 16px; font-weight: bold;">Circle to Ask & Screen Context</h3>
+          <div style="display: flex; flex-direction: column; gap: 12px; font-size: 13px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-weight: 600;">Circle to Ask Hotkey</div>
+                <div style="color: #666; font-size: 12px;">Trigger freehand lasso or element capture across all displays</div>
+              </div>
+              <span class="keycap">⌘ ⇧ C</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-weight: 600;">Default Selection Tool</div>
+                <div style="color: #666; font-size: 12px;">Tool active when overlay opens</div>
+              </div>
+              <span class="keycap">Freehand Lasso</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-weight: 600;">Automatic Secret Redaction</div>
+                <div style="color: #666; font-size: 12px;">Mask API tokens, passwords, and card numbers before processing</div>
+              </div>
+              <span class="keycap" style="color: #34c759;">Enabled</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Other View Panels -->
+      <div class="view-panel" id="view-insights">
+        <h1 class="greeting-title">Insights</h1>
+        <p style="color: #666;">Voice activity timeline and task velocity metrics.</p>
+      </div>
+
+      <div class="view-panel" id="view-history">
+        <div class="task-panel-header">
+          <div>
+            <h1 class="greeting-title">Task Panel & History</h1>
+            <p style="color: #666; font-size: 13px;">Manage concurrent background execution queues, mid-flight cancellations, and encrypted session logs.</p>
+          </div>
+          <div class="task-export-actions">
+            <button class="btn-export" id="btnExportJson">Export JSON</button>
+            <button class="btn-export" id="btnExportMd">Export Markdown</button>
+          </div>
+        </div>
+
+        <!-- Filter & Search Bar -->
+        <div class="task-filter-row">
+          <div class="marketplace-categories-row" id="taskStatusFilters">
+            <button class="market-cat-pill active" data-filter="all">All</button>
+            <button class="market-cat-pill" data-filter="running">Active Queue</button>
+            <button class="market-cat-pill" data-filter="done">Completed</button>
+            <button class="market-cat-pill" data-filter="failed">Failed / Cancelled</button>
+          </div>
+          <input type="text" class="marketplace-search-input" id="taskSearchInput" placeholder="Search tasks by prompt, app, or result...">
+        </div>
+
+        <!-- Active Running Queue Section -->
+        <div class="running-tasks-card" id="runningTasksSection">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 13px; font-weight: 700; color: #007aff; display: flex; align-items: center; gap: 6px;">
+              <span>⚡️</span>
+              <span id="activeQueueCount">2 Running in Background (No Interruption)</span>
+            </div>
+            <span style="font-size: 11px; color: #8e8e93;">Non-intrusive Worker Queue</span>
+          </div>
+          <div id="runningTasksList" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        </div>
+
+        <!-- Day-Grouped History Section -->
+        <div id="dayGroupedHistoryContainer" style="display: flex; flex-direction: column;"></div>
+      </div>
+
+      <div class="view-panel" id="view-dictation">
+        <div class="dictation-container">
+          <div class="dictation-header-bar">
+            <div>
+              <h1 class="greeting-title" id="dictationHeadingTitle">100+ Multilingual Dictation Studio</h1>
+              <p style="color: #666; font-size: 13px;">Zero-WER Whisper large-v3 transcription, real-time code-switching, and contextual formatting.</p>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span style="font-size: 12px; color: #666;">UI Language:</span>
+              <select id="uiLangSelect" style="padding: 4px 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 12px; background: #fff;">
+                <option value="en">English (US)</option>
+                <option value="ja">日本語 (Japanese)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Hero Waveform & Controls -->
+          <div class="dictation-hero-card">
+            <div class="waveform-box">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn-mic-toggle" id="btnDictationSimMic" style="width: 38px; height: 38px; font-size: 18px;">🎙</button>
+                <div>
+                  <div style="font-size: 12px; font-weight: 600;" id="waveformStatus">Live Audio Input Simulator</div>
+                  <div style="font-size: 10px; color: rgba(255,255,255,0.6);" id="waveformDetails">48kHz 24-bit · VAD Speech Active</div>
+                </div>
+              </div>
+              <canvas class="waveform-canvas" id="dictationWaveformCanvas" width="450" height="42"></canvas>
+              <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                <span class="redaction-badge" id="detectedLangBadge" style="background: rgba(52, 199, 89, 0.2); color: #34c759;">🇺🇸 English · 98%</span>
+                <span id="codeSwitchingBadge" style="font-size: 10px; color: #ff9500; margin-top: 2px; display: none;">⚡️ Code-Switching Active</span>
+              </div>
+            </div>
+
+            <!-- 15 Language Fixtures -->
+            <div>
+              <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: #333;">
+                <span>Test 15 Real Language Fixtures & Code-Switching:</span>
+              </div>
+              <div class="fixture-chips-wrap" id="fixtureChipsContainer">
+                <!-- Dynamically filled by app.js -->
+              </div>
+            </div>
+
+            <!-- Per-App Context Profile Switcher -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; border-top: 1px solid rgba(0,0,0,0.06); padding-top: 12px;">
+              <span style="font-size: 12px; font-weight: 600; color: #555;">App Context Profile:</span>
+              <div class="app-profile-bar" id="appProfileBar">
+                <button class="profile-pill-btn active" data-profile="general">General</button>
+                <button class="profile-pill-btn" data-profile="slack">Slack</button>
+                <button class="profile-pill-btn" data-profile="email">Mail / Gmail</button>
+                <button class="profile-pill-btn" data-profile="vscode">VS Code</button>
+                <button class="profile-pill-btn" data-profile="issueTracker">Linear / Jira</button>
+                <button class="profile-pill-btn" data-profile="notes">Apple Notes</button>
+              </div>
+            </div>
+
+            <!-- Result Grid (Raw vs Clean Polished) -->
+            <div class="dictation-result-grid">
+              <div class="transcript-pane">
+                <div class="transcript-pane-header">
+                  <span>Raw Audio Transcript</span>
+                  <span id="rawWordCount">0 words</span>
+                </div>
+                <div class="transcript-text" id="rawTranscriptView" style="color: #666;">Select a language fixture above or click mic to dictate.</div>
+              </div>
+
+              <div class="transcript-pane" style="border-color: rgba(0, 122, 255, 0.3);">
+                <div class="transcript-pane-header">
+                  <span style="color: #007aff;">VoiceOS Polished Text</span>
+                  <span id="cleanWordCount" style="color: #007aff;">0 words</span>
+                </div>
+                <div class="transcript-text" id="polishedTranscriptView" style="font-weight: 500;">—</div>
+                <div class="correction-tags-wrap" id="correctionTagsWrap"></div>
+              </div>
+            </div>
+
+            <!-- Spoken Edit Mode Playground -->
+            <div style="background: #fafafa; border-radius: 8px; padding: 12px; border: 1px solid #e5e5ea;">
+              <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px; color: #444;">
+                <span>Spoken Edit Mode Commands:</span>
+              </div>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button class="spoken-cmd-btn" data-cmd="make it bullet points">📝 "Make it bullet points"</button>
+                <button class="spoken-cmd-btn" data-cmd="more casual">💬 "More casual"</button>
+                <button class="spoken-cmd-btn" data-cmd="more formal">🎩 "More formal"</button>
+                <button class="spoken-cmd-btn" data-cmd="wrap in code block">&lt;/&gt; "Wrap in code block"</button>
+                <button class="spoken-cmd-btn" data-cmd="translate to japanese">🇯🇵 "Translate to Japanese"</button>
+                <button class="spoken-cmd-btn" data-cmd="shorten">✂️ "Shorten"</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- View 5: Agent Workspace (Exact match with reference screenshot) -->
+      <div class="view-panel" id="view-agent">
+        <!-- Agent Workspace Content -->
+        <div class="agent-workspace-container">
+          <!-- Window Top Tab Bar -->
+          <div class="workspace-top-bar">
+            <div class="workspace-tab-pill">
+              <span>Landing page banner for Product ...</span>
+            </div>
+            <div class="workspace-top-actions">
+              <span>...</span>
+              <span>◫</span>
+            </div>
+          </div>
+
+          <!-- User Message Card -->
+          <div class="workspace-user-message">
+            Can you add a banner at the top of the landing page announcing that we just launched on Product Hunt?
+          </div>
+
+          <!-- Agent Execution Progress Flow -->
+          <div class="workspace-agent-thread">
+            <div class="agent-thought-meta">Thought for 21s</div>
+            <p class="agent-prose-text">
+              The window is empty (no workspace directory). I need to locate the landing page project before I can add the banner. Let me look at likely development directories and recent context.
+            </p>
+
+            <!-- Step Pill 1 -->
+            <div class="agent-step-pill">
+              <span class="step-icon">&gt;_</span>
+              <span>Ran 2 commands</span>
+            </div>
+            <p class="agent-prose-text">
+              None of those are an obvious landing page. There are several recent chats from today, though. Let me check the most recent transcripts to find which project you've been working on.
+            </p>
+
+            <!-- Step Pill 2 -->
+            <div class="agent-step-pill">
+              <span class="step-icon">&gt;_</span>
+              <span>Explored 1 search</span>
+            </div>
+            <p class="agent-prose-text">
+              Let me search these recent chats for references to a landing page to find the project path.
+            </p>
+
+            <!-- Step Pill 3 -->
+            <div class="agent-step-pill">
+              <span class="step-icon">&gt;_</span>
+              <span>Explored 2 searches</span>
+            </div>
+            <p class="agent-prose-text">
+              Several recent chats reference both a landing page and Product Hunt. Let me look at the most recent one to find the actual project path.
+            </p>
+
+            <!-- Active Status -->
+            <div class="agent-active-status">
+              <span class="active-spinner"></span>
+              <span>Exploring</span>
+            </div>
+
+            <!-- Thinking Collapsible -->
+            <div class="agent-thinking-collapsible">
+              <div class="thinking-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                <span>Thinking</span>
+                <span class="chevron-toggle">∨</span>
+              </div>
+              <div class="thinking-body">
+                <p>searching through the file paths to identify web projects, looking for telltale markers like package.json, workspace configurations, and index.html files, while filtering out the .cursor directory and focusing on what directories actually exist in the jonah user folder.</p>
+                <div class="code-log-line">grepped Users/jonah/ in d165e042-1653-4b03-a60e-18883f972f75.jsonl</div>
+              </div>
+            </div>
+
+            <!-- Planning Next Moves Status -->
+            <div class="agent-planning-status">
+              Planning next moves
+            </div>
+          </div>
+
+          <!-- Bottom Follow-up Input Bar -->
+          <div class="workspace-bottom-bar">
+            <div class="bottom-input-wrap">
+              <button class="btn-input-add">+</button>
+              <input type="text" placeholder="Send follow-up" class="bottom-followup-input">
+            </div>
+
+            <div class="bottom-controls-row">
+              <div class="local-badge">
+                <span>💻</span>
+                <span>Local</span>
+              </div>
+
+              <div class="model-picker-badge">
+                <span>Opus 4.8 Max</span>
+              </div>
+
+              <div class="reaction-icons-group">
+                <button title="Helpful">👍</button>
+                <button title="Unhelpful">👎</button>
+                <button title="Comments">💬</button>
+                <button title="Regenerate">✨</button>
+                <button title="More">...</button>
+              </div>
+
+              <div class="context-usage-pill">
+                <span>○ 17%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Subtitle Overlay (as in reference screenshot) -->
+        <div class="speech-subtitle-overlay" id="speechSubtitleOverlay">
+          and this kind of like uh
+        </div>
+
+        <!-- Webcam Picture-in-Picture Box (bottom right corner) -->
+        <div class="webcam-pip-box">
+          <div class="webcam-pip-video-mock">
+            <div class="webcam-live-indicator">● LIVE</div>
+            <div class="webcam-user-face">🧑🏻‍💻</div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Permissions Review Sheet Modal -->
+  <div class="modal-overlay" id="permReviewModalOverlay">
+    <div class="permission-sheet-box">
+      <button class="modal-close-btn" id="permReviewCloseBtn">✕</button>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div id="permModalIcon" style="font-size: 28px;">📦</div>
+        <div>
+          <h2 id="permModalTitle" style="font-size: 16px; font-weight: bold; margin: 0;">Install Integration</h2>
+          <span id="permModalPublisher" style="font-size: 12px; color: #8e8e93;">Publisher</span>
+        </div>
+      </div>
+      <p style="font-size: 13px; color: #555; margin: 0;">Review minimal scopes requested before connecting. VoiceOS enforces payload-bound confirmations for consequential operations.</p>
+      
+      <div id="permScopesList" style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto;"></div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
+        <button class="btn-secondary" id="permCancelBtn">Cancel</button>
+        <button class="btn-generate" id="permConfirmInstallBtn" style="background: #007aff;">Confirm & Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- App Builder BETA Modal (Exact match with betapage screenshot) -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-box beta-builder-modal">
+      <div class="modal-window-bar">
+        <div class="traffic-lights">
+          <div class="traffic-light tl-red"></div>
+          <div class="traffic-light tl-yellow"></div>
+          <div class="traffic-light tl-green"></div>
+        </div>
+        <button class="modal-close-btn" id="modalCloseBtn" style="position: static; font-size: 16px;">✕</button>
+      </div>
+
+      <div class="modal-body-sky">
+        <div class="ripple-glow-ring"></div>
+        <span class="badge-beta" style="margin-bottom: 12px;">BETA</span>
+        <h2 class="modal-title" style="font-size: 38px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px;">Tell VoiceOS what to build</h2>
+        <p class="modal-subtitle" style="font-size: 15px; color: #6e6e73; margin-bottom: 28px;">Describe it in your own words, or paste an MCP server URL.</p>
+
+        <div class="modal-textarea-container" style="background: #ffffff; border-radius: 20px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.06); border: 1px solid rgba(0, 0, 0, 0.05); padding: 18px 20px; width: 100%; max-width: 540px;">
+          <textarea class="modal-textarea" id="mcpPromptText" style="border: none; font-size: 15px; width: 100%; height: 75px; resize: none; outline: none; line-height: 1.5; color: #1c1c1e;">build me an integration into Things 3 so that I can add tasks into my inbox on Things 3 using just my voice.</textarea>
+          <div class="modal-action-row" style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px;">
+            <button class="btn-secondary" style="padding: 6px 14px; font-size: 13px; border-radius: var(--radius-pill); background: #f2f2f7; border: 1px solid rgba(0,0,0,0.06);">🖼 Image</button>
+            <div style="position: relative;">
+              <button class="btn-generate" id="generateAppBtn" style="background: #11141a; color: #fff; border-radius: var(--radius-pill); padding: 8px 20px; font-size: 13px; font-weight: 600; cursor: pointer;">Generate</button>
+              <div class="generate-hover-tooltip">Generate</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notice -->
+  <div class="toast-notice" id="toastNotice">VoiceOS Agent initialized</div>
+
+  <script src="app.js"></script>
+</body>
+</html>

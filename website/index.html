@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice.AI — Voice assistant at your fingertips</title>
+  <link rel="icon" type="image/png" href="assets/app-icon.png">
+  <link rel="stylesheet" href="../tokens.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Top Floating Notch Pill Navigation Header -->
+  <header class="site-nav" id="mainHeader">
+    <div class="nav-shell">
+      <div class="site-logo-wrap">
+        <a href="index.html" class="site-logo" title="Voice.AI">
+          <span class="logo-text">Voice.AI</span>
+          <span class="notch-logo-glyphs">
+            <span class="notch-glyph-triangle">▼</span>
+            <span class="notch-glyph-dot">●</span>
+          </span>
+        </a>
+      </div>
+
+      <nav class="nav-links-wrap" id="mainNavLinks">
+        <a href="#features" class="nav-link">Product <svg width="9" height="5" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1L5 5L9 1"/></svg></a>
+        <a href="about.html" class="nav-link">About</a>
+        <a href="blog.html" class="nav-link">Blogs</a>
+        <a href="app-store.html" class="nav-link">App Store</a>
+        <a href="#affiliates" class="nav-link">Affiliates</a>
+      </nav>
+
+      <div class="nav-cta-wrap">
+        <a href="download.html" class="btn-nav-download" id="headerDownloadBtn"> Download</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <main>
+    <section class="site-container hero-wrap">
+      <h1 class="hero-main-heading">
+        Voice assistant<br>at your fingertips
+      </h1>
+
+      <div class="hero-download-halo-wrap">
+        <a href="download.html" class="btn-mac-download-pill" title="Download Voice.AI">
+          <span class="btn-apple-logo"></span>
+          <span class="btn-text-main">Download for</span>
+          <span class="btn-text-muted">Mac</span>
+        </a>
+        <div style="font-size: 13px; color: #86868b; display: flex; align-items: center; gap: 8px; z-index: 1;">
+          <span class="release-version-text">v1.0.0 (Build 42)</span> ·
+          <span class="release-size-text">6.4 MB</span> ·
+          <span class="release-status-badge status-unsigned" style="font-size: 11px; padding: 2px 8px; border-radius: 9999px;">⚠️ Unsigned dev build</span> ·
+          <a href="download.html" style="color: #0066cc; text-decoration: none;">Install Guide →</a>
+        </div>
+      </div>
+
+      <div class="hero-trial-note">7-day free trial · Cancel anytime</div>
+
+      <!-- Panoramic Sky & Clouds Hero Mockup -->
+      <div class="panoramic-hero-card">
+        <div class="sky-clouds-overlay"></div>
+
+        <div class="hero-calendar-modal">
+          <div style="font-size: 16px; margin-bottom: 8px;">🌐</div>
+          <div class="hero-gcal-badge">
+            <span style="font-size: 14px;">📅</span>
+            <span>New Event</span>
+          </div>
+          <div class="hero-event-title">Design rev</div>
+          <div class="hero-event-row">
+            <span>🕒</span>
+            <span>Thursday · 2:00 – 2:30 PM</span>
+          </div>
+          <div class="hero-event-row">
+            <span>👤</span>
+            <span>david@company.com</span>
+          </div>
+          <div class="hero-event-row" style="margin-bottom: 0;">
+            <span>📹</span>
+            <span>Google Meet</span>
+          </div>
+        </div>
+
+        <div class="floating-email-sent-chip">
+          <span>✉️</span>
+          <span>Email sent ✓</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Point anywhere on your screen -->
+    <section class="site-container section-point-anywhere">
+      <h2 class="section-headline-lg">Point anywhere on your screen.</h2>
+      <p class="section-subheadline">Your cursor is the context. No more explaining, just point and ask.</p>
+
+      <div class="point-context-mockup">
+        <div class="founders-window">
+          <div class="window-titlebar">
+            <div class="window-dots">
+              <div class="w-dot w-dot-red"></div>
+              <div class="w-dot w-dot-yellow"></div>
+              <div class="w-dot w-dot-green"></div>
+            </div>
+            <span style="font-size: 11px; color: #888; margin-left: 8px;">voice.ai</span>
+          </div>
+
+          <div class="founders-content">
+            <h3 style="font-size: 20px; font-weight: 700;">Founders</h3>
+            <div class="founders-grid">
+              <div class="founder-card-inner">
+                <div style="width: 44px; height: 44px; border-radius: 50%; background: #e5e5ea; display: flex; align-items: center; justify-content: center; font-size: 20px;">👤</div>
+                <div>
+                  <div style="font-weight: 600; font-size: 14px;">Jonah Daian</div>
+                  <div style="font-size: 12px; color: #888;">Co-Founder</div>
+                </div>
+              </div>
+
+              <div class="founder-card-inner" style="position: relative;">
+                <div style="width: 44px; height: 44px; border-radius: 50%; background: #e5e5ea; display: flex; align-items: center; justify-content: center; font-size: 20px;">👤</div>
+                <div>
+                  <div style="font-weight: 600; font-size: 14px;">Kai Brokering</div>
+                  <div style="font-size: 12px; color: #888;">Co-Founder</div>
+                </div>
+
+                <div class="laser-cursor-pointer">
+                  <span>↖</span>
+                  <div class="cursor-pill-tooltip">Point to show Voice.AI</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Not just another dictation app -->
+    <section class="site-container section-not-just-dictation" id="features">
+      <div class="not-dictation-card">
+        <!-- Running Snake Curve Track (passes in front of 1x and 4x, weaves behind Voice.AI pillar) -->
+        <div class="snake-track-container" id="snakeTrackContainer">
+          <svg class="snake-svg-path-guide" viewBox="0 0 1140 440" preserveAspectRatio="none">
+            <path id="snakeCurvePath" d="M -80,390 C 220,390 480,340 700,280 C 820,245 920,205 1020,180 C 1120,155 1200,165 1280,185" fill="none" />
+          </svg>
+        </div>
+
+        <div class="not-dictation-text">
+          <h2 class="section-headline-lg" style="font-size: 50px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; text-align: left; margin-bottom: 20px; color: #0f172a;">
+            Not just another<br>dictation app
+          </h2>
+          <p style="font-size: 17px; color: #64748b; line-height: 1.55; max-width: 420px; margin: 0;">
+            Dictation only speeds up your typing. Voice.AI multiplies your productivity.
+          </p>
+        </div>
+
+        <div class="productivity-pillars-row">
+          <!-- Pillar 1: Typing -->
+          <div class="prod-pillar-item">
+            <span class="pillar-mult pillar-mult-1x">1x</span>
+            <div class="prod-pillar pillar-typing"></div>
+            <span class="pillar-foot-label">Typing</span>
+          </div>
+
+          <!-- Pillar 2: Dictation -->
+          <div class="prod-pillar-item">
+            <span class="pillar-mult pillar-mult-4x">4x</span>
+            <div class="prod-pillar pillar-dictation"></div>
+            <span class="pillar-foot-label">Dictation</span>
+          </div>
+
+          <!-- Pillar 3: Voice.AI with 10x YOUR PRODUCTIVITY header -->
+          <div class="prod-pillar-item voiceos-pillar-wrap">
+            <div class="pillars-10x-header">
+              <div class="pillars-10x-badge">10x</div>
+              <div class="pillars-10x-label">YOUR PRODUCTIVITY</div>
+            </div>
+            <div class="prod-pillar pillar-voiceos">
+              <div class="voiceos-pillar-glyphs">
+                <span class="voiceos-glyph-triangle">▼</span>
+                <span class="voiceos-glyph-dot">●</span>
+              </div>
+            </div>
+            <span class="pillar-foot-label voiceos-label">Voice.AI</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: Speech-to-text -> Voice-to-action -->
+    <section class="site-container section-voice-to-action">
+      <div class="action-floating-card">
+        <div class="action-float-pill">
+          <span>📂</span>
+          <span>Find that PDF</span>
+        </div>
+        <div class="action-float-pill">
+          <span>📓</span>
+          <span>Take a note</span>
+        </div>
+        <div class="action-float-pill">
+          <span>💬</span>
+          <span>Text Mom</span>
+        </div>
+        <div class="action-float-pill">
+          <span>📐</span>
+          <span>File a bug</span>
+        </div>
+        <div class="action-float-pill">
+          <span>🌐</span>
+          <span>Search the web</span>
+        </div>
+      </div>
+
+      <div style="max-width: 500px;">
+        <div class="strikethrough-tag">Speech-to-text</div>
+        <h2 class="voice-to-action-title">Voice-to-action</h2>
+        <p style="font-size: 18px; color: #6e6e73; line-height: 1.5;">
+          Send the email, file the ticket, schedule the meeting. Say it once and Voice.AI does it in the right app.
+        </p>
+      </div>
+    </section>
+
+    <!-- Section 5: Panoramic Privacy Card (Stadium Capsule with Night Monterey Coast Visual) -->
+    <section class="site-container section-privacy-panoramic">
+      <div class="panoramic-privacy-card">
+        <div class="privacy-toggle-badge">
+          <span>Privacy</span>
+          <div class="privacy-lock-switch">
+            <span class="privacy-lock-icon">🔒</span>
+          </div>
+        </div>
+
+        <h2 class="privacy-card-heading">
+          What you say<br>stays yours
+        </h2>
+        <p class="privacy-card-subheading">
+          Your audio is never stored on our servers and never used to train models. You decide what leaves your Mac.
+        </p>
+
+        <div class="privacy-settings-box">
+          <div class="privacy-window-header">
+            <div class="mac-traffic-lights">
+              <span class="traffic-dot dot-red"></span>
+              <span class="traffic-dot dot-yellow"></span>
+              <span class="traffic-dot dot-green"></span>
+            </div>
+            <div class="privacy-window-title">Privacy</div>
+          </div>
+
+          <div class="privacy-group-label">ON YOUR DEVICE</div>
+          
+          <div class="privacy-row">
+            <span>Save transcripts on this device</span>
+            <div class="ios-switch ios-switch-on"></div>
+          </div>
+          <div class="privacy-row">
+            <span>Don't save audio in the cloud</span>
+            <div class="ios-switch ios-switch-on"></div>
+          </div>
+          <div class="privacy-row">
+            <span>Never use my dictation to train AI models</span>
+            <div class="ios-switch ios-switch-on"></div>
+          </div>
+
+          <div class="privacy-group-label" style="margin-top: 22px;">OPTIONAL SHARING</div>
+          <div class="privacy-row" style="border-bottom: none;">
+            <span>Send anonymous diagnostics and crash reports</span>
+            <div class="ios-switch ios-switch-off"></div>
+          </div>
+
+          <div class="privacy-footnote">Never includes raw audio or full transcripts tied to you.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 6: Wall of Love (Infinite Horizontal Marquee Moving Left to Right) -->
+    <section class="site-container section-wall-of-love">
+      <h2 class="section-headline-lg" style="margin-bottom: 14px;">Wall of Love</h2>
+      <p class="section-subheadline" style="margin-bottom: 0;">Founders, creators, and builders are replacing typing with Voice.AI.</p>
+
+      <div class="wall-marquee-container">
+        <div class="wall-marquee-track">
+          <!-- Set 1 -->
+          <div class="testimonial-card">
+            <div class="test-user-header">
+              <div class="test-avatar">🧔🏻</div>
+              <div>
+                <div style="font-weight: 700; font-size: 15px;">Gabe Perez</div>
+                <div style="font-size: 12px; color: #8e8e93;">Head of Product Curation, Product Hunt</div>
+              </div>
+            </div>
+            <p class="test-quote">
+              "Voice.AI lets me get work done 10x faster. I do everything with voice nowadays. The experience will change your life."
+            </p>
+          </div>
+
+          <div class="testimonial-card">
+            <div class="test-user-header">
+              <div class="test-avatar">👨🏼‍💻</div>
+              <div>
+                <div style="font-weight: 700; font-size: 15px;">Andrey</div>
+                <div style="font-size: 12px; color: #8e8e93;">AI enthusiast, NVIDIA GTC winner</div>
+              </div>
+            </div>
+            <p class="test-quote">
+              "Tried out all the voice productivity tools. Voice.AI is the one I ended up sticking with. It's just the best."
+            </p>
+          </div>
+
+          <div class="testimonial-card">
+            <div class="test-user-header">
+              <div class="test-avatar">👨🏻‍🎨</div>
+              <div>
+                <div style="font-weight: 700; font-size: 15px;">Yoichi Ochiai</div>
+                <div style="font-size: 12px; color: #8e8e93;">Media Artist, 605k followers</div>
+              </div>
+            </div>
+            <p class="test-quote">
+              "I started using Voice.AI."
+            </p>
+          </div>
+
+          <div class="testimonial-card">
+            <div class="test-user-header">
+              <div class="test-avatar">👩🏻‍💻</div>
+              <div>
+                <div style="font-weight: 700; font-size: 15px;">Sara Chen</div>
+                <div style="font-size: 12px; color: #8e8e93;">Staff Product Designer</div>
+              </div>
+            </div>
+            <p class="test-quote">
+              "The Tahoe glass floating UI and keyboard shortcuts feel completely native. Dictating specs without touching the keyboard is pure flow state."
+            </p>
+          </div>
+
+          <div class="testimonial-card">
+            <div class="test-user-header">
+              <div class="test-avatar">⚡️</div>
+              <div>
+                <div style="font-weight: 700; font-size: 15px;">David K.</div>
+                <div style="font-size: 12px; color: #8e8e93;">Founder &amp; CEO</div>
+              </div>
+            </div>
+            <p class="test-quote">
+              "I reply to 150+ Slack messages and emails every single morning using Voice.AI. Cut my morning communications time in half."
+            </p>
+          </div>
+
+          <div class="testimonial-card">
+            <div class="test-user-header">
+              <div class="test-avatar">👨🏽‍💻</div>
+              <div>
+                <div style="font-weight: 700; font-size: 15px;">Marcus Vance</div>
+                <div style="font-size: 12px; color: #8e8e93;">Senior macOS Engineer</div>
+              </div>
+            </div>
+            <p class="test-quote">
+              "The local offline Whisper models are blindingly fast. Zero latency, works on airplane mode, and never uploads voice data to random servers."
+            </p>
+          </div>
+
+          <!-- Set 2 (Exact duplicate for seamless infinite loop) -->
+          <div class="testimonial-card">
+            <div class="test-user-header">
+              <div class="test-avatar">🧔🏻</div>
+              <div>
+                <div style="font-weight: 700; font-size: 15px;">Gabe Perez</div>
+                <div style="font-size: 12px; color: #8e8e93;">Head of Product Curation, Product Hunt</div>
+              </div>
+            </div>
+            <p class="test-quote">
+              "Voice.AI lets me get work done 10x faster. I do everything with voice nowadays. The experience will change your life."
+            </p>
+          </div>
+
+          <div class="testimonial-card">
+            <div class="test-user-header">
+              <div class="test-avatar">👨🏼‍💻</div>
+              <div>
+                <div style="font-weight: 700; font-size: 15px;">Andrey</div>
+                <div style="font-size: 12px; color: #8e8e93;">AI enthusiast, NVIDIA GTC winner</div>
+              </div>
+            </div>
+            <p class="test-quote">
+              "Tried out all the voice productivity tools. Voice.AI is the one I ended up sticking with. It's just the best."
+            </p>
+          </div>
+
+          <div class="testimonial-card">
+            <div class="test-user-header">
+              <div class="test-avatar">👨🏻‍🎨</div>
+              <div>
+                <div style="font-weight: 700; font-size: 15px;">Yoichi Ochiai</div>
+                <div style="font-size: 12px; color: #8e8e93;">Media Artist, 605k followers</div>
+              </div>
+            </div>
+            <p class="test-quote">
+              "I started using Voice.AI."
+            </p>
+          </div>
+
+          <div class="testimonial-card">
+            <div class="test-user-header">
+              <div class="test-avatar">👩🏻‍💻</div>
+              <div>
+                <div style="font-weight: 700; font-size: 15px;">Sara Chen</div>
+                <div style="font-size: 12px; color: #8e8e93;">Staff Product Designer</div>
+              </div>
+            </div>
+            <p class="test-quote">
+              "The Tahoe glass floating UI and keyboard shortcuts feel completely native. Dictating specs without touching the keyboard is pure flow state."
+            </p>
+          </div>
+
+          <div class="testimonial-card">
+            <div class="test-user-header">
+              <div class="test-avatar">⚡️</div>
+              <div>
+                <div style="font-weight: 700; font-size: 15px;">David K.</div>
+                <div style="font-size: 12px; color: #8e8e93;">Founder &amp; CEO</div>
+              </div>
+            </div>
+            <p class="test-quote">
+              "I reply to 150+ Slack messages and emails every single morning using Voice.AI. Cut my morning communications time in half."
+            </p>
+          </div>
+
+          <div class="testimonial-card">
+            <div class="test-user-header">
+              <div class="test-avatar">👨🏽‍💻</div>
+              <div>
+                <div style="font-weight: 700; font-size: 15px;">Marcus Vance</div>
+                <div style="font-size: 12px; color: #8e8e93;">Senior macOS Engineer</div>
+              </div>
+            </div>
+            <p class="test-quote">
+              "The local offline Whisper models are blindingly fast. Zero latency, works on airplane mode, and never uploads voice data to random servers."
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="join-them-pill">
+        <span>🎙</span>
+        <span>Join Them</span>
+        <span style="color: #8e8e93; font-size: 11px; margin-left: 6px;">20,000+ voicepilled</span>
+      </div>
+    </section>
+
+    <!-- Section 7: Questions? FAQ -->
+    <section class="site-container section-faq">
+      <h2 class="section-headline-lg" style="font-size: 56px; font-weight: 800; letter-spacing: -2px; margin-bottom: 20px;">Questions?</h2>
+
+      <div class="faq-accordions-wrap">
+        <!-- Question 1 -->
+        <div class="faq-item" onclick="toggleFaq(this)">
+          <div class="faq-header">
+            <span class="faq-question">How is Voice.AI different from traditional speech recognition?</span>
+            <span class="faq-chevron">▾</span>
+          </div>
+          <div class="faq-answer">
+            <p>
+              Traditional dictation only transcribes your literal speech word-for-word, including verbal fillers ("um", "uh"), awkward formatting errors, and typos. Voice.AI is an active AI voice operating system powered by on-device Whisper models and contextual LLM post-processing. It understands your intent, removes verbal clutter, and formats thoughts in real time. Beyond typing, <strong>Agent Mode</strong> turns spoken commands directly into actions—like summarizing email threads, scheduling meetings, creating Linear tickets, and automating multi-step tasks across your Mac.
+            </p>
+          </div>
+        </div>
+
+        <!-- Question 2 -->
+        <div class="faq-item" onclick="toggleFaq(this)">
+          <div class="faq-header">
+            <span class="faq-question">Is my data private and secure with Voice.AI?</span>
+            <span class="faq-chevron">▾</span>
+          </div>
+          <div class="faq-answer">
+            <p>
+              Yes, completely. Voice.AI is built privacy-first: your audio is transcribed on-device using local Apple Silicon-optimized Whisper models. Your voice recordings are never stored on our servers and are never used to train public AI models. All network communication utilizes FIPS-compliant TLS 1.2+ encryption, and you have complete toggle-level control over what leaves your device. What you say stays yours.
+            </p>
+          </div>
+        </div>
+
+        <!-- Question 3 -->
+        <div class="faq-item" onclick="toggleFaq(this)">
+          <div class="faq-header">
+            <span class="faq-question">What apps does Voice.AI work with?</span>
+            <span class="faq-chevron">▾</span>
+          </div>
+          <div class="faq-answer">
+            <p>
+              Voice.AI works with <strong>every application</strong> on your computer. In <strong>Dictation Mode</strong>, placing your cursor into any text field—whether in Slack, Notion, Gmail, VS Code, Obsidian, Apple Notes, or Google Docs—instantly inputs clean, formatted text. In <strong>Agent Mode</strong>, Voice.AI features deep native integrations with over 20+ applications (including Google Calendar, Linear, Jira, Apple Mail, WhatsApp, Telegram, and Chrome) plus Model Context Protocol (MCP) server support for custom developer tooling.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 8: Press fn and start speaking -->
+    <section class="site-container section-press-fn">
+      <div class="press-fn-heading">
+        <span>Press</span>
+        <div class="big-fn-keycap">fn</div>
+        <span>and start speaking.</span>
+      </div>
+    </section>
+
+    <!-- Section 9: Let your voice do the work & Ask your AI -->
+    <section class="site-container" style="text-align: center; padding: 60px 0;">
+      <h2 class="section-headline-lg" style="font-size: 56px; margin-bottom: 24px;">Let your voice do the work.</h2>
+      
+      <div class="hero-download-halo-wrap" style="margin-bottom: 48px;">
+        <a href="download.html" class="btn-mac-download-pill" title="Download Voice.AI">
+          <span class="btn-apple-logo"></span>
+          <span class="btn-text-main">Download for</span>
+          <span class="btn-text-muted">Mac</span>
+        </a>
+        <div style="font-size: 13px; color: #86868b; display: flex; align-items: center; gap: 8px; z-index: 1;">
+          <span>macOS 14.0+</span> ·
+          <span>Apple Silicon</span> ·
+          <a href="download.html" style="color: #0066cc; text-decoration: none;">Installation &amp; Gatekeeper Guide →</a>
+        </div>
+      </div>
+
+      <!-- Panoramic Ask your AI Ocean Card (Curved rounded container) -->
+      <div class="panoramic-ai-ocean-card">
+        <h3 class="panoramic-ai-ocean-heading">Still not sure? Ask your AI.</h3>
+        <div class="ai-relay-pills-row">
+          <a href="https://chatgpt.com/?q=Review+Voice.AI+and+its+features+as+an+AI+voice+assistant+for+Mac" target="_blank" rel="noopener noreferrer" class="ai-relay-pill">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#000000">
+              <path d="M20.5 10.5a4.8 4.8 0 00-.4-3.4 5 5 0 00-4.3-2.5 4.8 4.8 0 00-3.3.4 5 5 0 00-6 1.8 4.8 4.8 0 00-1.8 3.3 5 5 0 00.5 6.2 4.8 4.8 0 00.4 3.4 5 5 0 004.3 2.5 4.8 4.8 0 003.3-.4 5 5 0 006-1.8 4.8 4.8 0 001.8-3.3 5 5 0 00-.5-6.2zm-7.6 10.1a3.6 3.6 0 01-2.2-.8l1.7-1a.6.6 0 00.3-.5v-4.1l3.5 2v2.2a3.7 3.7 0 01-3.3 2.2zm-6.7-3.8a3.7 3.7 0 01-.5-2.3l1.7 1a.6.6 0 00.6 0l3.5-2v4.1l-1.9 1.1a3.7 3.7 0 01-3.4-1.9zm-1.1-7.2a3.6 3.6 0 011.7-1.5v2a.6.6 0 00.3.5l3.5 2-3.5 2v-2.2a3.7 3.7 0 01-2-2.8zm11 1.7l-3.5-2v-4.1l1.9-1.1a3.7 3.7 0 013.4 1.9 3.6 3.6 0 01.5 2.3l-1.7-1a.6.6 0 00-.6 0zm2.2 4.9a3.7 3.7 0 01-1.7 1.5v-2a.6.6 0 00-.3-.5l-3.5-2 3.5-2v2.2a3.7 3.7 0 012 2.8zm-7.5-3.3l1.7-1 1.7 1v2l-1.7 1-1.7-1v-2z"/>
+            </svg>
+            <span>Ask ChatGPT</span>
+          </a>
+          <a href="https://claude.ai/new?q=What+is+Voice.AI+and+how+does+its+voice+assistant+differ+from+standard+dictation%3F" target="_blank" rel="noopener noreferrer" class="ai-relay-pill">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#D97706">
+              <path d="M12 2a1.5 1.5 0 011.5 1.5v3.1a1.5 1.5 0 01-3 0V3.5A1.5 1.5 0 0112 2zm6.7 3.8a1.5 1.5 0 010 2.1l-2.2 2.2a1.5 1.5 0 01-2.1-2.1l2.2-2.2a1.5 1.5 0 012.1 0zM22 12a1.5 1.5 0 01-1.5 1.5h-3.1a1.5 1.5 0 010-3h3.1A1.5 1.5 0 0122 12zm-3.8 6.7a1.5 1.5 0 01-2.1 0l-2.2-2.2a1.5 1.5 0 112.1-2.1l2.2 2.2a1.5 1.5 0 010 2.1zM12 22a1.5 1.5 0 01-1.5-1.5v-3.1a1.5 1.5 0 013 0v3.1A1.5 1.5 0 0112 22zm-6.7-3.8a1.5 1.5 0 010-2.1l2.2-2.2a1.5 1.5 0 012.1 2.1l-2.2 2.2a1.5 1.5 0 01-2.1 0zM2 12a1.5 1.5 0 011.5-1.5h3.1a1.5 1.5 0 010 3H3.5A1.5 1.5 0 012 12zm3.8-6.7a1.5 1.5 0 012.1 0l2.2 2.2a1.5 1.5 0 01-2.1 2.1l-2.2-2.2a1.5 1.5 0 010-2.1z"/>
+            </svg>
+            <span>Ask Claude</span>
+          </a>
+          <a href="https://www.perplexity.ai/search?q=Review+Voice.AI+Mac+voice+assistant" target="_blank" rel="noopener noreferrer" class="ai-relay-pill">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#20B2AA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3.2"/>
+              <path d="M12 2v6m0 8v6M2 12h6m8 0h6m-15-7l4.2 4.2m7.6 7.6L21 21M3 21l4.2-4.2m7.6-7.6L21 3"/>
+            </svg>
+            <span>Ask Perplexity</span>
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 4-Column Footer & Giant Watermark -->
+  <footer class="site-footer">
+    <div class="site-container">
+      <div class="footer-nav-grid">
+        <div>
+          <div class="footer-col-title">Product</div>
+          <div class="footer-links-list">
+            <a href="download.html" class="footer-link">Download</a>
+            <a href="../app/index.html" class="footer-link" target="_blank">Try the demo</a>
+            <a href="../app/index.html" class="footer-link">Agent Mode</a>
+            <a href="../app/index.html" class="footer-link">Dictation Mode</a>
+            <a href="#pricing" class="footer-link">Pricing</a>
+            <a href="app-store.html" class="footer-link">App Store</a>
+            <a href="blog.html" class="footer-link">Blog</a>
+          </div>
+        </div>
+
+        <div>
+          <div class="footer-col-title">Company</div>
+          <div class="footer-links-list">
+            <a href="about.html" class="footer-link">About</a>
+            <a href="about.html#contact" class="footer-link">Contact</a>
+            <a href="#affiliates" class="footer-link">Affiliates</a>
+          </div>
+        </div>
+
+        <div>
+          <div class="footer-col-title">Resources</div>
+          <div class="footer-links-list">
+            <a href="#features" class="footer-link">All features</a>
+            <a href="#glossary" class="footer-link">Voice glossary</a>
+            <a href="#changelog" class="footer-link">Changelog</a>
+            <a href="#docs" class="footer-link">Documentation</a>
+          </div>
+        </div>
+
+        <div>
+          <div class="footer-col-title">Legal</div>
+          <div class="footer-links-list">
+            <a href="#terms" class="footer-link">Terms of Use</a>
+            <a href="#privacy" class="footer-link">Privacy Policy</a>
+            <a href="#security" class="footer-link">Security</a>
+            <a href="#affiliate-policy" class="footer-link">Affiliate Policy</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Giant Watermark -->
+      <div class="giant-footer-watermark">Voice.AI</div>
+
+      <!-- Bottom Bar -->
+      <div class="footer-bottom-bar">
+        <div>Copyright © 2026 Voice.AI Team. All Rights Reserved.</div>
+        <div class="footer-social-links">
+          <a href="#" class="footer-social-link" title="LinkedIn">in</a>
+          <a href="#" class="footer-social-link" title="Email">✉</a>
+          <a href="#" class="footer-social-link" title="X">𝕏</a>
+          <span style="color: #444; margin-left: 8px;">EN</span>
+          <a href="#" class="footer-social-link">JA</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Morph header to floating notch pill on scroll
+    function handleNavScroll() {
+      if (window.scrollY > 40) {
+        document.body.classList.add('scrolled');
+      } else {
+        document.body.classList.remove('scrolled');
+      }
+    }
+    window.addEventListener('scroll', handleNavScroll, { passive: true });
+    window.addEventListener('DOMContentLoaded', handleNavScroll);
+    handleNavScroll();
+
+    // FAQ Accordion Toggle
+    function toggleFaq(item) {
+      const isCurrentlyActive = item.classList.contains('active');
+      document.querySelectorAll('.faq-item').forEach(el => el.classList.remove('active'));
+      if (!isCurrentlyActive) {
+        item.classList.add('active');
+      }
+    }
+  </script>
+  <script src="release.js"></script>
+  <script src="snake-animation.js"></script>
+</body>
+</html>

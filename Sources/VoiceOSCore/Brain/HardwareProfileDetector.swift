@@ -175,7 +175,7 @@ public final class HardwareProfileDetector: @unchecked Sendable {
                 name: "Kokoro-82M",
                 roleTitle: "The Voice",
                 category: "voice",
-                purposeDescription: "Ultra-fast, natural multilingual text-to-speech synthesis with zero internet lag.",
+                purposeDescription: "Ultra-fast neural text-to-speech synthesis (ONNX engine in ~/.voiceos/models/ — not managed by Ollama).",
                 downloadSizeMB: 300,
                 diskRequiredMB: 350,
                 ramRequiredGB: 0.5,

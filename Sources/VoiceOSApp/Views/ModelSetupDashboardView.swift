@@ -326,6 +326,14 @@ private struct ModelCardRow: View {
                             .foregroundColor(roleColor)
                             .cornerRadius(6)
                         
+                        Text(item.category == "voice" ? "ON-DEVICE AUDIO" : "OLLAMA ENGINE")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(item.category == "voice" ? Color.green.opacity(0.15) : Color.blue.opacity(0.15))
+                            .foregroundColor(item.category == "voice" ? Color.green : Color.blue)
+                            .cornerRadius(4)
+                        
                         if item.id.contains("vision") && hasMemoryGuardrail {
                             Text("Cloud Vision Recommended")
                                 .font(.system(size: 10, weight: .semibold))

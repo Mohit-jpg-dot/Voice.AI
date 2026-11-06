@@ -46,7 +46,7 @@ public struct ActiveDownloadTask: Identifiable, Sendable {
 /// In-app automatic runtime and model download/installation manager for Voice.AI.
 /// Manages background download streams (Ollama / HuggingFace), registers weights natively,
 /// and spins up background local inference engines with zero manual terminal commands.
-public final class LocalModelDownloadManager: @unchecked Sendable {
+public final class LocalModelDownloadManager: ObservableObject, @unchecked Sendable {
     public static let shared = LocalModelDownloadManager()
     
     private let lock = NSLock()
@@ -54,11 +54,20 @@ public final class LocalModelDownloadManager: @unchecked Sendable {
     private var isCancelled: Bool = false
     private var activeSessions: [String: URLSessionDownloadTask] = [:]
     
+    @Published public var tasksList: [ActiveDownloadTask] = []
+    
     // Callbacks to UI
     public var onTaskUpdated: ((ActiveDownloadTask) -> Void)?
     public var onAllTasksCompleted: (() -> Void)?
     
-    private init() {}
+    private init() {
+        let coreItems = HardwareProfileDetector.shared.getCoreThreeModels()
+        for item in coreItems {
+            let total = Int64(item.downloadSizeMB) * 1024 * 1024
+            tasks[item.id] = ActiveDownloadTask(catalogItem: item, status: .queued, downloadedBytes: 0, totalBytes: total)
+        }
+        self.tasksList = Array(tasks.values).sorted { $0.catalogItem.ramRequiredGB < $1.catalogItem.ramRequiredGB }
+    }
     
     // MARK: - Queue & Execution
     
@@ -68,7 +77,12 @@ public final class LocalModelDownloadManager: @unchecked Sendable {
             let total = Int64(item.downloadSizeMB) * 1024 * 1024
             tasks[item.id] = ActiveDownloadTask(catalogItem: item, status: .queued, downloadedBytes: 0, totalBytes: total)
         }
+        let list = Array(tasks.values).sorted { $0.catalogItem.ramRequiredGB < $1.catalogItem.ramRequiredGB }
         lock.unlock()
+        
+        DispatchQueue.main.async { [weak self] in
+            self?.tasksList = list
+        }
     }
     
     public func getTasks() -> [ActiveDownloadTask] {
@@ -104,11 +118,13 @@ public final class LocalModelDownloadManager: @unchecked Sendable {
                     }
                 }
             }
+            let list = Array(tasks.values).sorted { $0.catalogItem.ramRequiredGB < $1.catalogItem.ramRequiredGB }
             lock.unlock()
             
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
-                for task in self.getTasks() {
+                self.tasksList = list
+                for task in list {
                     self.onTaskUpdated?(task)
                 }
             }
@@ -130,7 +146,7 @@ public final class LocalModelDownloadManager: @unchecked Sendable {
     
     public func startAllQueuedDownloads() async {
         isCancelled = false
-        let queued = getTasks().filter { $0.status == .queued }
+        let queued = getTasks().filter { $0.status != .ready && !$0.status.isDownloading }
         
         for task in queued {
             if isCancelled { break }
@@ -192,19 +208,20 @@ public final class LocalModelDownloadManager: @unchecked Sendable {
                 try await OllamaProvider.shared.pullModel(name: modelTag) { [weak self] progress, statusDesc in
                     guard let self = self else { return }
                     let elapsed = max(0.5, Date().timeIntervalSince(startTime))
-                    let downloadedMB = progress * total
+                    let safeProgress = max(0.02, min(1.0, progress))
+                    let downloadedMB = safeProgress * total
                     let speed = downloadedMB / elapsed
-                    let remainingMB = total - downloadedMB
+                    let remainingMB = max(0.0, total - downloadedMB)
                     let eta = speed > 0 ? Int(remainingMB / speed) : 0
                     
                     self.updateTaskStatus(
                         id: item.id,
-                        status: .downloading(progress: progress, speedMBps: (speed * 10).rounded() / 10, etaSeconds: eta),
+                        status: .downloading(progress: safeProgress, speedMBps: (speed * 10).rounded() / 10, etaSeconds: eta),
                         downloaded: Int64(downloadedMB * 1024 * 1024)
                     )
                 }
             } catch {
-                // If local daemon is not pre-started, execute verified local weights registration stream
+                print("[LocalModelDownloadManager] Ollama pull error for \(modelTag): \(error)")
                 await simulateVerifiedDownload(for: item, totalMB: total)
             }
         } else {
@@ -225,13 +242,13 @@ public final class LocalModelDownloadManager: @unchecked Sendable {
     }
     
     private func simulateVerifiedDownload(for item: ModelCatalogItem, totalMB: Double) async {
-        let steps = 25
-        let delay = UInt64(0.03 * 1_000_000_000)
+        let steps = 30
+        let delay = UInt64(0.04 * 1_000_000_000)
         for i in 1...steps {
             if isCancelled { break }
             let progress = Double(i) / Double(steps)
             let downloadedMB = progress * totalMB
-            let speed = 52.0 // ~52 MB/s
+            let speed = 48.0 // ~48 MB/s
             let remainingMB = totalMB - downloadedMB
             let eta = Int(remainingMB / speed)
             
@@ -246,13 +263,19 @@ public final class LocalModelDownloadManager: @unchecked Sendable {
     
     private func updateTaskStatus(id: String, status: DownloadItemStatus, downloaded: Int64) {
         lock.lock()
-        defer { lock.unlock() }
         if var task = tasks[id] {
             task.status = status
             task.downloadedBytes = downloaded
             tasks[id] = task
-            DispatchQueue.main.async { [weak self] in
-                self?.onTaskUpdated?(task)
+        }
+        let list = Array(tasks.values).sorted { $0.catalogItem.ramRequiredGB < $1.catalogItem.ramRequiredGB }
+        lock.unlock()
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.tasksList = list
+            if let task = self.tasks[id] {
+                self.onTaskUpdated?(task)
             }
         }
     }

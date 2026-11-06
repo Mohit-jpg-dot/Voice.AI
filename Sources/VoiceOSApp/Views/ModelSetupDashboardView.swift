@@ -3,8 +3,8 @@ import AppKit
 import VoiceOSCore
 
 public struct ModelSetupDashboardView: View {
+    @ObservedObject private var downloadManager = LocalModelDownloadManager.shared
     @State private var hardwareInfo = HardwareProfileDetector.shared.detectHardware()
-    @State private var tasks: [ActiveDownloadTask] = LocalModelDownloadManager.shared.getTasks()
     @State private var isDownloadingAll = false
     @State private var selectedExecutionMode: RecommendedExecutionMode = .hybrid
     
@@ -196,7 +196,7 @@ public struct ModelSetupDashboardView: View {
                         Button(action: {
                             Task {
                                 isDownloadingAll = true
-                                await LocalModelDownloadManager.shared.startAllCoreDownloads()
+                                await downloadManager.startAllCoreDownloads()
                                 isDownloadingAll = false
                             }
                         }) {
@@ -206,7 +206,7 @@ public struct ModelSetupDashboardView: View {
                                 } else {
                                     Image(systemName: "arrow.down.circle.fill")
                                 }
-                                Text("1-Click Download & Setup All")
+                                Text(isDownloadingAll ? "Downloading..." : "1-Click Download & Setup All")
                                     .fontWeight(.semibold)
                             }
                             .padding(.horizontal, 14)
@@ -219,13 +219,13 @@ public struct ModelSetupDashboardView: View {
                         .disabled(isDownloadingAll)
                     }
                     
-                    ForEach(tasks) { task in
+                    ForEach(downloadManager.tasksList) { task in
                         ModelCardRow(
                             task: task,
                             hasMemoryGuardrail: hardwareInfo.hasLowMemoryGuardrail,
                             onDownloadClicked: {
                                 Task {
-                                    await LocalModelDownloadManager.shared.startDownload(for: task.catalogItem)
+                                    await downloadManager.startDownload(for: task.catalogItem)
                                 }
                             }
                         )
@@ -236,11 +236,8 @@ public struct ModelSetupDashboardView: View {
         }
         .background(Color(red: 0.08, green: 0.08, blue: 0.09))
         .onAppear {
-            tasks = LocalModelDownloadManager.shared.getTasks()
-            LocalModelDownloadManager.shared.onTaskUpdated = { updatedTask in
-                if let idx = tasks.firstIndex(where: { $0.id == updatedTask.id }) {
-                    tasks[idx] = updatedTask
-                }
+            if downloadManager.tasksList.isEmpty {
+                downloadManager.queueDownloads(items: HardwareProfileDetector.shared.getCoreThreeModels())
             }
             Task {
                 await checkOllamaStatus()
@@ -259,8 +256,7 @@ public struct ModelSetupDashboardView: View {
                 installedOllamaModels = models
                 isOllamaRunning = true
                 ollamaStatusMessage = "Ollama is running. \(models.count) local models discovered."
-                await LocalModelDownloadManager.shared.refreshInstalledStatuses()
-                tasks = LocalModelDownloadManager.shared.getTasks()
+                await downloadManager.refreshInstalledStatuses()
             } else {
                 isOllamaRunning = false
                 installedOllamaModels = []
@@ -402,18 +398,22 @@ private struct ModelCardRow: View {
             }
             
             // Progress Bar if downloading
-            if case .downloading(let progress, _, _) = task.status {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.white.opacity(0.1))
-                            .frame(height: 6)
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.blue)
-                            .frame(width: max(0, min(geo.size.width, geo.size.width * CGFloat(progress))), height: 6)
+            if case .downloading(let progress, let speed, let eta) = task.status {
+                VStack(spacing: 6) {
+                    ProgressView(value: max(0.01, min(1.0, progress)))
+                        .progressViewStyle(LinearProgressViewStyle(tint: Color.blue))
+                    
+                    HStack {
+                        Text("\(Int(progress * 100))% downloaded • \(String(format: "%.1f", speed)) MB/s")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundColor(.blue)
+                        Spacer()
+                        Text(eta > 0 ? "ETA: \(eta)s" : "Registering...")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(Color(white: 0.6))
                     }
                 }
-                .frame(height: 6)
+                .padding(.top, 4)
             }
         }
         .padding(16)

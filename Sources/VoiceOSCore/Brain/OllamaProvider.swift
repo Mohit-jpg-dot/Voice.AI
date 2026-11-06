@@ -96,11 +96,17 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 7200.0 // 2 hours for large model pulls
         
         let body: [String: Any] = ["name": name, "stream": true]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
-        let (bytes, response) = try await session.bytes(for: request)
+        let pullConfig = URLSessionConfiguration.default
+        pullConfig.timeoutIntervalForRequest = 3600.0
+        pullConfig.timeoutIntervalForResource = 7200.0
+        let pullSession = URLSession(configuration: pullConfig)
+        
+        let (bytes, response) = try await pullSession.bytes(for: request)
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
             throw BrainError.ollamaNotRunning(url: hostURL.absoluteString)
         }
@@ -110,9 +116,26 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
             
             let status = json["status"] as? String ?? "downloading"
-            let total = json["total"] as? Double ?? 1.0
-            let completed = json["completed"] as? Double ?? 0.0
-            let pct = total > 0 ? (completed / total) : 0.0
+            
+            let totalVal: Double
+            if let num = json["total"] as? NSNumber {
+                totalVal = num.doubleValue
+            } else if let d = json["total"] as? Double {
+                totalVal = d
+            } else {
+                totalVal = 0.0
+            }
+            
+            let completedVal: Double
+            if let num = json["completed"] as? NSNumber {
+                completedVal = num.doubleValue
+            } else if let d = json["completed"] as? Double {
+                completedVal = d
+            } else {
+                completedVal = 0.0
+            }
+            
+            let pct = totalVal > 0 ? min(1.0, max(0.0, completedVal / totalVal)) : 0.0
             onProgress(pct, status)
         }
     }

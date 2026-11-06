@@ -2,8 +2,11 @@
 
 > A voice-first AI computer agent for macOS and Windows. Speaks Hindi, English, and Hinglish. Controls native applications, web browsers, and terminals; understands your screen live; and operates flexibly with your own Cloud API keys, 100% private offline local models (Ollama + Whisper), or in a lightweight zero-key Google Search mode.
 
-[English](README.md) • [हिन्दी में पढ़ें (Hindi Quickstart)](README.hi.md) • [Changelog](CHANGELOG.md) • [Contributing](CONTRIBUTING.md) • [Third-Party Notices](THIRD_PARTY_NOTICES.md)
+🌐 **Live Website & Web Demo:** **[https://mohit-jpg-dot.github.io/Voice.AI/](https://mohit-jpg-dot.github.io/Voice.AI/)**
 
+[Website](https://mohit-jpg-dot.github.io/Voice.AI/) • [English](README.md) • [हिन्दी में पढ़ें (Hindi Quickstart)](README.hi.md) • [Changelog](CHANGELOG.md) • [Contributing](CONTRIBUTING.md) • [Third-Party Notices](THIRD_PARTY_NOTICES.md)
+
+[![Live Website](https://img.shields.io/badge/Live%20Website-mohit--jpg--dot.github.io%2FVoice.AI-5865F2?logo=googlechrome&logoColor=white)](https://mohit-jpg-dot.github.io/Voice.AI/)
 [![macOS 14.0+ Ready](https://img.shields.io/badge/macOS-14.0%2B%20Sonoma%20%2F%20Tahoe-0071e3.svg)]()
 [![Windows 11 (Beta)](https://img.shields.io/badge/Windows-11%20WinUI%203-0078d4.svg)]()
 [![Apple Silicon Native](https://img.shields.io/badge/Architecture-Apple%20Silicon%20(M1--M5)-black.svg)]()

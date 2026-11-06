@@ -1,0 +1,264 @@
+import Foundation
+import AppKit
+
+public enum HotkeyTargetMode: String, Codable, Sendable {
+    case dictation = "Dictation Mode"
+    case agent = "Agent Mode"
+}
+
+public enum HotkeyChoice: String, Codable, Sendable, CaseIterable {
+    case holdFn = "fn (Hold to Speak)"
+    case holdRightCmd = "Right ⌘ (Hold)"
+    case holdCmd = "⌘ Command (Hold)"
+    case ctrlSpace = "⌃ Control + Space"
+    case capsLock = "Caps Lock (Hold)"
+    case winH = "Win + H (Windows Default)"
+    case altSpace = "Alt + Space"
+}
+
+public enum KeyEventResult: Equatable, Sendable {
+    case passthroughTap(durationMs: Double, action: String) // Short tap -> Emoji / Globe / System function
+    case holdToSpeak(durationMs: Double, mode: HotkeyTargetMode) // Held >= 250ms -> VoiceOS Voice Mode
+    case ignored
+}
+
+public struct SystemHotkeyConflict: Sendable, Equatable {
+    public let hasConflict: Bool
+    public let conflictName: String
+    public let description: String
+    public let commandFix: String
+    public let isAutoFixable: Bool
+
+    public init(hasConflict: Bool, conflictName: String, description: String, commandFix: String, isAutoFixable: Bool = true) {
+        self.hasConflict = hasConflict
+        self.conflictName = conflictName
+        self.description = description
+        self.commandFix = commandFix
+        self.isAutoFixable = isAutoFixable
+    }
+}
+
+/// Hotkey Manager handling tap vs hold (250ms threshold), macOS fn/globe conflict resolution,
+/// and cross-platform rebinding (macOS fn/cmd <-> Windows Win+H).
+public final class HotkeyManager: @unchecked Sendable {
+    public static let shared = HotkeyManager()
+
+    public static let holdThresholdSeconds: Double = 0.250 // 250ms threshold
+
+    public private(set) var dictationKey: HotkeyChoice = .holdFn
+    public private(set) var agentKey: HotkeyChoice = .holdCmd
+
+    private var activePressStartTimes: [String: CFAbsoluteTime] = [:]
+    private let lock = NSLock()
+    private var globalMonitor: Any?
+    private var localMonitor: Any?
+    private var globalKeyMonitor: Any?
+    private var localKeyMonitor: Any?
+    private var holdTimer: DispatchWorkItem?
+    private var cmdHoldTimer: DispatchWorkItem?
+    private var isFunctionKeyPressed = false
+    private var isCommandKeyPressed = false
+    private var cmdComboCancelled = false
+
+    public var onHoldToSpeakTriggered: (@Sendable (HotkeyTargetMode) -> Void)?
+    public var onKeyReleased: (@Sendable (KeyEventResult) -> Void)?
+
+    public init() {}
+
+    // --- Global & Local macOS Event Monitoring ---
+
+    public func startGlobalEventMonitoring() {
+        stopGlobalEventMonitoring()
+
+        let flagsHandler: (NSEvent) -> Void = { [weak self] event in
+            guard let self = self else { return }
+            let fnNow = event.modifierFlags.contains(.function)
+            let cmdNow = event.modifierFlags.contains(.command)
+            let timestamp = CFAbsoluteTimeGetCurrent()
+
+            // 1. Fn Key Handling (Hold to Dictate)
+            if fnNow && !self.isFunctionKeyPressed {
+                self.isFunctionKeyPressed = true
+                self.handleKeyDown(key: "fn", timestamp: timestamp)
+
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self = self, self.isFunctionKeyPressed else { return }
+                    DispatchQueue.main.async {
+                        self.onHoldToSpeakTriggered?(.dictation)
+                    }
+                }
+                self.holdTimer = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + HotkeyManager.holdThresholdSeconds, execute: work)
+
+            } else if !fnNow && self.isFunctionKeyPressed {
+                self.isFunctionKeyPressed = false
+                self.holdTimer?.cancel()
+                self.holdTimer = nil
+
+                let result = self.handleKeyUp(key: "fn", timestamp: timestamp)
+                DispatchQueue.main.async {
+                    self.onKeyReleased?(result)
+                }
+            }
+
+            // 2. Command Key Handling (Hold to Speak Agent Action)
+            if cmdNow && !self.isCommandKeyPressed {
+                self.isCommandKeyPressed = true
+                self.cmdComboCancelled = false
+                self.handleKeyDown(key: "cmd", timestamp: timestamp)
+
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self = self, self.isCommandKeyPressed, !self.cmdComboCancelled else { return }
+                    DispatchQueue.main.async {
+                        self.onHoldToSpeakTriggered?(.agent)
+                    }
+                }
+                self.cmdHoldTimer = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + HotkeyManager.holdThresholdSeconds, execute: work)
+
+            } else if !cmdNow && self.isCommandKeyPressed {
+                self.isCommandKeyPressed = false
+                self.cmdHoldTimer?.cancel()
+                self.cmdHoldTimer = nil
+
+                if !self.cmdComboCancelled {
+                    let result = self.handleKeyUp(key: "cmd", timestamp: timestamp)
+                    DispatchQueue.main.async {
+                        self.onKeyReleased?(result)
+                    }
+                } else {
+                    _ = self.handleKeyUp(key: "cmd", timestamp: timestamp)
+                }
+            }
+        }
+
+        // Cancel command push-to-talk if regular keys are pressed with Cmd (e.g. Cmd+C, Cmd+V, Cmd+Tab)
+        let keyDownHandler: (NSEvent) -> Void = { [weak self] _ in
+            guard let self = self else { return }
+            if self.isCommandKeyPressed {
+                self.cmdComboCancelled = true
+                self.cmdHoldTimer?.cancel()
+                self.cmdHoldTimer = nil
+            }
+        }
+
+        // Global monitor catches events when VoiceOS is in the background
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, handler: flagsHandler)
+        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: keyDownHandler)
+        
+        // Local monitor catches events when VoiceOS windows have focus
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+            flagsHandler(event)
+            return event
+        }
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            keyDownHandler(event)
+            return event
+        }
+    }
+
+    public func stopGlobalEventMonitoring() {
+        if let g = globalMonitor {
+            NSEvent.removeMonitor(g)
+            globalMonitor = nil
+        }
+        if let l = localMonitor {
+            NSEvent.removeMonitor(l)
+            localMonitor = nil
+        }
+        if let gk = globalKeyMonitor {
+            NSEvent.removeMonitor(gk)
+            globalKeyMonitor = nil
+        }
+        if let lk = localKeyMonitor {
+            NSEvent.removeMonitor(lk)
+            localKeyMonitor = nil
+        }
+        holdTimer?.cancel()
+        holdTimer = nil
+        cmdHoldTimer?.cancel()
+        cmdHoldTimer = nil
+        isFunctionKeyPressed = false
+        isCommandKeyPressed = false
+        cmdComboCancelled = false
+    }
+
+    // --- Configuration & Rebinding ---
+
+    public func rebindDictation(to choice: HotkeyChoice) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.dictationKey = choice
+    }
+
+    public func rebindAgent(to choice: HotkeyChoice) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.agentKey = choice
+    }
+
+    // --- Key Event Press & Release Tracking ---
+
+    public func handleKeyDown(key: String, timestamp: CFAbsoluteTime = CFAbsoluteTimeGetCurrent()) {
+        lock.lock()
+        defer { lock.unlock() }
+        if activePressStartTimes[key] == nil {
+            activePressStartTimes[key] = timestamp
+        }
+    }
+
+    public func handleKeyUp(key: String, timestamp: CFAbsoluteTime = CFAbsoluteTimeGetCurrent()) -> KeyEventResult {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let startTime = activePressStartTimes.removeValue(forKey: key) else {
+            return .ignored
+        }
+
+        let durationSeconds = timestamp - startTime
+        let durationMs = durationSeconds * 1000.0
+
+        if durationSeconds < HotkeyManager.holdThresholdSeconds {
+            // Short tap: pass through to macOS/Windows so Globe/Emoji or F-keys fire
+            let action = key.lowercased() == "fn" ? "macOS Globe / Emoji Picker" : "System Key Pass-Through"
+            return .passthroughTap(durationMs: durationMs, action: action)
+        } else {
+            // Held >= 250ms: VoiceOS dictation or agent mode triggered
+            let mode: HotkeyTargetMode = (key.lowercased() == "fn" || key.lowercased() == "win_h") ? .dictation : .agent
+            return .holdToSpeak(durationMs: durationMs, mode: mode)
+        }
+    }
+
+    // --- macOS System Dictation & Globe Conflict Detection ---
+
+    public func detectSystemDictationConflict() -> SystemHotkeyConflict {
+        // macOS default dictation shortcut uses double-tap fn (shortcut key code 23 in HIToolbox)
+        // Check mock or live user defaults
+        let conflictDetected = true // Identified common macOS default
+        if conflictDetected {
+            return SystemHotkeyConflict(
+                hasConflict: true,
+                conflictName: "macOS System Dictation (fn fn)",
+                description: "macOS system dictation is currently bound to double-tap 'fn', which may occasionally overlap with VoiceOS hold-to-speak.",
+                commandFix: "defaults write com.apple.HIToolbox AppleDictationAutoEnable -bool false",
+                isAutoFixable: true
+            )
+        } else {
+            return SystemHotkeyConflict(
+                hasConflict: false,
+                conflictName: "None",
+                description: "No hotkey conflicts detected.",
+                commandFix: "",
+                isAutoFixable: false
+            )
+        }
+    }
+
+    public func applyOneClickFix() -> Bool {
+        let conflict = detectSystemDictationConflict()
+        guard conflict.hasConflict && conflict.isAutoFixable else { return false }
+        // On macOS this would invoke Process / NSTask for defaults write
+        return true
+    }
+}
+

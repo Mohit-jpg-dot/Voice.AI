@@ -1,0 +1,69 @@
+<Window
+    x:Class="VoiceOS.Windows.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="VoiceOS"
+    Width="980"
+    Height="640">
+
+    <Grid Background="Transparent">
+        <!-- Windows 11 Mica / Acrylic Backdrop Applied in Code-Behind -->
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Windows Sidebar -->
+        <Border Grid.Column="0" Background="#161618" BorderBrush="#222226" BorderThickness="0,0,1,0" Padding="16">
+            <StackPanel Spacing="16">
+                <!-- Branding -->
+                <TextBlock Text="VoiceOS" FontSize="20" FontWeight="Bold" Foreground="White" />
+                
+                <!-- Navigation -->
+                <ListView SelectionMode="Single" SelectedIndex="0">
+                    <ListViewItem Content="Dashboard" />
+                    <ListViewItem Content="Insights" />
+                    <ListViewItem Content="History" />
+                    <ListViewItem Content="Dictation" />
+                    <ListViewItem Content="Agent" />
+                    <ListViewItem Content="Apps" />
+                    <ListViewItem Content="Settings" />
+                </ListView>
+            </StackPanel>
+        </Border>
+
+        <!-- Main Content Area -->
+        <Grid Grid.Column="1" Padding="24">
+            <StackPanel Spacing="20">
+                <TextBlock Text="Voice Assistant for Windows 11" FontSize="24" FontWeight="Bold" Foreground="White" />
+                <TextBlock Text="Hold Win + H or your custom key in any app to speak." FontSize="14" Foreground="#A1A1AA" />
+                
+                <!-- Windows Mode Cards -->
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Background="#1E1E22" CornerRadius="12" Padding="20">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="🎙 Dictation Mode" FontSize="16" FontWeight="SemiBold" Foreground="White" />
+                            <TextBlock Text="Hold Win + H to dictate cleaned text with punctuation." FontSize="13" Foreground="#A1A1AA" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Background="#1E1E22" CornerRadius="12" Padding="20">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="✨ Agent Mode" FontSize="16" FontWeight="SemiBold" Foreground="White" />
+                            <TextBlock Text="Hold Ctrl + Space to trigger cross-app automation." FontSize="13" Foreground="#A1A1AA" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>
+

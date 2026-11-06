@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Build Artifacts
+build/
+*.o
+*.dylib
+*.app
+*.swiftdoc
+*.swiftmodule
+*.abi.json
+DerivedData/
+.build/
+.swiftpm/
+xcuserdata/
+
+# Windows / .NET build outputs
+windows/VoiceOS.Windows/bin/
+windows/VoiceOS.Windows/obj/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Temporary files
+*.tmp
+*.log

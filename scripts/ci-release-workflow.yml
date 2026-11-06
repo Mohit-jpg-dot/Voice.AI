@@ -1,0 +1,113 @@
+name: Release macOS App and DMG
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_channel:
+        description: 'Release channel (development, beta, stable)'
+        required: true
+        default: 'development'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-and-release:
+    name: Build Native App & Package DMG
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.1.7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js for metadata & website checks
+        uses: actions/setup-node@v4.0.3
+        with:
+          node-version: 20
+
+      - name: Verify Xcode & Swift Environment
+        run: |
+          echo "Xcode Version:"
+          xcodebuild -version || true
+          echo "Swift Version:"
+          swift --version
+          echo "macOS Version:"
+          sw_vers
+
+      - name: Run Build Verification & Tests
+        run: |
+          node scripts/verify-website-download.js || true
+
+      - name: Build VoiceOS Native macOS Bundle
+        env:
+          DEVELOPER_ID_CERT: ${{ secrets.DEVELOPER_ID_CERT }}
+          DEVELOPER_ID_PASSWORD: ${{ secrets.DEVELOPER_ID_PASSWORD }}
+        run: |
+          bash scripts/build-app.sh
+
+      - name: Package DMG Installer
+        run: |
+          bash scripts/make-dmg.sh
+
+      - name: Notarize DMG (Optional if secrets provided)
+        if: ${{ secrets.NOTARY_API_KEY != '' }}
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          NOTARY_API_KEY: ${{ secrets.NOTARY_API_KEY }}
+        run: |
+          echo "Submitting DMG to Apple Notarization Service..."
+          xcrun notarytool submit build/VoiceOS-1.0.0.dmg \
+            --key "${NOTARY_API_KEY}" \
+            --key-id "${NOTARY_KEY_ID}" \
+            --issuer "${NOTARY_ISSUER_ID}" \
+            --wait
+          xcrun stapler staple build/VoiceOS-1.0.0.dmg
+          xcrun stapler validate build/VoiceOS-1.0.0.dmg
+
+      - name: Verify Final DMG and Website Artifacts
+        run: |
+          node scripts/verify-website-download.js
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4.3.4
+        with:
+          name: VoiceOS-DMG-and-Metadata
+          path: |
+            build/*.dmg
+            build/*.sha256
+            release/latest.json
+            website/appcast.xml
+
+      - name: Create Draft GitHub Release
+        uses: softprops/action-gh-release@v2.0.8
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          draft: true
+          prerelease: false
+          name: "VoiceOS ${{ github.ref_name }}"
+          files: |
+            build/VoiceOS-*.dmg
+            build/VoiceOS-*.dmg.sha256
+            release/latest.json
+            website/appcast.xml
+          body: |
+            ## VoiceOS ${{ github.ref_name }} Release
+            
+            - **Platform:** macOS 14.0+ (Apple Silicon)
+            - **Architecture:** `arm64`
+            - **Sparkle Appcast:** `https://voiceos.com/appcast.xml`
+            
+            ### Verification Checksums
+            Please verify the SHA-256 hash before running:
+            ```bash
+            shasum -a 256 VoiceOS-*.dmg
+            ```
+            
+            *Note: Unsigned development builds require Gatekeeper override on first launch: Right-click -> Open.*
+

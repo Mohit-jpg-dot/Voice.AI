@@ -1,0 +1,17 @@
+{
+  "appName": "Voice.AI",
+  "version": "1.0.0",
+  "buildNumber": "42",
+  "releaseDate": "2026-11-06T17:11:07Z",
+  "fileName": "Voice.AI-1.0.0.dmg",
+  "fileSizeBytes": 9894667,
+  "sha256": "d556ac8d7f5cdee5880b6eba5a5455b9ffc774ab6eda7512808b5307f2dc769b",
+  "minMacOSVersion": "14.0",
+  "architectures": ["arm64"],
+  "signed": false,
+  "notarized": false,
+  "statusLabel": "Unsigned development build, not notarized",
+  "releaseNotesUrl": "https://voice.ai/blog",
+  "downloadUrl": "downloads/Voice.AI-1.0.0.dmg",
+  "installerUrl": "downloads/Voice.AI-Installer.dmg"
+}

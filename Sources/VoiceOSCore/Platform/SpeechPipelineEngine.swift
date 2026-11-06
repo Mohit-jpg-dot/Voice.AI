@@ -412,7 +412,7 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             return isHinglish ? "Main aapko step by step guide kar raha hoon sir." : "Guiding you through the steps now, sir."
         }
 
-        // 6. Conversational / Direct Answer
+        // Conversational / Direct Answer
         // Strip URLs regex so speech synthesizer never spells out "h-t-t-p-s-colon-slash-slash"
         var cleaned = trimmed
         if let urlRegex = try? NSRegularExpression(pattern: "https?://\\S+", options: .caseInsensitive) {
@@ -427,10 +427,17 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             return isHinglish ? "Kaam ho gaya sir." : "i just did"
         }
 
-        // For longer assistant answers, articulate first key sentence rather than droning on
-        let sentences = cleaned.components(separatedBy: CharacterSet(charactersIn: ".!?\n")).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        if let firstSentence = sentences.first, cleaned.count > 140 {
-            return firstSentence.trimmingCharacters(in: .whitespaces) + "."
+        // Keep speech natural and complete: speak up to 4 complete sentences without mid-sentence truncation
+        let rawSentences = cleaned.components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            
+        if rawSentences.count > 4 {
+            let selected = rawSentences.prefix(4).joined(separator: ". ")
+            return selected + "."
+        } else if !rawSentences.isEmpty {
+            let joined = rawSentences.joined(separator: ". ")
+            return joined.hasSuffix(".") ? joined : joined + "."
         }
 
         return cleaned

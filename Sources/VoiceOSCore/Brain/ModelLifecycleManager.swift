@@ -98,4 +98,21 @@ public actor ModelLifecycleManager {
             _ = try? await URLSession.shared.data(for: request)
         }
     }
+    
+    /// Synchronously unloads all active Ollama models from unified memory / VRAM on app termination
+    public func offloadAllModelsImmediately() {
+        let models = [ModelRouter.shared.ollamaChatModel, ModelRouter.shared.ollamaVisionModel]
+        for m in models {
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+            proc.arguments = [
+                "-s", "-m", "1.0",
+                "-X", "POST", "http://localhost:11434/api/generate",
+                "-H", "Content-Type: application/json",
+                "-d", "{\"model\": \"\(m)\", \"keep_alive\": 0}"
+            ]
+            try? proc.run()
+            proc.waitUntilExit()
+        }
+    }
 }

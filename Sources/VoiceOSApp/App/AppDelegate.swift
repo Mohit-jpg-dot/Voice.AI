@@ -258,4 +258,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         }
         self.floatingOrbController = orbController
     }
+    
+    public func applicationWillTerminate(_ notification: Notification) {
+        // Free all unified memory / VRAM immediately when app terminates
+        ModelLifecycleManager.shared.offloadAllModelsImmediately()
+    }
 }

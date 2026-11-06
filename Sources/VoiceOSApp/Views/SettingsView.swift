@@ -2,13 +2,33 @@ import SwiftUI
 import VoiceOSCore
 import AppKit
 
+public enum SettingsTab: String, CaseIterable, Identifiable {
+    case general = "General"
+    case brain = "AI Brain & Models"
+    case permissions = "System Access"
+    case account = "Account & Privacy"
+    
+    public var id: String { rawValue }
+    
+    public var icon: String {
+        switch self {
+        case .general: return "gearshape.fill"
+        case .brain: return "brain.head.profile"
+        case .permissions: return "hand.raised.fill"
+        case .account: return "person.crop.circle.badge.checkmark"
+        }
+    }
+}
+
 public struct SettingsView: View {
     @ObservedObject var appState: AppState
-    @State private var settings = UserSettings.default
+    
+    @State private var selectedTab: SettingsTab = .general
     @State private var profileName: String = ""
     @State private var profileEmail: String = ""
     @State private var profileSavedNotice: Bool = false
     @State private var showingResetAlert: Bool = false
+    @State private var showingModelSetupSheet: Bool = false
     
     // AI Brain State
     @State private var activeMode: ModelMode = ModelRouter.shared.currentMode
@@ -17,17 +37,12 @@ public struct SettingsView: View {
     @State private var searchKey: String = KeychainService.shared.get(.searchProviderKey) ?? ""
     @State private var googleApiKey: String = KeychainService.shared.get(.googleSearchApiKey) ?? ""
     @State private var googleEngineId: String = KeychainService.shared.get(.googleSearchEngineId) ?? ""
-    @State private var isBrowserScreenReaderEnabled: Bool = GoogleSearchEngine.shared.isBrowserScreenReaderEnabled
     @State private var isTestingGoogle: Bool = false
     @State private var googleTestResult: String = ""
     @State private var keySavedNotice: String = ""
-    @State private var isProbingEverything: Bool = false
-    @State private var probeResultsText: String = ""
-    @State private var selectedVoiceId: String = VoiceAuditionManager.shared.selectedVoiceIdentifier
-    @State private var availableVoices: [VoiceOption] = []
-    
-    let whisperModels = ["tiny.en (39 MB)", "base.en (142 MB)", "small.en (466 MB)", "medium.en (1.5 GB)"]
-    let fallbackProviders = ["groq (fastest)", "deepgram", "openai", "anthropic", "openrouter"]
+    @State private var isProbingHealth: Bool = false
+    @State private var healthProbeResult: String = ""
+    @State private var isSoundEnabled: Bool = BoringSoundEngine.shared.isSoundEnabled
     
     public init(appState: AppState) {
         self.appState = appState
@@ -35,818 +50,650 @@ public struct SettingsView: View {
         _profileEmail = State(initialValue: appState.userEmail)
     }
     
-    private func saveProfile() {
-        appState.updateProfile(name: profileName, email: profileEmail)
-        profileSavedNotice = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            profileSavedNotice = false
-        }
-    }
-    
-    private func showSaved(_ text: String) {
-        keySavedNotice = text
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            keySavedNotice = ""
-        }
-    }
-    
-    private func runLiveCapabilityProbe() {
-        isProbingEverything = true
-        probeResultsText = "Probing active model capabilities..."
-        Task {
-            let model = ModelRouter.shared.resolveChatModel()
-            let profile = await ModelCapabilityDetector.shared.probeChat(model: model, forceRefresh: true)
-            await MainActor.run {
-                self.isProbingEverything = false
-                self.probeResultsText = "✓ Verified: Streaming=\(profile.streaming), Tools=\(profile.toolCalling), Speed=\(profile.speedTokensPerSec) tok/s (\(model.providerName): \(model.modelIdentifier))"
-            }
-        }
-    }
-    
-    private func testGoogleSearchNow() {
-        isTestingGoogle = true
-        googleTestResult = ""
-        Task {
-            if !googleApiKey.isEmpty {
-                KeychainService.shared.set(googleApiKey, for: .googleSearchApiKey)
-            }
-            if !googleEngineId.isEmpty {
-                KeychainService.shared.set(googleEngineId, for: .googleSearchEngineId)
-            }
-            let card = await GoogleSearchEngine.shared.answerQuestion(query: "What is the capital of India?")
-            await MainActor.run {
-                self.googleTestResult = "✓ Received: \"\(card.answerText.prefix(40))...\" (\(card.methodLabel))"
-                self.isTestingGoogle = false
-            }
-        }
-    }
-    
-    @ViewBuilder
-    private var googleSearchSettingsCard: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit2) {
-            HStack {
-                Image(systemName: "globe")
-                    .foregroundColor(Color.blue)
-                Text("Google Search Only Mode (Free & Lightest)")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(DesignTokens.Colors.textPrimary)
-                Spacer()
-                Text("Quota: \(GoogleSearchEngine.shared.getUsedDailyQuota()) / 100 Used Today")
-                    .font(DesignTokens.Typography.fontCaptionBold)
-                    .foregroundColor(GoogleSearchEngine.shared.getRemainingDailyQuota() > 10 ? Color.green : Color.orange)
-            }
-            
-            Text("Answers come straight from Google and web sources. No AI reasoning, no conversation, no screen guidance. Voice commands (open apps, Spotify, volume) run completely offline.")
-                .font(DesignTokens.Typography.fontCaption)
-                .foregroundColor(DesignTokens.Colors.textSecondary)
-            
-            HStack {
-                Text("Google API Key:")
-                    .font(DesignTokens.Typography.fontCaption)
-                    .frame(width: 120, alignment: .leading)
-                SecureField("AIzaSy... (Optional)", text: $googleApiKey)
-                    .textFieldStyle(.roundedBorder)
-                Button("Save") {
-                    KeychainService.shared.set(googleApiKey, for: .googleSearchApiKey)
-                    showSaved("Google Key Saved")
-                }
-            }
-            
-            HStack {
-                Text("Engine ID (cx):")
-                    .font(DesignTokens.Typography.fontCaption)
-                    .frame(width: 120, alignment: .leading)
-                TextField("cx string (Optional)", text: $googleEngineId)
-                    .textFieldStyle(.roundedBorder)
-                Button("Save") {
-                    KeychainService.shared.set(googleEngineId, for: .googleSearchEngineId)
-                    showSaved("Engine ID Saved")
-                }
-            }
-            
-            HStack {
-                Toggle("Read from visible browser (Experimental - Needs Legal Review)", isOn: $isBrowserScreenReaderEnabled)
-                    .font(DesignTokens.Typography.fontCaption)
-                    .onChange(of: isBrowserScreenReaderEnabled) { enabled in
-                        GoogleSearchEngine.shared.isBrowserScreenReaderEnabled = enabled
-                    }
-                Spacer()
-            }
-            
-            HStack {
-                Button(action: testGoogleSearchNow) {
-                    HStack(spacing: 6) {
-                        if isTestingGoogle { ProgressView().scaleEffect(0.6) }
-                        Text(isTestingGoogle ? "Testing..." : "Test Google Search Query")
-                    }
-                    .font(DesignTokens.Typography.fontCaptionBold)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                }
-                .disabled(isTestingGoogle)
-                
-                if !googleTestResult.isEmpty {
-                    Text(googleTestResult)
-                        .font(DesignTokens.Typography.fontCaption)
-                        .foregroundColor(Color.green)
-                }
-            }
-        }
-        .padding(DesignTokens.Spacing.unit3)
-        .background(Color.blue.opacity(0.08))
-        .cornerRadius(DesignTokens.Radius.sm)
-        .overlay(RoundedRectangle(cornerRadius: DesignTokens.Radius.sm).stroke(Color.blue.opacity(0.2), lineWidth: 1))
-    }
-    
-    private func playTestChime() {
-        BoringSoundEngine.shared.playDone()
-    }
-    
     public var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit6) {
-                // Header
+        VStack(spacing: 0) {
+            // Header Bar
+            HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Settings & Profile")
-                        .font(DesignTokens.Typography.fontTitle1)
-                        .foregroundColor(DesignTokens.Colors.textPrimary)
-                    
-                    Text("Manage your user identity, hotkeys, speech engine preferences, and local data.")
-                        .font(DesignTokens.Typography.fontCaption)
-                        .foregroundColor(DesignTokens.Colors.textMuted)
+                    Text("Settings")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                    Text("Configure your voice assistant, local models, hardware preferences, and system privileges.")
+                        .font(.system(size: 12))
+                        .foregroundColor(DesignTokens.Monochrome.textMuted)
                 }
                 
-                // AI Brain & Multimodal Engine Section
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit4) {
-                    HStack {
-                        Image(systemName: "brain.head.profile")
-                            .font(.system(size: 16))
-                            .foregroundColor(DesignTokens.Colors.accentBlue)
-                        Text("AI Brain & Intelligence")
-                            .font(DesignTokens.Typography.fontTitle3)
-                            .foregroundColor(DesignTokens.Colors.textPrimary)
-                        Spacer()
-                        if !keySavedNotice.isEmpty {
-                            Text(keySavedNotice)
-                                .font(DesignTokens.Typography.fontCaptionBold)
-                                .foregroundColor(DesignTokens.Colors.accentGreen)
+                Spacer()
+                
+                // Segmented Tab Picker
+                HStack(spacing: 4) {
+                    ForEach(SettingsTab.allCases) { tab in
+                        Button(action: {
+                            selectedTab = tab
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: tab.icon)
+                                    .font(.system(size: 11))
+                                Text(tab.rawValue)
+                                    .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .regular))
+                            }
+                            .foregroundColor(selectedTab == tab ? DesignTokens.Monochrome.textPrimary : DesignTokens.Monochrome.textMuted)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(selectedTab == tab ? DesignTokens.Monochrome.surfaceElevated : Color.clear)
+                            )
                         }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(3)
+                .background(DesignTokens.Monochrome.surface)
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(DesignTokens.Monochrome.border, lineWidth: 1)
+                )
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
+            
+            Divider()
+                .overlay(DesignTokens.Monochrome.border)
+            
+            // Tab Content Body
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 20) {
+                    switch selectedTab {
+                    case .general:
+                        generalSettingsTab
+                    case .brain:
+                        aiBrainSettingsTab
+                    case .permissions:
+                        systemPermissionsTab
+                    case .account:
+                        accountAndPrivacyTab
+                    }
+                }
+                .padding(24)
+            }
+        }
+        .background(DesignTokens.Monochrome.windowBg)
+        .sheet(isPresented: $showingModelSetupSheet) {
+            VStack(spacing: 0) {
+                HStack {
+                    Spacer()
+                    Button("Done") {
+                        showingModelSetupSheet = false
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(16)
+                }
+                ModelSetupDashboardView()
+            }
+            .frame(minWidth: 780, minHeight: 620)
+            .background(Color(red: 0.08, green: 0.08, blue: 0.09))
+        }
+        .onAppear {
+            self.profileName = appState.userName
+            self.profileEmail = appState.userEmail
+            self.isSoundEnabled = BoringSoundEngine.shared.isSoundEnabled
+        }
+    }
+    
+    // MARK: - Tab 1: General & Hotkeys
+    
+    private var generalSettingsTab: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Hotkeys Card
+            settingsCard(title: "Voice Hotkeys & Triggers", icon: "keyboard.fill") {
+                VStack(spacing: 14) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Dictation Mode Hotkey")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text("Hold to speak, release to insert clean transcribed text into the active app.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                        Spacer()
+                        Text("fn / Globe (Hold)")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(DesignTokens.Monochrome.surfaceElevated)
+                            .cornerRadius(6)
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(DesignTokens.Monochrome.border, lineWidth: 1))
                     }
                     
-                    VStack(spacing: DesignTokens.Spacing.unit3) {
-                        // Mode Picker
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Execution Mode")
-                                    .font(DesignTokens.Typography.fontBodyMedium)
-                                    .foregroundColor(DesignTokens.Colors.textPrimary)
-                                Text(ModelRouter.shared.getStatusSummary().privacyDescription)
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .foregroundColor(DesignTokens.Colors.textMuted)
-                            }
-                            Spacer()
-                            Picker("", selection: $activeMode) {
-                                ForEach(ModelMode.allCases, id: \.self) { mode in
-                                    Text(mode.rawValue).tag(mode)
-                                }
-                            }
-                            .frame(width: 250)
-                            .onChange(of: activeMode) { newMode in
-                                ModelRouter.shared.currentMode = newMode
+                    Divider().overlay(DesignTokens.Monochrome.border)
+                    
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Agent Action Mode Hotkey")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text("Hold to issue natural voice actions across macOS, connected apps, and tools.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                        Spacer()
+                        Text("⌘ Command (Hold)")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(DesignTokens.Monochrome.surfaceElevated)
+                            .cornerRadius(6)
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(DesignTokens.Monochrome.border, lineWidth: 1))
+                    }
+                }
+            }
+            
+            // Audio Feedback Card
+            settingsCard(title: "Acoustic Audio Feedback", icon: "speaker.wave.2.fill") {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Earcons & Acoustic Feedback")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                        Text("Plays subtle, high-fidelity audio cues on voice start, plan dispatch, and completion.")
+                            .font(.system(size: 11))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                    }
+                    Spacer()
+                    
+                    Button(action: {
+                        BoringSoundEngine.shared.playDone()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "play.circle")
+                            Text("Test Earcon")
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(DesignTokens.Monochrome.surfaceElevated)
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Toggle("", isOn: $isSoundEnabled)
+                        .labelsHidden()
+                        .toggleStyle(SwitchToggleStyle(tint: Color.blue))
+                        .onChange(of: isSoundEnabled) { enabled in
+                            BoringSoundEngine.shared.isSoundEnabled = enabled
+                            if enabled {
+                                BoringSoundEngine.shared.playDone()
                             }
                         }
-                        
-                        Divider()
-                            .overlay(DesignTokens.Colors.cardBorder)
-                        
-                        if activeMode == .googleSearch {
-                            googleSearchSettingsCard
-                            Divider()
-                                .overlay(DesignTokens.Colors.cardBorder)
+                }
+            }
+            
+            // Profile Card
+            settingsCard(title: "User Profile & Identity", icon: "person.text.rectangle.fill") {
+                VStack(spacing: 12) {
+                    HStack {
+                        Text("Display Name")
+                            .font(.system(size: 12))
+                            .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                            .frame(width: 110, alignment: .leading)
+                        TextField("Name", text: $profileName)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    
+                    HStack {
+                        Text("Email Address")
+                            .font(.system(size: 12))
+                            .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                            .frame(width: 110, alignment: .leading)
+                        TextField("Email", text: $profileEmail)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    
+                    HStack {
+                        if profileSavedNotice {
+                            Text("✓ Profile saved successfully")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color.green)
                         }
-                        
-                        // Cloud Credentials (Keychain Protected)
-                        VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit2) {
-                            Text("Cloud API Keys (macOS Keychain Protected)")
-                                .font(DesignTokens.Typography.fontCaptionBold)
-                                .foregroundColor(DesignTokens.Colors.textMuted)
-                            
-                            HStack {
-                                Text("OpenAI API Key:")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .frame(width: 120, alignment: .leading)
-                                SecureField("sk-proj-...", text: $openAIKey)
-                                    .textFieldStyle(.roundedBorder)
-                                Button("Save") {
-                                    KeychainService.shared.set(openAIKey, for: .openAIApiKey)
-                                    showSaved("OpenAI Key Saved")
-                                }
+                        Spacer()
+                        Button(action: {
+                            appState.updateProfile(name: profileName, email: profileEmail)
+                            profileSavedNotice = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                profileSavedNotice = false
                             }
-                            
-                            HStack {
-                                Text("Claude API Key:")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .frame(width: 120, alignment: .leading)
-                                SecureField("sk-ant-...", text: $claudeKey)
-                                    .textFieldStyle(.roundedBorder)
-                                Button("Save") {
-                                    KeychainService.shared.set(claudeKey, for: .anthropicApiKey)
-                                    showSaved("Claude Key Saved")
-                                }
-                            }
-                            
-                            HStack {
-                                Text("Search API Key:")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .frame(width: 120, alignment: .leading)
-                                SecureField("Brave / Tavily Key", text: $searchKey)
-                                    .textFieldStyle(.roundedBorder)
-                                Button("Save") {
-                                    KeychainService.shared.set(searchKey, for: .searchProviderKey)
-                                    showSaved("Search Key Saved")
-                                }
-                            }
-                        }
-                        
-                        Divider()
-                            .overlay(DesignTokens.Colors.cardBorder)
-                        
-                        // Ollama Local Status
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack {
-                                    Circle()
-                                        .fill(OllamaProvider.shared.isInstalledAndRunning ? Color.green : Color.orange)
-                                        .frame(width: 8, height: 8)
-                                    Text("Ollama Local Daemon")
-                                        .font(DesignTokens.Typography.fontBodyMedium)
-                                        .foregroundColor(DesignTokens.Colors.textPrimary)
-                                }
-                                Text(OllamaProvider.shared.isInstalledAndRunning ? "Running at http://localhost:11434 (Qwen/Llama)" : "Not detected. Install from ollama.com or use Cloud mode.")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .foregroundColor(DesignTokens.Colors.textMuted)
-                            }
-                            Spacer()
-                            if !OllamaProvider.shared.isInstalledAndRunning {
-                                Link("Setup Guide", destination: URL(string: "https://ollama.com")!)
-                                    .font(DesignTokens.Typography.fontCaption)
-                            }
-                        }
-                        
-                        Divider()
-                            .overlay(DesignTokens.Colors.cardBorder)
-                        
-                        // Test Everything & Capability Probe
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Model Capability & Health Check")
-                                    .font(DesignTokens.Typography.fontBodyMedium)
-                                    .foregroundColor(DesignTokens.Colors.textPrimary)
-                                Text("Runs live mini-probes to test streaming, tool calling, and latency.")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .foregroundColor(DesignTokens.Colors.textMuted)
-                            }
-                            Spacer()
-                            Button(action: runLiveCapabilityProbe) {
-                                HStack(spacing: 4) {
-                                    if isProbingEverything {
-                                        ProgressView().scaleEffect(0.6)
-                                    } else {
-                                        Image(systemName: "bolt.badge.checkmark.fill")
-                                    }
-                                    Text("Test Everything")
-                                }
-                                .font(DesignTokens.Typography.fontCaptionBold)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 10)
+                        }) {
+                            Text("Save Profile")
+                                .font(.system(size: 12, weight: .semibold))
+                                .padding(.horizontal, 12)
                                 .padding(.vertical, 5)
-                                .background(DesignTokens.Gradients.brand)
-                                .cornerRadius(DesignTokens.Radius.sm)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(isProbingEverything)
-                        }
-                        
-                        if !probeResultsText.isEmpty {
-                            Text(probeResultsText)
-                                .font(DesignTokens.Typography.fontCaption)
-                                .foregroundColor(DesignTokens.Colors.accentGreen)
-                                .padding(8)
-                                .background(Color.green.opacity(0.08))
+                                .background(Color.blue)
+                                .foregroundColor(.white)
                                 .cornerRadius(6)
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(DesignTokens.Spacing.unit4)
-                    .background(DesignTokens.Colors.cardBackground)
-                    .cornerRadius(DesignTokens.Radius.md)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
-                            .stroke(DesignTokens.Colors.cardBorder, lineWidth: 0.5)
-                    )
                 }
-                
-                // Profile Section
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit4) {
+            }
+        }
+    }
+    
+    // MARK: - Tab 2: AI Brain & Models
+    
+    private var aiBrainSettingsTab: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Execution Mode
+            settingsCard(title: "Execution Mode", icon: "cpu.fill") {
+                VStack(alignment: .leading, spacing: 14) {
                     HStack {
-                        Image(systemName: "person.crop.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(DesignTokens.Colors.accentBlue)
-                        Text("User Profile")
-                            .font(DesignTokens.Typography.fontTitle3)
-                            .foregroundColor(DesignTokens.Colors.textPrimary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Active Intelligence Routing")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text(ModelRouter.shared.getStatusSummary().privacyDescription)
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
                         Spacer()
-                        if profileSavedNotice {
-                            Text("Profile saved!")
-                                .font(DesignTokens.Typography.fontCaptionBold)
-                                .foregroundColor(DesignTokens.Colors.accentGreen)
+                        Picker("", selection: $activeMode) {
+                            ForEach(ModelMode.allCases, id: \.self) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .frame(width: 240)
+                        .onChange(of: activeMode) { newMode in
+                            ModelRouter.shared.currentMode = newMode
                         }
                     }
-                    
-                    VStack(spacing: DesignTokens.Spacing.unit3) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Display Name")
-                                    .font(DesignTokens.Typography.fontBodyMedium)
-                                    .foregroundColor(DesignTokens.Colors.textPrimary)
-                                Text("Used for personalized greetings and voice assistant identity.")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .foregroundColor(DesignTokens.Colors.textMuted)
-                            }
-                            Spacer()
-                            TextField("Name", text: $profileName)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 180)
-                        }
-                        
-                        Divider()
-                            .overlay(DesignTokens.Colors.cardBorder)
-                        
-                        if activeMode == .googleSearch {
-                            googleSearchSettingsCard
-                            Divider()
-                                .overlay(DesignTokens.Colors.cardBorder)
-                        }
-                        
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Email Address")
-                                    .font(DesignTokens.Typography.fontBodyMedium)
-                                    .foregroundColor(DesignTokens.Colors.textPrimary)
-                                Text("Associated with this Mac profile and local preferences.")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .foregroundColor(DesignTokens.Colors.textMuted)
-                            }
-                            Spacer()
-                            TextField("Email", text: $profileEmail)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 180)
-                        }
-                        
-                        Divider()
-                            .overlay(DesignTokens.Colors.cardBorder)
-                        
-                        if activeMode == .googleSearch {
-                            googleSearchSettingsCard
-                            Divider()
-                                .overlay(DesignTokens.Colors.cardBorder)
-                        }
-                        
-                        HStack {
-                            Spacer()
-                            Button(action: saveProfile) {
-                                Text("Save Profile")
-                                    .font(DesignTokens.Typography.fontCaptionBold)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 6)
-                                    .background(DesignTokens.Gradients.brand)
-                                    .cornerRadius(DesignTokens.Radius.sm)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(DesignTokens.Spacing.unit4)
-                    .background(DesignTokens.Colors.cardBackground)
-                    .cornerRadius(DesignTokens.Radius.md)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
-                            .stroke(DesignTokens.Colors.cardBorder, lineWidth: 0.5)
-                    )
                 }
-                
-                // Floating Orb Trigger Section
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit4) {
-                    Text("Floating Trigger Orb")
-                        .font(DesignTokens.Typography.fontTitle3)
-                        .foregroundColor(DesignTokens.Colors.textPrimary)
-                    
-                    VStack(spacing: DesignTokens.Spacing.unit3) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Show Floating Orb")
-                                    .font(DesignTokens.Typography.fontBodyMedium)
-                                    .foregroundColor(DesignTokens.Colors.textPrimary)
-                                Text("Display draggable circular sound wave orb. Click to toggle this app panel.")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .foregroundColor(DesignTokens.Colors.textMuted)
-                            }
-                            Spacer()
-                            Toggle("", isOn: $appState.isFloatingOrbVisible)
-                                .labelsHidden()
-                                .toggleStyle(SwitchToggleStyle(tint: DesignTokens.Colors.accentBlue))
-                        }
-                    }
-                    .padding(DesignTokens.Spacing.unit4)
-                    .background(DesignTokens.Colors.cardBackground)
-                    .cornerRadius(DesignTokens.Radius.md)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
-                            .stroke(DesignTokens.Colors.cardBorder, lineWidth: 0.5)
-                    )
-                }
-
-                // "THE VOICE" Hands-Free Ambient Wake Word Section
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit4) {
+            }
+            
+            // In-App Local Models & Dashboard Card
+            settingsCard(title: "Local On-Device Models", icon: "internaldrive.fill") {
+                VStack(alignment: .leading, spacing: 14) {
                     HStack {
-                        Image(systemName: "waveform.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(DesignTokens.Colors.accentBlue)
-                        Text("THE VOICE Mode (Ambient Wake-Word)")
-                            .font(DesignTokens.Typography.fontTitle3)
-                            .foregroundColor(DesignTokens.Colors.textPrimary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Core 3 Architecture (100% Offline)")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text("The Brain (Llama 3.2 3B), The Eyes (Qwen2-VL 7B), and The Voice (Kokoro 82M).")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                        Spacer()
+                        Button(action: {
+                            showingModelSetupSheet = true
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                Text("Open Model Setup Dashboard")
+                            }
+                            .font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
                     }
                     
-                    VStack(spacing: DesignTokens.Spacing.unit3) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Enable \"Voice ...\" Wake-Word")
-                                    .font(DesignTokens.Typography.fontBodyMedium)
-                                    .foregroundColor(DesignTokens.Colors.textPrimary)
-                                Text("Remains idle until you speak \"Voice do this...\", then executes autonomously without touching any key.")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .foregroundColor(DesignTokens.Colors.textMuted)
-                            }
-                            Spacer()
-                            Toggle("", isOn: $appState.isTheVoiceModeEnabled)
-                                .labelsHidden()
-                                .toggleStyle(SwitchToggleStyle(tint: DesignTokens.Colors.accentBlue))
+                    Divider().overlay(DesignTokens.Monochrome.border)
+                    
+                    // Hardware & Dynamic RAM Status
+                    HStack {
+                        let hw = HardwareProfileDetector.shared.detectHardware()
+                        HStack(spacing: 6) {
+                            Image(systemName: "memorychip")
+                                .foregroundColor(hw.hasLowMemoryGuardrail ? .orange : .green)
+                            Text("\(Int(hw.totalRamGigabytes)) GB RAM Detected")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                        }
+                        
+                        Spacer()
+                        
+                        Text("Dynamic RAM Suspension: Active")
+                            .font(.system(size: 11))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                    }
+                }
+            }
+            
+            // Cloud Credentials
+            settingsCard(title: "Cloud API Keys (macOS Keychain)", icon: "key.fill") {
+                VStack(spacing: 12) {
+                    HStack {
+                        Text("OpenAI Key:")
+                            .font(.system(size: 12))
+                            .frame(width: 100, alignment: .leading)
+                            .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                        SecureField("sk-proj-...", text: $openAIKey)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Save") {
+                            KeychainService.shared.set(openAIKey, for: .openAIApiKey)
+                            showNotice("OpenAI Key Saved")
                         }
                     }
-                    .padding(DesignTokens.Spacing.unit4)
-                    .background(DesignTokens.Colors.cardBackground)
-                    .cornerRadius(DesignTokens.Radius.md)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
-                            .stroke(DesignTokens.Colors.cardBorder, lineWidth: 0.5)
-                    )
-                }
-
-                // AI Persona Section
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit4) {
-                    Text("AI Persona & Tone")
-                        .font(DesignTokens.Typography.fontTitle3)
-                        .foregroundColor(DesignTokens.Colors.textPrimary)
                     
-                    VStack(spacing: DesignTokens.Spacing.unit3) {
+                    HStack {
+                        Text("Claude Key:")
+                            .font(.system(size: 12))
+                            .frame(width: 100, alignment: .leading)
+                            .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                        SecureField("sk-ant-...", text: $claudeKey)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Save") {
+                            KeychainService.shared.set(claudeKey, for: .anthropicApiKey)
+                            showNotice("Claude Key Saved")
+                        }
+                    }
+                    
+                    if !keySavedNotice.isEmpty {
                         HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Active Persona")
-                                    .font(DesignTokens.Typography.fontBodyMedium)
-                                    .foregroundColor(DesignTokens.Colors.textPrimary)
-                                Text("Choose between supportive Friday, theatrical Ultron, or witty Roast Mode.")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .foregroundColor(DesignTokens.Colors.textMuted)
-                            }
+                            Text("✓ \(keySavedNotice)")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color.green)
                             Spacer()
-                            Picker("", selection: Binding(
-                                get: { PersonaManager.shared.getActivePersona() },
-                                set: { PersonaManager.shared.setPersona($0) }
-                            )) {
-                                ForEach(PersonaType.allCases) { persona in
-                                    Text(persona.rawValue).tag(persona)
+                        }
+                    }
+                }
+            }
+            
+            // Google Search Settings (if mode is Google Search or general)
+            if activeMode == .googleSearch {
+                settingsCard(title: "Google Search Mode Options", icon: "globe") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Quota: \(GoogleSearchEngine.shared.getUsedDailyQuota()) / 100 queries used today")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(Color.green)
+                        
+                        HStack {
+                            Text("Google API Key:")
+                                .font(.system(size: 12))
+                                .frame(width: 110, alignment: .leading)
+                                .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                            SecureField("AIzaSy... (Optional)", text: $googleApiKey)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Save") {
+                                KeychainService.shared.set(googleApiKey, for: .googleSearchApiKey)
+                                showNotice("Google Key Saved")
+                            }
+                        }
+                        
+                        HStack {
+                            Button(action: testGoogleSearch) {
+                                HStack(spacing: 4) {
+                                    if isTestingGoogle { ProgressView().scaleEffect(0.6) }
+                                    Text(isTestingGoogle ? "Testing..." : "Test Google Query")
                                 }
-                            }
-                            .frame(width: 150)
-                        }
-                    }
-                    .padding(DesignTokens.Spacing.unit4)
-                    .background(DesignTokens.Colors.cardBackground)
-                    .cornerRadius(DesignTokens.Radius.md)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
-                            .stroke(DesignTokens.Colors.cardBorder, lineWidth: 0.5)
-                    )
-                }
-
-                // Voice Core & Hotkeys Section
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit4) {
-                    Text("Voice Core & Hotkeys")
-                        .font(DesignTokens.Typography.fontTitle3)
-                        .foregroundColor(DesignTokens.Colors.textPrimary)
-                    
-                    VStack(spacing: DesignTokens.Spacing.unit3) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Dictation Mode Hotkey")
-                                    .font(DesignTokens.Typography.fontBodyMedium)
-                                    .foregroundColor(DesignTokens.Colors.textPrimary)
-                                Text("Hold to speak, release to insert cleaned text in active app.")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .foregroundColor(DesignTokens.Colors.textMuted)
-                            }
-                            Spacer()
-                            Text("fn (hold)")
-                                .font(DesignTokens.Typography.fontKeyCap)
+                                .font(.system(size: 11, weight: .medium))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 4)
-                                .background(DesignTokens.Colors.inputBackground)
-                                .cornerRadius(DesignTokens.Radius.xs)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: DesignTokens.Radius.xs)
-                                        .stroke(DesignTokens.Colors.cardBorder, lineWidth: 1)
-                                )
-                        }
-                        
-                        Divider()
-                        
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Agent Mode Hotkey")
-                                    .font(DesignTokens.Typography.fontBodyMedium)
-                                    .foregroundColor(DesignTokens.Colors.textPrimary)
-                                Text("Hold to trigger actions across your Mac and connected apps.")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .foregroundColor(DesignTokens.Colors.textMuted)
-                            }
-                            Spacer()
-                            Text("⌘ command (hold)")
-                                .font(DesignTokens.Typography.fontKeyCap)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(DesignTokens.Colors.inputBackground)
-                                .cornerRadius(DesignTokens.Radius.xs)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: DesignTokens.Radius.xs)
-                                        .stroke(DesignTokens.Colors.cardBorder, lineWidth: 1)
-                                )
-                        }
-                    }
-                    .padding(DesignTokens.Spacing.unit4)
-                    .background(DesignTokens.Colors.cardBackground)
-                    .cornerRadius(DesignTokens.Radius.md)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
-                            .stroke(DesignTokens.Colors.cardBorder, lineWidth: 0.5)
-                    )
-                }
-                
-                // System Permissions Doctor
-                PermissionsDoctorView()
-                
-                // Audio Feedback & Earcons
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit4) {
-                    Text("Sound & Earcons")
-                        .font(DesignTokens.Typography.fontTitle3)
-                        .foregroundColor(DesignTokens.Colors.textPrimary)
-                    
-                    VStack(spacing: DesignTokens.Spacing.unit3) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Earcons & Acoustic Feedback")
-                                    .font(DesignTokens.Typography.fontBodyMedium)
-                                    .foregroundColor(DesignTokens.Colors.textPrimary)
-                                Text("Subtle audio cues on recording start, stop, and agent completion.")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .foregroundColor(DesignTokens.Colors.textMuted)
-                            }
-                            Spacer()
-                            Button(action: playTestChime) {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "speaker.wave.2")
-                                        .font(.system(size: 11))
-                                    Text("Test Earcon")
-                                        .font(DesignTokens.Typography.fontCaption)
-                                }
-                                .foregroundColor(DesignTokens.Colors.accentBlue)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(DesignTokens.Colors.inputBackground)
-                                .cornerRadius(DesignTokens.Radius.xs)
+                                .background(DesignTokens.Monochrome.surfaceElevated)
+                                .cornerRadius(6)
                             }
                             .buttonStyle(.plain)
+                            .disabled(isTestingGoogle)
                             
-                            Toggle("", isOn: $settings.soundFeedbackEnabled)
-                                .labelsHidden()
-                                .toggleStyle(SwitchToggleStyle(tint: DesignTokens.Colors.accentBlue))
-                                .onChange(of: settings.soundFeedbackEnabled) { enabled in
-                                    BoringSoundEngine.shared.isSoundEnabled = enabled
-                                    if enabled {
-                                        BoringSoundEngine.shared.playDone()
-                                    }
-                                }
-                        }
-                    }
-                    .padding(DesignTokens.Spacing.unit4)
-                    .background(DesignTokens.Colors.cardBackground)
-                    .cornerRadius(DesignTokens.Radius.md)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
-                            .stroke(DesignTokens.Colors.cardBorder, lineWidth: 0.5)
-                    )
-                }
-                
-                // User Account & Session Section
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit4) {
-                    HStack {
-                        Image(systemName: "person.badge.shield.checkmark")
-                            .font(.system(size: 16))
-                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                        Text("Account & Offline Session")
-                            .font(DesignTokens.Typography.fontTitle3)
-                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                    }
-                    
-                    VStack(spacing: DesignTokens.Spacing.unit3) {
-                        if let account = AccountAuthService.shared.currentAccount {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(account.displayName)
-                                        .font(DesignTokens.Typography.fontBodyMedium)
-                                        .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                                    Text("\(account.email) • Provider: \(account.authProvider.capitalized)")
-                                        .font(DesignTokens.Typography.fontCaption)
-                                        .foregroundColor(DesignTokens.Monochrome.textSecondary)
-                                }
-                                Spacer()
-                                Button("Log Out") {
-                                    AccountAuthService.shared.logOut()
-                                }
-                                .font(DesignTokens.Typography.fontCaption)
-                            }
-                            
-                            Divider().overlay(DesignTokens.Monochrome.border)
-                            
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Offline Grace Period")
-                                        .font(DesignTokens.Typography.fontBodyMedium)
-                                        .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                                    Text("Valid for 30 days offline. All local features remain fully functional without internet.")
-                                        .font(DesignTokens.Typography.fontCaption)
-                                        .foregroundColor(DesignTokens.Monochrome.textMuted)
-                                }
-                                Spacer()
-                                Text("Active")
-                                    .font(DesignTokens.Typography.fontCaptionBold)
+                            if !googleTestResult.isEmpty {
+                                Text(googleTestResult)
+                                    .font(.system(size: 11))
                                     .foregroundColor(Color.green)
                             }
-                            
-                            Divider().overlay(DesignTokens.Monochrome.border)
-                            
-                            HStack(spacing: 12) {
-                                Button("Export Data (JSON)") {
-                                    let json = AccountAuthService.shared.exportUserDataJSON()
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(json, forType: .string)
-                                    showSaved("Account data copied to clipboard.")
-                                }
-                                .font(DesignTokens.Typography.fontCaption)
-                                
-                                Spacer()
-                                
-                                Button("Delete Account") {
-                                    try? AccountAuthService.shared.deleteAccount()
-                                }
-                                .font(DesignTokens.Typography.fontCaption)
-                                .foregroundColor(Color.red)
-                            }
-                        } else {
-                            HStack {
-                                Text("Using Voice.AI without an active account.")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
-                                Spacer()
-                                Button("Open Setup Assistant") {
-                                    SetupWindowController.shared.showSetupWindow(appState: appState) {}
-                                }
-                                .font(DesignTokens.Typography.fontCaptionBold)
-                            }
                         }
                     }
-                    .padding(DesignTokens.Spacing.unit4)
-                    .background(DesignTokens.Monochrome.surface)
-                    .cornerRadius(DesignTokens.Radius.md)
-                    .overlay(RoundedRectangle(cornerRadius: DesignTokens.Radius.md).stroke(DesignTokens.Monochrome.border, lineWidth: 1))
                 }
-                
-                // Offline Storage & Models Management Section
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit4) {
+            }
+            
+            // Live Health Probe
+            settingsCard(title: "Health & Capability Probe", icon: "bolt.badge.checkmark.fill") {
+                VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Image(systemName: "internaldrive")
-                            .font(.system(size: 16))
-                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                        Text("Storage & Offline Verification")
-                            .font(DesignTokens.Typography.fontTitle3)
-                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Active Model Live Audit")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text("Tests response streaming, tool calling schema, and tokens/sec latency.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                        Spacer()
+                        Button(action: runHealthProbe) {
+                            HStack(spacing: 4) {
+                                if isProbingHealth { ProgressView().scaleEffect(0.6) }
+                                Text(isProbingHealth ? "Probing..." : "Run Health Check")
+                            }
+                            .font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isProbingHealth)
                     }
                     
-                    VStack(spacing: DesignTokens.Spacing.unit3) {
-                        ForEach(LocalModelDownloadManager.shared.listInstalledModels(), id: \.name) { model in
-                            HStack {
-                                Text(model.name)
-                                    .font(DesignTokens.Typography.fontBodyMedium)
+                    if !healthProbeResult.isEmpty {
+                        Text(healthProbeResult)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(Color.green)
+                            .padding(8)
+                            .background(Color.green.opacity(0.08))
+                            .cornerRadius(6)
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Tab 3: System Access
+    
+    private var systemPermissionsTab: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            PermissionsDoctorView()
+        }
+    }
+    
+    // MARK: - Tab 4: Account & Privacy
+    
+    private var accountAndPrivacyTab: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Account Session
+            settingsCard(title: "Account & Offline Grace Period", icon: "person.badge.shield.checkmark.fill") {
+                VStack(spacing: 12) {
+                    if let account = AccountAuthService.shared.currentAccount {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(account.displayName)
+                                    .font(.system(size: 13, weight: .bold))
                                     .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                                Spacer()
-                                Text("\(model.sizeMB) MB")
-                                    .font(DesignTokens.Typography.fontCaption)
+                                Text("\(account.email) • Provider: \(account.authProvider.capitalized)")
+                                    .font(.system(size: 11))
                                     .foregroundColor(DesignTokens.Monochrome.textMuted)
                             }
+                            Spacer()
+                            Button("Log Out") {
+                                AccountAuthService.shared.logOut()
+                            }
+                            .font(.system(size: 11))
                         }
                         
                         Divider().overlay(DesignTokens.Monochrome.border)
                         
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Offline Proof Verification")
-                                    .font(DesignTokens.Typography.fontBodyMedium)
+                                Text("Offline Grace Period")
+                                    .font(.system(size: 12, weight: .medium))
                                     .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                                Text("Confirms speech recognition, local chat model, and audio synthesis without Wi-Fi.")
-                                    .font(DesignTokens.Typography.fontCaption)
+                                Text("Valid for 30 days offline. Local voice control remains fully operational.")
+                                    .font(.system(size: 11))
                                     .foregroundColor(DesignTokens.Monochrome.textMuted)
                             }
                             Spacer()
-                            Button("Run Offline Check") {
-                                showSaved("✓ Offline check passed: Local model, Whisper STT, and TTS responding.")
-                            }
-                            .font(DesignTokens.Typography.fontCaptionBold)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(DesignTokens.Monochrome.buttonPrimaryBg)
-                            .foregroundColor(DesignTokens.Monochrome.buttonPrimaryText)
-                            .cornerRadius(6)
+                            Text("Active ✓")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color.green)
                         }
-                    }
-                    .padding(DesignTokens.Spacing.unit4)
-                    .background(DesignTokens.Monochrome.surface)
-                    .cornerRadius(DesignTokens.Radius.md)
-                    .overlay(RoundedRectangle(cornerRadius: DesignTokens.Radius.md).stroke(DesignTokens.Monochrome.border, lineWidth: 1))
-                }
-                
-                // Data & Reset Section
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit4) {
-                    Text("Data & Privacy")
-                        .font(DesignTokens.Typography.fontTitle3)
-                        .foregroundColor(DesignTokens.Colors.textPrimary)
-                    
-                    VStack(spacing: DesignTokens.Spacing.unit3) {
+                    } else {
                         HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Reset All Statistics & History")
-                                    .font(DesignTokens.Typography.fontBodyMedium)
-                                    .foregroundColor(Color.red)
-                                Text("Clears all sessions, word counts, and history records to a fresh state.")
-                                    .font(DesignTokens.Typography.fontCaption)
-                                    .foregroundColor(DesignTokens.Colors.textMuted)
-                            }
+                            Text("Running Voice.AI in Local Guest Session.")
+                                .font(.system(size: 12))
+                                .foregroundColor(DesignTokens.Monochrome.textSecondary)
                             Spacer()
-                            Button(action: {
-                                showingResetAlert = true
-                            }) {
-                                Text("Reset Data")
-                                    .font(DesignTokens.Typography.fontCaptionBold)
-                                    .foregroundColor(Color.red)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(Color.red.opacity(0.08))
-                                    .cornerRadius(DesignTokens.Radius.sm)
+                            Button("Sign Up / Log In") {
+                                SetupWindowController.shared.showSetupWindow(appState: appState) {}
                             }
-                            .buttonStyle(.plain)
-                            .alert(isPresented: $showingResetAlert) {
-                                Alert(
-                                    title: Text("Reset All Data"),
-                                    message: Text("Are you sure you want to reset all session statistics and clear voice history?"),
-                                    primaryButton: .destructive(Text("Reset Everything")) {
-                                        appState.resetAllStatistics()
-                                    },
-                                    secondaryButton: .cancel()
-                                )
-                            }
+                            .font(.system(size: 11, weight: .bold))
                         }
                     }
-                    .padding(DesignTokens.Spacing.unit4)
-                    .background(DesignTokens.Colors.cardBackground)
-                    .cornerRadius(DesignTokens.Radius.md)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
-                            .stroke(DesignTokens.Colors.cardBorder, lineWidth: 0.5)
-                    )
                 }
             }
-            .padding(DesignTokens.Spacing.unit6)
+            
+            // Performance & Cache Metrics
+            settingsCard(title: "Semantic Action Cache", icon: "bolt.fill") {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Cached UI Layout Coordinates")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                        Text("\(SemanticActionCache.shared.cachedEntriesCount) verified button coordinates cached for sub-5ms instant execution.")
+                            .font(.system(size: 11))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                    }
+                    Spacer()
+                    Button("Clear Cache") {
+                        SemanticActionCache.shared.clear()
+                        showNotice("Cache reset.")
+                    }
+                    .font(.system(size: 11))
+                }
+            }
+            
+            // Data Management & Reset
+            settingsCard(title: "Data Management & Privacy", icon: "trash.fill") {
+                VStack(spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Export Local Data")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text("Copies encrypted account history and profile to system clipboard as JSON.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                        Spacer()
+                        Button("Export JSON") {
+                            let json = AccountAuthService.shared.exportUserDataJSON()
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(json, forType: .string)
+                            showNotice("Data copied to clipboard.")
+                        }
+                        .font(.system(size: 11))
+                    }
+                    
+                    Divider().overlay(DesignTokens.Monochrome.border)
+                    
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Reset All Conversation Data")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(Color.red)
+                            Text("Clears all sessions, word counts, and history records.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                        Spacer()
+                        Button("Reset Everything") {
+                            showingResetAlert = true
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color.red)
+                        .alert(isPresented: $showingResetAlert) {
+                            Alert(
+                                title: Text("Reset All Conversation Data"),
+                                message: Text("Are you sure you want to clear all history records and session statistics?"),
+                                primaryButton: .destructive(Text("Reset")) {
+                                    appState.resetAllStatistics()
+                                },
+                                secondaryButton: .cancel()
+                            )
+                        }
+                    }
+                }
+            }
         }
-        .onAppear {
-            self.profileName = appState.userName
-            self.profileEmail = appState.userEmail
+    }
+    
+    // MARK: - Reusable Settings Card Container
+    
+    @ViewBuilder
+    private func settingsCard<Content: View>(
+        title: String,
+        icon: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundColor(Color.blue)
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                Spacer()
+            }
+            
+            content()
+        }
+        .padding(16)
+        .background(DesignTokens.Monochrome.surface)
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(DesignTokens.Monochrome.border, lineWidth: 1)
+        )
+    }
+    
+    // MARK: - Actions
+    
+    private func showNotice(_ text: String) {
+        keySavedNotice = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            keySavedNotice = ""
+        }
+    }
+    
+    private func runHealthProbe() {
+        isProbingHealth = true
+        healthProbeResult = "Probing active model..."
+        Task {
+            let model = ModelRouter.shared.resolveChatModel()
+            let profile = await ModelCapabilityDetector.shared.probeChat(model: model, forceRefresh: true)
+            await MainActor.run {
+                self.isProbingHealth = false
+                self.healthProbeResult = "✓ Verified: Streaming=\(profile.streaming), Tools=\(profile.toolCalling), Speed=\(profile.speedTokensPerSec) tok/s (\(model.providerName): \(model.modelIdentifier))"
+            }
+        }
+    }
+    
+    private func testGoogleSearch() {
+        isTestingGoogle = true
+        googleTestResult = ""
+        Task {
+            if !googleApiKey.isEmpty {
+                KeychainService.shared.set(googleApiKey, for: .googleSearchApiKey)
+            }
+            let card = await GoogleSearchEngine.shared.answerQuestion(query: "What is the capital of India?")
+            await MainActor.run {
+                self.googleTestResult = "✓ Received: \"\(card.answerText.prefix(35))...\" (\(card.methodLabel))"
+                self.isTestingGoogle = false
+            }
         }
     }
 }

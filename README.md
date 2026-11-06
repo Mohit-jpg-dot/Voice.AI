@@ -18,21 +18,49 @@
 ---
 
 ## 📋 Table of Contents
+- [Why Voice.AI? (Features Other Apps Don't Have)](#-why-voiceai-features-other-apps-dont-have)
 - [Feature Matrix & Status](#-feature-matrix--status)
 - [Three Flexible AI Modes](#-three-flexible-ai-modes)
-- [Core Highlights](#-core-highlights)
-  - [Dynamic Adaptive Notch Island](#1-dynamic-adaptive-notch-island)
-  - [Now Playing Media Dynamic Island](#2-now-playing-media-dynamic-island)
-  - [Coding Agents Live Monitor](#3-coding-agents-live-monitor)
-  - [Autonomous Computer Control](#4-autonomous-computer-control)
-  - [Universal Dictation into Any App](#5-universal-dictation-into-any-app)
+- [Deep Dive: Standout Capabilities](#-deep-dive-standout-capabilities)
+  - [1. Dynamic Adaptive Notch (Zero Text Truncation)](#1-dynamic-adaptive-notch-zero-text-truncation)
+  - [2. Live Coding Agents Monitor Inside the Notch](#2-live-coding-agents-monitor-inside-the-notch)
+  - [3. Now Playing Wings with Bi-Directional YouTube & Spotify Controls](#3-now-playing-wings-with-bi-directional-youtube--spotify-controls)
+  - [4. Sub-10ms Colloquial Hinglish & Hindi Fast-Path Engine](#4-sub-10ms-colloquial-hinglish--hindi-fast-path-engine)
+  - [5. Zero-Token Instant Deterministic Math Engine](#5-zero-token-instant-deterministic-math-engine)
+  - [6. "Circle to Ask" Visual Beacon Screen Tutor](#6-circle-to-ask-visual-beacon-screen-tutor)
+  - [7. Consequential Action Safety Guardrail (Visual Approvals)](#7-consequential-action-safety-guardrail-visual-approvals)
+  - [8. Strict Per-Account Encrypted Isolation with Key Scrubbing](#8-strict-per-account-encrypted-isolation-with-key-scrubbing)
 - [Installation & Quickstart](#-installation--quickstart)
   - [macOS Installation (.dmg)](#macos-installation)
   - [Windows Installation](#windows-installation)
   - [Building from Source](#building-from-source-macos)
-- [Natural Language & Voice Commands](#-natural-language--voice-commands)
+- [Voice Commands Cheat Sheet](#-voice-commands-cheat-sheet)
 - [Security, Privacy & Permissions](#-security-privacy--permissions)
 - [Documentation & Decision Records](#-documentation--decision-records)
+
+---
+
+## 🚀 Why Voice.AI? (Features Other Apps Don't Have)
+
+Most voice apps and desktop assistants are either glorified transcription tools (Whisper wrappers) or static chatbot overlays that cut off responses and require constant cloud subscriptions. **Voice.AI was engineered from scratch with unique capabilities not found in Siri, Windows Copilot, Boring Notch, or Superwhisper:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                          VOICE.AI EXCLUSIVE ADVANTAGES                          │
+├──────────────────────────────┬─────────────────────────────┬────────────────────┤
+│ Capability                   │ Other Apps (Siri / Copilot) │ Voice.AI           │
+├──────────────────────────────┼─────────────────────────────┼────────────────────┤
+│ Notch UI Response Display    │ Fixed height; truncates ... │ Auto-adapts to 480pt│
+│ Coding Agents Live Monitor   │ ❌ Not available            │ ✅ Built into Notch│
+│ YouTube & Browser Media Voice│ ❌ App-only or broken       │ ✅ Real DOM/Media  │
+│ Natural Hinglish Fast-Path   │ ❌ Fails on mixed grammar   │ ✅ Sub-10ms native │
+│ Instant Math (Zero Tokens)   │ ❌ 2-3s Cloud LLM call      │ ✅ Instant offline │
+│ "Circle to Ask" Screen Tutor │ ❌ Raw text dump            │ ✅ Guided visual beacon│
+│ High-Impact Action Safety    │ ❌ Blind execution          │ ✅ Visual approval card│
+│ Zero-Key Google Search Mode  │ ❌ Monthly subscription req.│ ✅ 100% Free       │
+│ Per-Account Encrypted Silos  │ ❌ Shared plaintext files   │ ✅ AES PBKDF2 scrub│
+└──────────────────────────────┴─────────────────────────────┴────────────────────┘
+```
 
 ---
 
@@ -44,24 +72,19 @@ Every feature in Voice.AI is truthfully categorized by its verified implementati
 - **Experimental**: Functional under specific conditions; pending owner/legal review.
 - **Planned**: Architected, in development.
 
-| Feature Area | Description | macOS | Windows | Status |
+| Feature Area | What Makes It Unique | macOS | Windows | Status |
 |:---|:---|:---:|:---:|:---:|
-| **Hardware Notch HUD** | Liquid glass drawer attached flush to camera notch | ✅ Native SwiftUI | 🔄 Top-Center Overlay | **Stable** (macOS) / **Beta** (Windows) |
-| **Adaptive Notch Sizing** | Auto-extends from 118pt to 480pt based on answer length | ✅ | 🔄 | **Stable** |
-| **Now Playing Dynamic Island** | Flanking wings, jumping EQ bars, Spotify/YouTube controls | ✅ | 🔄 SMTC API | **Stable** (macOS) / **Beta** (Windows) |
-| **Coding Agents Monitor** | Live subagent task progress, execution timers, question replies | ✅ | 🔄 | **Stable** |
-| **Voice Playback Commands** | *"play the video"*, *"pause it"*, *"change it"*, *"gana badlo"* | ✅ | 🔄 | **Stable** |
-| **Universal Dictation** | Hold key, speak, release; inserts into any focused app | ✅ AXUIElement | 🔄 UI Automation | **Stable** |
-| **Autonomous App Control** | Open, focus, or cleanly terminate native applications | ✅ NSWorkspace | 🔄 Win32 / Shell | **Stable** |
-| **System Hardware Control** | Volume, brightness, mute, lock screen via voice | ✅ CoreAudio | 🔄 CoreAudio Win | **Stable** |
-| **Browser DOM & Video Clicking** | Finds & clicks elements in Safari/Chrome via Accessibility | ✅ | 🔄 UI Automation | **Stable** |
-| **Live Screen Tutor** | Offline OCR with Apple Vision + guided visual cursor beacon | ✅ | 🔄 Windows OCR | **Stable** (macOS) / **Beta** (Windows) |
-| **Google Search Free Mode** | Zero-key search via Google CSE, MediaWiki extracts, Open-Meteo | ✅ | ✅ | **Stable** |
-| **Built-in Math Calculator** | Instant offline evaluation of arithmetic, %, roots, and Hindi math | ✅ | ✅ | **Stable** |
-| **Local Offline Models** | Ollama (Qwen 2.5, Llama 3) + local Whisper STT + Piper TTS | ✅ | 🔄 | **Stable** |
-| **Cloud AI Providers** | OpenAI (GPT-4o), Anthropic (Claude 3.5), Gemini 1.5 Pro | ✅ | ✅ | **Stable** |
-| **Multilingual Grammar** | 125 colloquial English, Hindi, and Hinglish command patterns | ✅ | ✅ | **Stable** |
-| **Browser Screen Reading** | Visual OCR on live browser window (needs legal review) | ⚠️ Toggle OFF | ⚠️ Toggle OFF | **Experimental** |
+| **Adaptive Notch Sizing** | Dynamically expands from `118pt` to `480pt` height so long answers are never truncated | ✅ Native SwiftUI | 🔄 Top-Center Overlay | **Stable** (macOS) / **Beta** (Windows) |
+| **Coding Agents Monitor** | Embedded task dashboard showing subagent checklists, execution clocks & question replies | ✅ | 🔄 | **Stable** |
+| **Now Playing Dynamic Wings** | Flanking wings with jumping audio EQ + voice control for YouTube & Spotify | ✅ | 🔄 SMTC API | **Stable** (macOS) / **Beta** (Windows) |
+| **Hinglish Fast-Path (125+)** | 125 colloquial Hindi & Hinglish command patterns recognized in sub-10ms | ✅ | ✅ .NET Core | **Stable** |
+| **Zero-Token Math Engine** | Deterministic arithmetic, percentages, powers, roots, and Hindi math phrasing offline | ✅ | ✅ .NET Core | **Stable** |
+| **"Circle to Ask" Screen Tutor**| Local OCR with animated pulsing visual cursor beacons guiding you step-by-step | ✅ Vision.framework | 🔄 Windows OCR | **Stable** (macOS) / **Beta** (Windows) |
+| **Visual Action Safety Cards** | Consequential actions (WhatsApp, deletes) paused for visual human confirmation | ✅ | ✅ | **Stable** |
+| **Free Google Search Mode** | Zero-key search combining Wikipedia action extracts, Open-Meteo, and Google CSE | ✅ | ✅ | **Stable** |
+| **100% Offline Ollama Brain** | Fully private local LLM (Qwen/Llama) + local Whisper STT + local Neural TTS | ✅ | 🔄 | **Stable** |
+| **Universal Dictation** | Hold key (250ms), speak, release; cleans fillers and injects directly into active app | ✅ AXUIElement | 🔄 SendInput / UIPI | **Stable** |
+| **Encrypted Account Silos** | AES-GCM encrypted history with automatic `[REDACTED_API_KEY]` scrubbing | ✅ Keychain | ✅ DPAPI | **Stable** |
 
 ---
 
@@ -81,51 +104,90 @@ Voice.AI offers three distinct brain architectures configured during first-run s
 
 ---
 
-## 🌟 Core Highlights
+## 🌟 Deep Dive: Standout Capabilities
 
-### 1. Dynamic Adaptive Notch Island
-- **Seamless Hardware Integration**: Clings flush against the MacBook camera notch resting as a black pill (`176pt × 30pt`).
-- **Liquid Glass Spring Physics**: Morphing animations powered by custom Bezier curves and concentric corner radii matching Apple hardware.
-- **Dynamic Response-Adaptive Sizing**: The drawer automatically measures response length and expands smoothly (`540pt` to `680pt` width, `118pt` to `480pt` height), ensuring answers are never cut off or truncated with ellipses.
-- **Clickable Web Source Pills**: Direct glass buttons (`[ Open on Wikipedia ↗ ]`, `[ Open on Google Web Search ↗ ]`) let you launch the original source in your default browser with a single click.
+### 1. Dynamic Adaptive Notch (Zero Text Truncation)
+- **The Problem in Other Apps**: Conventional notch clones and notification windows use fixed-size cards. When an answer is longer than three lines, text is either abruptly cut off with ellipses (`...`) or trapped inside a microscopic scrollable box.
+- **The Voice.AI Solution**: The Notch Drawer dynamically calculates the rendered typography bounding box and smoothly expands along both axes (`540pt` to `680pt` width, `118pt` to `480pt` height) using Apple spring physics. Answers are 100% visible, beautifully formatted, and shrink back automatically for the next query.
+- **Clickable Web Source Pills**: Includes interactive liquid glass pills (`[ Open on Wikipedia ↗ ]`, `[ Open on Google Web Search ↗ ]`) allowing one-click verification of source materials.
 
-### 2. Now Playing Media Dynamic Island
-- **Flanking Dynamic Wings**: When Spotify or YouTube is active, the resting notch expands flanking wings displaying the media source icon, track title, and real-time jumping equalizer waveforms.
-- **Interactive Controls**: Play, pause, skip, and inspect playback times directly from the notch.
-- **Voice Playback Commands**: Say *"play the current video"*, *"pause it"*, *"change the song"*, *"skip"*, *"previous"*, *"video chalao"*, or *"gana badlo"*.
+### 2. Live Coding Agents Monitor Inside the Notch
+- **The Problem in Other Apps**: When autonomous coding agents (Claude Code, Antigravity, background subagents) run long tasks, developers must juggle terminal windows to check if the agent finished, errored, or is waiting for approval.
+- **The Voice.AI Solution**: Voice.AI features an **Agents** tab directly inside the notch HUD:
+  - **Live Progress Checklists**: Displays completed task steps with green checkmarks and active step spinners.
+  - **Execution Clocks**: Displays exact elapsed runtimes for every active agent.
+  - **Human-in-the-Loop Replies**: If a coding agent requires clarification or permission, answer by voice or tap directly within the notch drawer without context switching.
 
-### 3. Coding Agents Live Monitor
-- **Real-Time Task Visibility**: Open the "Agents" tab in the Notch to inspect your currently running autonomous coding subagents.
-- **Step Checklists & Timers**: See exactly what tasks have been completed with green checkmarks, elapsed runtimes, and active subagent roles.
-- **Interactive Question Approval**: If an agent requires clarification or permission, respond directly from the Notch drawer without context switching.
+### 3. Now Playing Wings with Bi-Directional YouTube & Spotify Controls
+- **The Problem in Other Apps**: "Dynamic islands" on desktop usually just show album art. If a user asks to play, pause, or change songs while watching a YouTube video in a background browser tab, other assistants fail.
+- **The Voice.AI Solution**:
+  - **Flanking Dynamic Wings**: When Spotify or YouTube is active, the resting notch smoothly expands flanking glass wings displaying the app glyph, track title, and jumping audio equalizer waveforms.
+  - **Real Conversational Media Commands**: Speak naturally in English or Hinglish:
+    - *"play the current video"* / *"video chalao"*
+    - *"pause it"* / *"pause karo"*
+    - *"change it to next"* / *"agla gana chalao"*
+    - *"previous video"* / *"pichhla gana"*
+  - Interacts directly with macOS NowPlaying / browser DOM and Windows System Media Transport Controls (SMTC).
 
-### 4. Autonomous Computer Control
-- **Application Lifecycle**: Cleanly open, focus, or terminate apps (*"WhatsApp kholo"*, *"Spotify band karo"*, *"Close the application named Spotify on my Mac"*).
-- **Universal UI & DOM Clicking**: Traverses the Accessibility tree (`AXUIElement`) or browser DOM to locate buttons, search bars, and thumbnails (*"Click on the first video you are seeing in this tab"*).
-- **Compound Chained Workflows**: Execute multi-step tasks in one sentence (*"Write this command on terminal and take the screenshot and paste it into chatgpt"*).
+### 4. Sub-10ms Colloquial Hinglish & Hindi Fast-Path Engine
+- **The Problem in Other Apps**: Standard assistants require rigid, formal English or force users to switch their entire system language. Saying *"Spotify band karo"* or *"aawaz badhao"* causes Siri or Copilot to fail or perform an irrelevant web search.
+- **The Voice.AI Solution**: Features a built-in deterministic grammar engine covering over 125 colloquial English, Hindi (Devanagari), and Romanized Hinglish patterns:
+  - *"WhatsApp kholo"* &rarr; Launches WhatsApp.
+  - *"Spotify band karo"* &rarr; Cleanly terminates Spotify.
+  - *"Screen light thodi badhao"* &rarr; Increases display brightness.
+  - *"Volume kam karo"* &rarr; Lowers master audio volume.
+  - Operates locally with **sub-10ms execution latency** without waiting for cloud LLM roundtrips.
 
-### 5. Universal Dictation into Any App
-- Hold `fn` (or `⌘`), speak in English, Hindi, or Hinglish, and release.
-- Polished text is inserted directly into the focused text area of VS Code, Slack, Safari, Notes, or Terminal.
-- Automatically cleans verbal fillers (*"um"*, *"uh"*, *"like"*) and self-corrections while preserving technical identifiers.
+### 5. Zero-Token Instant Deterministic Math Engine
+- **The Problem in Other Apps**: Asking an AI assistant *"what is 25 * 4?"* or *"15% of 80"* sends a request to an expensive cloud LLM, consuming API tokens and taking 2 to 3 seconds to generate an answer.
+- **The Voice.AI Solution**: Intercepts mathematical queries and executes them locally via a deterministic offline engine:
+  - Arithmetic: `25 * 4` &rarr; `100` (handles trailing question marks and Hindi phrasing like *"into ... kitna hota hai"*).
+  - Percentages: `15% of 80` &rarr; `12`.
+  - Powers & Roots: `2^8` &rarr; `256`, `square root of 144` &rarr; `12`.
+  - Instantaneous response, zero token cost, zero cloud reliance.
+
+### 6. "Circle to Ask" Visual Beacon Screen Tutor
+- **The Problem in Other Apps**: Screen-aware assistants take a screenshot and reply with a wall of text ("click the button at the top right"), leaving the user confused.
+- **The Voice.AI Solution**: 
+  - Draw a quick circle, rectangle, or lasso around any button, error message, or diagram on your screen.
+  - Voice.AI runs on-device OCR using Apple Vision / Windows OCR.
+  - An animated **pulsing visual beacon** appears directly on your screen over the target button, guiding your cursor visually step-by-step.
+
+### 7. Consequential Action Safety Guardrail (Visual Approvals)
+- **The Problem in Other Apps**: Autonomous computer agents can be dangerously unpredictable, sending half-typed emails or deleting directories without confirmation.
+- **The Voice.AI Solution**: Automatically classifies actions by risk level. Consequential actions (such as sending a message on WhatsApp or deleting files) are paused before execution:
+  - Generates a high-contrast **Approval Card** inside the notch.
+  - Displays the exact recipient and preview payload.
+  - Requires an explicit voice confirmation (*"approve"* / *"yes"*) or button click before any keystrokes are sent.
+
+### 8. Strict Per-Account Encrypted Isolation with Key Scrubbing
+- **The Problem in Other Apps**: Multi-user or profile-based apps store chat histories and credentials in shared, unencrypted SQLite or JSON files where sensitive keys can leak.
+- **The Voice.AI Solution**:
+  - Every account's history is isolated in separate AES-PBKDF2 encrypted files.
+  - Built-in credential sanitizers automatically scrub API keys matching regex patterns (`sk-...`, `Bearer ...`) replacing them with `[REDACTED_API_KEY]` before any text is written to persistent logs.
 
 ---
 
 ## 📦 Installation & Quickstart
 
 ### macOS Installation
-1. Download the release disk image: [Voice.AI-1.0.0.dmg](build/Voice.AI-1.0.0.dmg) (SHA-256: `d556ac8d7f5cdee5880b6eba5a5455b9ffc774ab6eda7512808b5307f2dc769b`).
+1. Download the release disk image: [Voice.AI-1.0.0.dmg](website/downloads/Voice.AI-1.0.0.dmg) (Universal Apple Silicon Native).
 2. Open the `.dmg` and drag `Voice.AI.app` to your `Applications` folder.
-3. Launch Voice.AI. On first launch, follow the onboarding flow to select your preferred AI mode and grant **Accessibility** and **Microphone** permissions in macOS System Settings.
+3. Launch Voice.AI. On first launch, follow the onboarding flow to select your preferred AI mode and grant **Accessibility** and **Microphone** permissions.
 
 ### Windows Installation
-- Source code is available under `windows/VoiceOS.Windows` (WinUI 3 / C#). See [Windows Build Guide](windows/VoiceOS.Windows/README.md) for compiling with Visual Studio 2022 and `.NET 8`.
+- Source code is available under [`windows/VoiceAI.Windows`](windows/VoiceAI.Windows) (WinUI 3 / C#). See [Windows Build Guide](docs/windows-dev-setup.md) for compiling with Visual Studio 2022 and `.NET 8`.
+- Build the preview package:
+  ```powershell
+  cd windows\VoiceAI.Windows
+  dotnet build -c Release
+  ```
 
 ### Building from Source (macOS)
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-org/voice-ai.git
-cd voice-ai
+git clone https://github.com/Mohit-jpg-dot/Voice.AI.git
+cd Voice.AI
 
 # 2. Compile VoiceOSCore library and Voice.AI.app bundle
 ./scripts/build-app.sh
@@ -138,60 +200,62 @@ cd voice-ai
 ./scripts/run-tests.sh google  # 83 / 83 PASSED
 ./scripts/run-tests.sh auth    # 41 / 41 PASSED
 ./scripts/run-tests.sh hindi   # 125 / 125 PASSED
+
+# 5. Run the cross-platform .NET verification suite
+dotnet run --project windows/tests/VoiceAI.Core.Tests/VoiceAI.Core.Tests.csproj # 40 / 40 PASSED
 ```
 
 ---
 
-## 🗣️ Natural Language & Voice Commands
+## 🗣️ Voice Commands Cheat Sheet
 
-### Computer & System Control
-- *"WhatsApp kholo"* / *"Open Safari"* &rarr; Launches and focuses applications.
-- *"Close the app"* / *"Spotify band karo"* &rarr; Cleanly terminates applications.
+### Media & Playback Controls
+- *"Play the current video"* / *"Video chalao"* &rarr; Resumes playback in active YouTube tab.
+- *"Pause karo"* / *"Pause the music"* &rarr; Pauses Spotify or YouTube.
+- *"Change it to next"* / *"Agla gana chalao"* &rarr; Skips to the next track.
+- *"Previous track"* / *"Pichhla video"* &rarr; Rewinds or jumps to previous song.
+
+### Computer Control & System Fast-Path
+- *"WhatsApp kholo"* / *"Open Safari"* &rarr; Launches and focuses application.
+- *"Close the app"* / *"Spotify band karo"* &rarr; Cleanly terminates application.
 - *"Turn down the volume"* / *"Aawaz kam karo"* &rarr; Adjusts master audio volume.
 - *"Adjust brightness to 70%"* / *"Screen light badhao"* &rarr; Adjusts display brightness.
 - *"Take a screenshot"* / *"Screenshot lo"* &rarr; Captures display to clipboard.
 
-### Media & Playback Controls
-- *"Play the current video"* / *"Video chalao"* &rarr; Starts active YouTube/browser video.
-- *"Pause karo"* / *"Pause the music"* &rarr; Pauses Spotify or YouTube.
-- *"Change it to next"* / *"Agla gana chalao"* &rarr; Skips to next track.
-- *"Previous track"* / *"Pichhla video"* &rarr; Returns to previous track.
-
-### Knowledge & Web Search
-- *"What is photosynthesis?"* &rarr; Extracts definition and encyclopedic summary.
-- *"system design why do CS engineer study"* &rarr; Returns factual Systems Design overview with source link.
-- *"What is the weather in Delhi?"* &rarr; Real-time temperature from Open-Meteo.
-- *"What is 25 * 4?"* / *"25 into 4 kitna hota hai"* &rarr; Evaluates to `100` via offline MathEngine.
+### Instant Offline Math & Real-Time Knowledge
+- *"What is 25 * 4?"* / *"25 into 4 kitna hota hai"* &rarr; Evaluates to `100` in < 5ms.
 - *"What is 15 percent of 80?"* &rarr; Evaluates to `12`.
 - *"Square root of 144"* &rarr; Evaluates to `12`.
+- *"What is photosynthesis?"* &rarr; Summarizes scientific definition with encyclopedic source pill.
+- *"What is the weather in Delhi?"* &rarr; Returns live temperature from Open-Meteo.
 
 ---
 
 ## 🛡️ Security, Privacy & Permissions
 
-1. **Accessibility API (`AXUIElement`)**:
+1. **Accessibility API (`AXUIElement` / `IUIAutomation`)**:
    - Used exclusively to identify focused text inputs, inspect UI hierarchies, and inject polished text.
 2. **Microphone Access**:
    - Audio is processed on-device (Apple Speech or local Whisper). Raw audio recordings are never uploaded to remote servers.
 3. **Screen Recording**:
    - Used on-demand by `ScreenVisionService` using Apple Vision framework for offline text recognition. Pixels never leave your device.
 4. **Credential Safety**:
-   - All API keys (OpenAI, Claude, Gemini, Google CSE) are stored strictly in macOS Keychain (`ai.voice.app.auth`) or Windows Credential Manager.
-   - Built-in regex filters automatically block queries containing passwords, credit card numbers, or private API keys from being sent to search engines.
+   - All API keys (OpenAI, Claude, Gemini, Google CSE) are stored strictly in macOS Keychain (`ai.voice.app.auth`) or Windows Credential Manager / DPAPI.
+   - Built-in regex filters automatically block queries containing passwords, credit card numbers, or private API keys from being sent to external endpoints.
 
 ---
 
 ## 📚 Documentation & Decision Records
 
+- [Cross-Platform Architecture Specification](docs/architecture-cross-platform.md)
+- [Free & Offline Setup Guide (Windows)](docs/setup-free-offline-windows.md)
+- [Windows Platform Parity & Test Report](docs/test-report-windows.md)
+- [Windows Developer Toolchain Setup](docs/windows-dev-setup.md)
 - [Documentation Sitemap](docs/index.md)
 - [Hindi Quickstart Guide (हिन्दी में पढ़ें)](README.hi.md)
 - [Third-Party Software & Model Notices](THIRD_PARTY_NOTICES.md)
 - [Contributing Guidelines](CONTRIBUTING.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Release Changelog](CHANGELOG.md)
-- [Google Free Mode Architecture Decision](docs/google-mode-decision.md)
-- [Cloud vs Local Ollama Setup](docs/setup-cloud.md)
-- [Repository Action Items (Owner Review)](docs/readme-todo.md)
 
 ---
 

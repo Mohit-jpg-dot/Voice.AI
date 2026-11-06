@@ -20,7 +20,7 @@ public final class ModelSetupWindowController: NSObject, NSWindowDelegate {
         }
         
         let setupWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 860, height: 720),
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 780),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -33,7 +33,7 @@ public final class ModelSetupWindowController: NSObject, NSWindowDelegate {
         setupWindow.backgroundColor = NSColor(red: 0.08, green: 0.08, blue: 0.09, alpha: 1.0)
         setupWindow.delegate = self
         setupWindow.isMovableByWindowBackground = true
-        setupWindow.minSize = NSSize(width: 760, height: 560)
+        setupWindow.minSize = NSSize(width: 800, height: 600)
         
         let dashboardView = ModelSetupDashboardView()
         setupWindow.contentView = NSHostingView(rootView: dashboardView)

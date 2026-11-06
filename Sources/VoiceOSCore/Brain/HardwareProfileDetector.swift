@@ -176,13 +176,13 @@ public final class HardwareProfileDetector: @unchecked Sendable {
                 roleTitle: "The Voice",
                 category: "voice",
                 purposeDescription: "Ultra-fast neural text-to-speech synthesis (ONNX engine in ~/.voiceos/models/ — not managed by Ollama).",
-                downloadSizeMB: 300,
-                diskRequiredMB: 350,
+                downloadSizeMB: 86,
+                diskRequiredMB: 120,
                 ramRequiredGB: 0.5,
-                sha256: "d6e7f8a90123456789abcdef0123456789abcdef0123456789abcdef01234567",
+                sha256: "91d2089e76e6aa616741678bacc40de9bc56ff66e9773549b06bcd7e92be0308",
                 license: "Apache 2.0",
                 command: "kokoro-tts serve --port 8880",
-                downloadURL: "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/kokoro-v0_19.onnx",
+                downloadURL: "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8f16.onnx",
                 isCore: true,
                 capabilities: ["tts", "low_latency", "offline", "multilingual"]
             )

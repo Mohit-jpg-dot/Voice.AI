@@ -203,6 +203,8 @@ public struct ModelSetupDashboardView: View {
                             .foregroundColor(.white)
                         Spacer()
                         
+                        let allReady = !downloadManager.tasksList.isEmpty && downloadManager.tasksList.allSatisfy { $0.status.isReady }
+                        
                         Button(action: {
                             Task {
                                 isDownloadingAll = true
@@ -213,20 +215,32 @@ public struct ModelSetupDashboardView: View {
                             HStack(spacing: 6) {
                                 if isDownloadingAll {
                                     ProgressView().controlSize(.small)
+                                    Text("Downloading...")
+                                        .fontWeight(.semibold)
+                                } else if allReady {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                    Text("All Models Ready")
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.green)
                                 } else {
                                     Image(systemName: "arrow.down.circle.fill")
+                                    Text("1-Click Download & Setup All")
+                                        .fontWeight(.semibold)
                                 }
-                                Text(isDownloadingAll ? "Downloading..." : "1-Click Download & Setup All")
-                                    .fontWeight(.semibold)
                             }
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .background(Color.blue)
+                            .background(allReady ? Color.green.opacity(0.15) : Color.blue)
                             .foregroundColor(.white)
                             .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(allReady ? Color.green.opacity(0.3) : Color.clear, lineWidth: 1)
+                            )
                         }
                         .buttonStyle(.plain)
-                        .disabled(isDownloadingAll)
+                        .disabled(isDownloadingAll || allReady)
                     }
                     
                     ForEach(downloadManager.tasksList) { task in

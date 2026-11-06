@@ -305,9 +305,23 @@ public final class VisualGroundingSoMEngine: @unchecked Sendable {
     
     public func groundTargetElement(
         targetDescription: String,
-        screenshot: CGImage? = nil
+        screenshot: CGImage? = nil,
+        targetApp: String? = nil
     ) async throws -> GroundingResult {
-        guard let image = screenshot ?? captureDisplayScreenshot() else {
+        // Step 1: Fast-Path Semantic Action Cache Lookup (< 5ms)
+        if let app = targetApp, !app.isEmpty {
+            if let cachedPt = SemanticActionCache.shared.lookup(targetDescription: targetDescription, targetApp: app) {
+                return GroundingResult(
+                    matchedBadge: "CACHE",
+                    targetScreenCoordinate: cachedPt,
+                    boundingBox: CGRect(x: cachedPt.x - 16, y: cachedPt.y - 10, width: 32, height: 20),
+                    confidence: 0.99,
+                    resolutionMethod: "semantic_action_cache_fast_path"
+                )
+            }
+        }
+        
+        guard let baseScreenshot = screenshot ?? captureDisplayScreenshot() else {
             throw NSError(
                 domain: "VisualGroundingSoMEngine",
                 code: 404,
@@ -315,17 +329,36 @@ public final class VisualGroundingSoMEngine: @unchecked Sendable {
             )
         }
         
-        let detectedElements = await detectInteractiveElements(in: image)
-        let (markedImage, badgeMap) = createSetOfMarkImage(baseImage: image, elements: detectedElements)
+        // Step 2: Contextual Region-of-Interest (RoI) Window Cropping
+        let (roiImage, roiOffset) = cropToTargetAppWindowRoI(screenshot: baseScreenshot, targetApp: targetApp)
+        
+        // Step 3: Dynamic Model Lifecycle Lease (Wakes Vision engine only when needed)
+        _ = await ModelLifecycleManager.shared.acquireVisionLease(for: targetDescription)
+        defer {
+            Task {
+                await ModelLifecycleManager.shared.releaseVisionLease()
+            }
+        }
+        
+        let detectedElements = await detectInteractiveElements(in: roiImage)
+        let (markedImage, badgeMap) = createSetOfMarkImage(baseImage: roiImage, elements: detectedElements)
+        
+        func toGlobalCoordinate(_ localPt: CGPoint) -> CGPoint {
+            return CGPoint(x: localPt.x + roiOffset.x, y: localPt.y + roiOffset.y)
+        }
         
         // 4a. Zero-latency exact semantic text match
         let lowerTarget = targetDescription.lowercased()
         for element in detectedElements {
             if let text = element.detectedText?.lowercased(), !text.isEmpty {
                 if text.contains(lowerTarget) || lowerTarget.contains(text) {
+                    let globalPt = toGlobalCoordinate(element.centerPoint)
+                    if let app = targetApp {
+                        SemanticActionCache.shared.store(targetDescription: targetDescription, targetApp: app, coordinate: globalPt)
+                    }
                     return GroundingResult(
                         matchedBadge: element.id,
-                        targetScreenCoordinate: element.centerPoint,
+                        targetScreenCoordinate: globalPt,
                         boundingBox: element.boundingBox,
                         confidence: 0.95,
                         resolutionMethod: "exact_ocr_grounding"
@@ -340,9 +373,13 @@ public final class VisualGroundingSoMEngine: @unchecked Sendable {
             markedImage: marked,
             elements: detectedElements
         ), let matched = badgeMap[vlmBadge] {
+            let globalPt = toGlobalCoordinate(matched.centerPoint)
+            if let app = targetApp {
+                SemanticActionCache.shared.store(targetDescription: targetDescription, targetApp: app, coordinate: globalPt)
+            }
             return GroundingResult(
                 matchedBadge: matched.id,
-                targetScreenCoordinate: matched.centerPoint,
+                targetScreenCoordinate: globalPt,
                 boundingBox: matched.boundingBox,
                 confidence: 0.91,
                 resolutionMethod: "local_vlm_som_grounding"
@@ -352,9 +389,13 @@ public final class VisualGroundingSoMEngine: @unchecked Sendable {
         // 4c. Semantic keyword heuristic matching
         let chosenBadge = resolveBadgeWithHeuristics(target: targetDescription, elements: detectedElements)
         if let matched = badgeMap[chosenBadge] {
+            let globalPt = toGlobalCoordinate(matched.centerPoint)
+            if let app = targetApp {
+                SemanticActionCache.shared.store(targetDescription: targetDescription, targetApp: app, coordinate: globalPt)
+            }
             return GroundingResult(
                 matchedBadge: matched.id,
-                targetScreenCoordinate: matched.centerPoint,
+                targetScreenCoordinate: globalPt,
                 boundingBox: matched.boundingBox,
                 confidence: 0.84,
                 resolutionMethod: "heuristic_som_grounding"
@@ -363,9 +404,10 @@ public final class VisualGroundingSoMEngine: @unchecked Sendable {
         
         // 4d. Fallback to first available interactive element
         if let first = detectedElements.first {
+            let globalPt = toGlobalCoordinate(first.centerPoint)
             return GroundingResult(
                 matchedBadge: first.id,
-                targetScreenCoordinate: first.centerPoint,
+                targetScreenCoordinate: globalPt,
                 boundingBox: first.boundingBox,
                 confidence: 0.70,
                 resolutionMethod: "fallback_anchor"
@@ -377,6 +419,56 @@ public final class VisualGroundingSoMEngine: @unchecked Sendable {
             code: 404,
             userInfo: [NSLocalizedDescriptionKey: "Target UI element '\(targetDescription)' could not be visually grounded."]
         )
+    }
+    
+    // MARK: - Contextual Region-of-Interest (RoI) Window Cropping
+    
+    public func getTargetAppWindowBounds(appName: String) -> CGRect? {
+        let cleanName = appName.lowercased()
+        guard let windowInfoList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+        
+        for info in windowInfoList {
+            let ownerName = (info[kCGWindowOwnerName as String] as? String)?.lowercased() ?? ""
+            if ownerName.contains(cleanName) || cleanName.contains(ownerName) {
+                if let boundsDict = info[kCGWindowBounds as String] as? [String: Any],
+                   let x = boundsDict["X"] as? CGFloat,
+                   let y = boundsDict["Y"] as? CGFloat,
+                   let w = boundsDict["Width"] as? CGFloat,
+                   let h = boundsDict["Height"] as? CGFloat,
+                   w > 120 && h > 100 {
+                    return CGRect(x: x, y: y, width: w, height: h)
+                }
+            }
+        }
+        return nil
+    }
+    
+    public func cropToTargetAppWindowRoI(
+        screenshot: CGImage,
+        targetApp: String?
+    ) -> (image: CGImage, originOffset: CGPoint) {
+        guard let app = targetApp, !app.isEmpty,
+              let windowRect = getTargetAppWindowBounds(appName: app) else {
+            return (screenshot, .zero)
+        }
+        
+        let screenWidth = NSScreen.main?.frame.width ?? 1440.0
+        let scale = CGFloat(screenshot.width) / screenWidth
+        
+        let cropPixelRect = CGRect(
+            x: max(0, windowRect.origin.x * scale),
+            y: max(0, windowRect.origin.y * scale),
+            width: min(CGFloat(screenshot.width), windowRect.width * scale),
+            height: min(CGFloat(screenshot.height), windowRect.height * scale)
+        )
+        
+        if cropPixelRect.width > 100 && cropPixelRect.height > 100,
+           let cropped = screenshot.cropping(to: cropPixelRect) {
+            return (cropped, CGPoint(x: cropPixelRect.origin.x, y: cropPixelRect.origin.y))
+        }
+        return (screenshot, .zero)
     }
     
     // MARK: - Query Local VLM Stream (Ollama Qwen2-VL / Llama-3.2-Vision)

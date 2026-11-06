@@ -117,8 +117,28 @@ namespace VoiceAI.Core.Brain
             return elements;
         }
 
-        public async Task<GroundingResult> GroundTargetAsync(string targetDescription, int screenWidth = 1920, int screenHeight = 1080)
+        public async Task<GroundingResult> GroundTargetAsync(string targetDescription, int screenWidth = 1920, int screenHeight = 1080, string? targetApp = null)
         {
+            // 0. Semantic Action Cache fast-path (<5ms)
+            if (!string.IsNullOrEmpty(targetApp))
+            {
+                var cached = SemanticActionCache.Shared.Lookup(targetDescription, targetApp);
+                if (cached.HasValue)
+                {
+                    return new GroundingResult
+                    {
+                        MatchedBadge = "CACHE",
+                        TargetScreenCoordinate = cached.Value,
+                        BoundingBox = new Rectangle(cached.Value.X - 16, cached.Value.Y - 10, 32, 20),
+                        Confidence = 0.99,
+                        ResolutionMethod = "semantic_action_cache_fast_path"
+                    };
+                }
+            }
+
+            // Acquire vision lease
+            _ = await ModelLifecycleManager.Shared.AcquireVisionLeaseAsync(targetDescription);
+
             var elements = DetectElements(screenWidth, screenHeight, new List<string>
             {
                 "File", "Edit", "Sculpt Mode", "Add Mesh", "Play button", "Settings"
@@ -131,6 +151,11 @@ namespace VoiceAI.Core.Brain
             {
                 if (el.DetectedText != null && (el.DetectedText.ToLowerInvariant().Contains(lower) || lower.Contains(el.DetectedText.ToLowerInvariant())))
                 {
+                    if (!string.IsNullOrEmpty(targetApp))
+                    {
+                        SemanticActionCache.Shared.Store(targetDescription, targetApp, el.CenterPoint);
+                    }
+                    _ = ModelLifecycleManager.Shared.ReleaseVisionLeaseAsync();
                     return new GroundingResult
                     {
                         MatchedBadge = el.Id,
@@ -149,6 +174,11 @@ namespace VoiceAI.Core.Brain
                 var matched = elements.Find(e => e.Id.Equals(vlmBadge, StringComparison.OrdinalIgnoreCase));
                 if (matched != null)
                 {
+                    if (!string.IsNullOrEmpty(targetApp))
+                    {
+                        SemanticActionCache.Shared.Store(targetDescription, targetApp, matched.CenterPoint);
+                    }
+                    _ = ModelLifecycleManager.Shared.ReleaseVisionLeaseAsync();
                     return new GroundingResult
                     {
                         MatchedBadge = matched.Id,
@@ -159,6 +189,8 @@ namespace VoiceAI.Core.Brain
                     };
                 }
             }
+
+            _ = ModelLifecycleManager.Shared.ReleaseVisionLeaseAsync();
 
             // 3. First available interactive element
             var first = elements[0];

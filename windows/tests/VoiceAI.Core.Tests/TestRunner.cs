@@ -57,6 +57,7 @@ namespace VoiceAI.Core.Tests
             TestHardwareProfileAndGuardrails();
             await TestLLMIntentOrchestrator();
             await TestVisualGroundingSoMEngine();
+            await TestResourceOptimizationAndCaching();
 
             Console.WriteLine("\n=================================================================");
             Console.WriteLine($"Test Run Completed: {_passed} PASSED, {_failed} FAILED");
@@ -300,6 +301,42 @@ namespace VoiceAI.Core.Tests
             bool frameEvolved = true;
             double changeRatio = 0.045;
             AssertTrue(frameEvolved && changeRatio > 0.001, "Frame evolution verified via post-sleep secondary screenshot");
+        }
+
+        // -------------------------------------------------------------
+        // Suite 9: Dynamic RAM Suspension, Semantic Cache & Compaction
+        // -------------------------------------------------------------
+        private static async Task TestResourceOptimizationAndCaching()
+        {
+            Console.WriteLine("\n[Suite 9] Dynamic RAM Suspension, Semantic Cache & Compaction");
+
+            // 1. Semantic Action Caching (<5ms lookup)
+            var cache = SemanticActionCache.Shared;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var pt = cache.Lookup("Sculpt Mode dropdown menu", "Blender");
+            sw.Stop();
+            AssertTrue(pt.HasValue, "Semantic cache successfully resolved Blender sculpt target");
+            AssertTrue(sw.ElapsedMilliseconds < 15, $"Semantic cache visual lookup took {sw.ElapsedMilliseconds}ms (< 15ms target)");
+            AssertEqual(pt!.Value.X, 140, "Cached coordinate X matches verified button position");
+
+            // 2. Dynamic Model Lifecycle State Machine
+            var lifecycle = ModelLifecycleManager.Shared;
+            AssertTrue(lifecycle.IsBrainWarmPermanently, "The Brain is kept permanently warm in RAM for 0ms voice reactivity");
+            AssertEqual(lifecycle.CurrentVisionState, VisionModelState.Suspended, "Vision model initialized in Suspended state (saving GPU memory)");
+
+            bool leaseAcquired = await lifecycle.AcquireVisionLeaseAsync("visual_test");
+            AssertTrue(leaseAcquired, "Acquired Vision lease and warmed up Vision engine");
+            AssertEqual(lifecycle.CurrentVisionState, VisionModelState.Active, "Vision model active during task");
+
+            await lifecycle.ReleaseVisionLeaseAsync();
+            AssertEqual(lifecycle.CurrentVisionState, VisionModelState.Suspended, "Vision weights suspended immediately post-task (freeing unified memory)");
+
+            // 3. Sliding-Window Dynamic Context Compactor
+            var compactor = SlidingWindowContextCompactor.Shared;
+            AssertTrue(compactor.ActiveTurnsCount > 0, "Compactor recorded execution turns");
+            string compactedPrompt = compactor.GetCompactedPromptContext();
+            AssertTrue(!string.IsNullOrEmpty(compactedPrompt), "Generated compact sliding-window prompt context");
+            AssertTrue(compactedPrompt.Contains("Blender") || compactedPrompt.Contains("Spotify"), "Context contains target app history");
         }
     }
 }

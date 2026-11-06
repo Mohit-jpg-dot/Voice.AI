@@ -73,6 +73,11 @@ JSON SCHEMA:
 
             var planJson = SynthesizeDeterministicPlan(cleaned);
             var plan = ParsePlan(planJson);
+
+            // Record turn in sliding window context compactor
+            var actionSummaries = plan.Steps.ConvertAll(s => $"{s.Action}({s.Param})");
+            SlidingWindowContextCompactor.Shared.RecordTurn(cleaned, plan.TargetApplication, actionSummaries);
+
             return Task.FromResult(plan);
         }
 

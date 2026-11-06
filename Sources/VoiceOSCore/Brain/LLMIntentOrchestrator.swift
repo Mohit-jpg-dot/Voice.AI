@@ -19,6 +19,10 @@ public struct OrchestratedPlan: Codable, Sendable {
     public let target_application: String?
     public let steps: [ExecutionStep]
     
+    public var targetApplication: String {
+        return target_application ?? ""
+    }
+    
     public init(intent: String, target_application: String?, steps: [ExecutionStep]) {
         self.intent = intent
         self.target_application = target_application
@@ -85,10 +89,17 @@ public final class LLMIntentOrchestrator: @unchecked Sendable {
             throw NSError(domain: "LLMIntentOrchestrator", code: 400, userInfo: [NSLocalizedDescriptionKey: "Empty transcript"])
         }
         
-        let messages: [LLMChatMessage] = [
-            LLMChatMessage(role: .system, content: LLMIntentOrchestrator.systemPrompt),
-            LLMChatMessage(role: .user, content: cleaned)
+        var messages: [LLMChatMessage] = [
+            LLMChatMessage(role: .system, content: LLMIntentOrchestrator.systemPrompt)
         ]
+        
+        // Dynamic Context Compaction: Inject bounded sliding-window context
+        let compactedContext = SlidingWindowContextCompactor.shared.getCompactedPromptContext()
+        if !compactedContext.isEmpty {
+            messages.append(LLMChatMessage(role: .system, content: "Context from previous interactions:\n\(compactedContext)"))
+        }
+        
+        messages.append(LLMChatMessage(role: .user, content: cleaned))
         
         var rawResponse = ""
         
@@ -101,7 +112,17 @@ public final class LLMIntentOrchestrator: @unchecked Sendable {
             rawResponse = synthesizeDeterministicPlan(for: cleaned)
         }
         
-        return try parseOrchestratedPlan(from: rawResponse, fallbackQuery: cleaned)
+        let plan = try parseOrchestratedPlan(from: rawResponse, fallbackQuery: cleaned)
+        
+        // Record turn in sliding window compactor
+        let actionSummaries = plan.steps.map { "\($0.action)(\($0.param))" }
+        SlidingWindowContextCompactor.shared.recordTurn(
+            userIntent: cleaned,
+            targetApplication: plan.targetApplication,
+            actions: actionSummaries
+        )
+        
+        return plan
     }
     
     /// Robust JSON extractor ensuring clean parsing even if model wraps output in markdown or text

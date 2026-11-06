@@ -62,8 +62,9 @@ public actor ModelLifecycleManager {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 3.0
         
+        let visionModel = ModelRouter.shared.ollamaVisionModel
         let payload: [String: Any] = [
-            "model": "qwen2-vl:7b",
+            "model": visionModel,
             "prompt": "",
             "keep_alive": "5m"
         ]
@@ -86,8 +87,9 @@ public actor ModelLifecycleManager {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 2.0
         
+        let visionModel = ModelRouter.shared.ollamaVisionModel
         let payload: [String: Any] = [
-            "model": "qwen2-vl:7b",
+            "model": visionModel,
             "keep_alive": 0
         ]
         

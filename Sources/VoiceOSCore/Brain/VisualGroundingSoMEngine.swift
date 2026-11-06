@@ -494,10 +494,11 @@ public final class VisualGroundingSoMEngine: @unchecked Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 4.0 // Fast timeout
+        let visionModel = ModelRouter.shared.ollamaVisionModel
+        request.timeoutInterval = 15.0 // Allow local 7B VLM inference time
         
         let payload: [String: Any] = [
-            "model": "qwen2-vl:7b",
+            "model": visionModel,
             "prompt": prompt,
             "images": [base64Data],
             "stream": false,

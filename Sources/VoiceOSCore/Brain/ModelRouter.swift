@@ -70,12 +70,24 @@ public final class ModelRouter: @unchecked Sendable {
     }
     
     public var ollamaChatModel: String {
-        get { UserDefaults.standard.string(forKey: ollamaChatModelKey) ?? "qwen2.5:latest" }
+        get {
+            if let saved = UserDefaults.standard.string(forKey: ollamaChatModelKey),
+               !saved.isEmpty && saved != "qwen2.5:latest" && saved != "qwen2.5" {
+                return saved
+            }
+            return "llama3.2:3b"
+        }
         set { UserDefaults.standard.set(newValue, forKey: ollamaChatModelKey) }
     }
     
     public var ollamaVisionModel: String {
-        get { UserDefaults.standard.string(forKey: ollamaVisionModelKey) ?? "llama3.2-vision:latest" }
+        get {
+            if let saved = UserDefaults.standard.string(forKey: ollamaVisionModelKey),
+               !saved.isEmpty && saved != "llama3.2-vision:latest" && saved != "qwen2-vl:7b" && saved != "qwen2-vl" {
+                return saved
+            }
+            return "llava:7b"
+        }
         set { UserDefaults.standard.set(newValue, forKey: ollamaVisionModelKey) }
     }
     

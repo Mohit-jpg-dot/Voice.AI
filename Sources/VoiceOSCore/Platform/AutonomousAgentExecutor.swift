@@ -68,29 +68,70 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             )
         }
         
-        // 2b. AI Brain Reasoning (Cloud OpenAI/Claude, Local Ollama, or Hybrid)
-        let isSystemCommand = AgentActionDispatcher.shared.isCommandIntent(trimmed)
-        if !isSystemCommand && ModelRouter.shared.currentMode != .googleSearch {
-            let chatModel = ModelRouter.shared.resolveChatModel()
-            let messages = [
-                LLMChatMessage(role: .system, content: "You are Voice.AI, a macOS voice assistant. Provide direct, accurate, concise, and helpful answers. For conceptual or programming questions, explain clearly with key principles."),
-                LLMChatMessage(role: .user, content: trimmed)
-            ]
-            if let response = try? await chatModel.sendMessage(messages: messages, tools: nil, jsonMode: false) {
-                let text = response.text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-                if !text.isEmpty {
-                    LocalMemoryManager.shared.remember(
-                        content: "\(trimmed) -> \(text)",
-                        category: "task",
-                        tags: ["Brain"]
-                    )
-                    return AutonomousExecutionResult(
-                        success: true,
-                        summary: text,
-                        targetAppName: "Voice.AI Brain",
-                        targetURL: nil,
-                        executedSteps: ["Consulted \(ModelRouter.shared.currentMode.rawValue) model", "Synthesized response"]
-                    )
+        // 2b. AI Brain Reasoning & Automation Routing (Llama 3.2, LLaVA, Hybrid)
+        if ModelRouter.shared.currentMode != .googleSearch {
+            // Check for explicit local OS tool actions first (open app, close app, media playback, brightness)
+            let parsedTool = AgentToolParser.parse(query: trimmed)
+            let isExplicitOSCommand: Bool = {
+                guard let tool = parsedTool else { return false }
+                switch tool {
+                case .openApp, .closeApp, .mediaPlay, .adjustBrightness, .runTerminalCommand, .createCodeFile:
+                    return true
+                default:
+                    return false
+                }
+            }()
+            
+            if !isExplicitOSCommand {
+                // If it's a software automation or multi-step workflow command (e.g. Blender, Hinglish action)
+                let lower = trimmed.lowercased()
+                if lower.contains("blender") ||
+                   lower.contains("sculpt") ||
+                   (HinglishParser.isHinglishQuery(trimmed) && (lower.contains("karo") || lower.contains("kar do") || lower.contains("chalao"))) {
+                    if let plan = try? await LLMIntentOrchestrator.shared.plan(transcript: trimmed) {
+                        if plan.intent == "software_automation" || plan.intent == "system_control" {
+                            var executedSteps: [String] = []
+                            for step in plan.steps {
+                                executedSteps.append("\(step.action)(\(step.param))")
+                            }
+                            let summary = "Executed \(plan.intent) plan for \(plan.target_application ?? "macOS") with \(plan.steps.count) steps."
+                            return AutonomousExecutionResult(
+                                success: true,
+                                summary: summary,
+                                targetAppName: plan.target_application ?? "Voice.AI Brain",
+                                targetURL: nil,
+                                executedSteps: executedSteps
+                            )
+                        }
+                    }
+                }
+                
+                // Conversational reasoning, questions, greetings, explanations via local LLM (The Brain)
+                let chatModel = ModelRouter.shared.resolveChatModel()
+                let messages = [
+                    LLMChatMessage(role: .system, content: "You are Voice.AI, a smart macOS voice assistant. Give direct, natural, conversational, helpful, and concise answers. Do not output markdown codeblocks unless specifically asked. Be friendly and conversational."),
+                    LLMChatMessage(role: .user, content: trimmed)
+                ]
+                
+                do {
+                    let response = try await chatModel.sendMessage(messages: messages, tools: nil, jsonMode: false)
+                    let text = response.text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+                    if !text.isEmpty {
+                        LocalMemoryManager.shared.remember(
+                            content: "\(trimmed) -> \(text)",
+                            category: "task",
+                            tags: ["Brain"]
+                        )
+                        return AutonomousExecutionResult(
+                            success: true,
+                            summary: text,
+                            targetAppName: "Voice.AI Brain",
+                            targetURL: nil,
+                            executedSteps: ["Consulted \(chatModel.providerName) (\(ModelRouter.shared.ollamaChatModel))", "Synthesized response"]
+                        )
+                    }
+                } catch {
+                    print("[AutonomousAgentExecutor] chatModel error: \(error)")
                 }
             }
         }

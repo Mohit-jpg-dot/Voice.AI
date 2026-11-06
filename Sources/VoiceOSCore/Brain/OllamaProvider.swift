@@ -29,7 +29,7 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
     public var isInstalledAndRunning: Bool {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-        proc.arguments = ["-s", "-m", "0.4", "\(hostURL.absoluteString)/api/tags"]
+        proc.arguments = ["-s", "-m", "1.5", "\(hostURL.absoluteString)/api/tags"]
         let pipe = Pipe()
         proc.standardOutput = pipe
         try? proc.run()
@@ -38,7 +38,7 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
     }
     
     public init(
-        model: String = "qwen2.5:latest",
+        model: String = "llama3.2:3b",
         host: String? = nil
     ) {
         let configuredHost = host ?? KeychainService.shared.get(.ollamaHost) ?? "http://localhost:11434"

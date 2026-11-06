@@ -1,6 +1,6 @@
 /**
  * Voice.AI Dynamic Release Manager
- * Reads latest.json, binds download buttons to the verified DMG, and renders honest release badges.
+ * Reads latest.json, auto-detects OS (macOS vs Windows), binds download buttons, and renders honest release badges.
  */
 
 (function () {
@@ -38,22 +38,30 @@
   }
 
   function applyMetadata(data) {
-    // 1. Update download buttons
-    const downloadUrl = data.downloadUrl || 'downloads/Voice.AI-1.0.0.dmg';
+    const platform = (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '').toLowerCase();
+    const isWindows = platform.includes('win');
+    const isMac = platform.includes('mac');
     const isDownloadPage = window.location.pathname.includes('download.html') || window.location.pathname.endsWith('/download');
 
+    const downloadUrl = data.downloadUrl || 'downloads/Voice.AI-1.0.0.dmg';
+
+    // 1. Update download buttons
     if (isDownloadPage) {
-      // On the dedicated download page: buttons initiate the direct DMG download
-      document.querySelectorAll('.btn-mac-download-pill, .btn-nav-download, #headerDownloadBtn').forEach(btn => {
+      document.querySelectorAll('.btn-mac-download-pill').forEach(btn => {
+        btn.setAttribute('href', downloadUrl);
+        btn.setAttribute('download', data.fileName || 'Voice.AI-1.0.0.dmg');
+      });
+      document.querySelectorAll('.btn-nav-download, #headerDownloadBtn').forEach(btn => {
         btn.setAttribute('href', downloadUrl);
         btn.setAttribute('download', data.fileName || 'Voice.AI-1.0.0.dmg');
       });
     } else {
-      // On all other pages (index, about, blog, app-store):
-      // All download buttons redirect the user directly to download.html!
       document.querySelectorAll('.btn-mac-download-pill, .btn-nav-download, #headerDownloadBtn').forEach(btn => {
         btn.setAttribute('href', 'download.html');
         btn.removeAttribute('download');
+        if (isWindows) {
+          btn.innerHTML = '<span class="btn-apple-logo">🪟</span> <span class="btn-text-main">Download for</span> <span class="btn-text-muted">Windows</span>';
+        }
       });
     }
 
@@ -89,13 +97,11 @@
       }
     });
 
-    // 4. Non-Mac OS Detection
-    const platform = (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || '').toLowerCase();
-    const isMac = platform.includes('mac');
-    if (!isMac) {
+    // 4. Platform Banner
+    if (isWindows) {
       document.querySelectorAll('.platform-warning-pill').forEach(el => {
         el.style.display = 'inline-flex';
-        el.textContent = 'Voice.AI is built natively for macOS. Windows version in preview.';
+        el.innerHTML = '🪟 Windows detected! Download Voice.AI Preview for Windows 10 & 11 below.';
       });
     }
   }
@@ -116,4 +122,3 @@
 
   document.addEventListener('DOMContentLoaded', loadReleaseMetadata);
 })();
-

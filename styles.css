@@ -804,7 +804,7 @@ body.scrolled .btn-nav-download {
   z-index: 10;
 }
 
-.pillar-foot-label.voiceos-label {
+.pillar-foot-label.voiceai-label {
   color: #0f172a;
   font-weight: 700;
 }
@@ -846,7 +846,7 @@ body.scrolled .btn-nav-download {
   box-shadow: 0 8px 25px rgba(0, 80, 180, 0.06);
 }
 
-.voiceos-pillar-wrap {
+.voiceai-pillar-wrap {
   z-index: 8; /* In front of snake icons so snake weaves behind Voice.AI */
 }
 
@@ -873,11 +873,11 @@ body.scrolled .btn-nav-download {
   margin-top: 4px;
 }
 
-.pillar-voiceos {
+.pillar-voiceai {
   width: 140px;
   height: 320px;
   border-radius: 24px;
-  background: #0d5cb6 url('assets/voiceos-sky.png') center top / cover no-repeat;
+  background: #0d5cb6 url('assets/voiceai-sky.png') center top / cover no-repeat;
   position: relative;
   justify-content: center;
   box-shadow: 0 20px 50px rgba(13, 92, 182, 0.35);
@@ -885,7 +885,7 @@ body.scrolled .btn-nav-download {
   z-index: 8; /* In front of snake */
 }
 
-.voiceos-pillar-glyphs {
+.voiceai-pillar-glyphs {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -898,12 +898,12 @@ body.scrolled .btn-nav-download {
   user-select: none;
 }
 
-.voiceos-glyph-triangle {
+.voiceai-glyph-triangle {
   font-size: 22px;
   line-height: 1;
 }
 
-.voiceos-glyph-dot {
+.voiceai-glyph-dot {
   font-size: 26px;
   line-height: 1;
 }

@@ -1726,14 +1726,17 @@ body.scrolled .btn-nav-download {
 }
 
 .giant-footer-watermark {
-  font-size: 15.5vw;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+  font-size: clamp(40px, 14.5vw, 190px);
   font-weight: 900;
-  color: rgba(0, 0, 0, 0.05);
-  letter-spacing: -0.03em;
+  color: rgba(0, 0, 0, 0.045);
+  letter-spacing: -0.04em;
   text-align: center;
-  line-height: 0.9;
+  line-height: 0.85;
   user-select: none;
   pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
   margin: 40px 0 20px 0;
 }
 

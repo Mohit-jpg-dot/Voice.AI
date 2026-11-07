@@ -48,7 +48,7 @@ public final class LLMIntentOrchestrator: @unchecked Sendable {
        - "visual_locate_and_click": param is description of the UI element to locate visually on screen (e.g., "Sculpt Mode dropdown menu", "Play button", "New File icon")
        - "keystroke": param is key combination (e.g., "Shift+A", "Space", "Return", "Command+S", "Control+tilde")
        - "type_text": param is text string to insert
-       - "system_command": param is system action (e.g., "close_application", "volume_up", "volume_down", "mute", "screenshot", "brightness_up")
+       - "system_command": param is system action (e.g., "volume_level 0", "volume_level 50", "volume_level 100", "volume_up", "volume_down", "mute", "unmute", "close_application", "screenshot", "lock", "sleep")
        - "web_search": param is web query string
     
     JSON SCHEMA:
@@ -63,6 +63,14 @@ public final class LLMIntentOrchestrator: @unchecked Sendable {
     }
     
     FEW-SHOT EXAMPLES:
+    User: "put the volume down to 0 percent" or "volume zero kar do"
+    JSON:
+    {"intent":"system_control","target_application":"System","steps":[{"step_number":1,"action":"system_command","param":"volume_level 0"}]}
+
+    User: "set volume to 80 percent" or "volume 80 kar do"
+    JSON:
+    {"intent":"system_control","target_application":"System","steps":[{"step_number":1,"action":"system_command","param":"volume_level 80"}]}
+
     User: "Blender mein cube sculpt karo"
     JSON:
     {"intent":"software_automation","target_application":"Blender","steps":[{"step_number":1,"action":"focus_application","param":"Blender"},{"step_number":2,"action":"visual_locate_and_click","param":"Sculpt Mode dropdown menu"},{"step_number":3,"action":"keystroke","param":"Shift+A"}]}
@@ -71,6 +79,10 @@ public final class LLMIntentOrchestrator: @unchecked Sendable {
     JSON:
     {"intent":"system_control","target_application":"Spotify","steps":[{"step_number":1,"action":"focus_application","param":"Spotify"},{"step_number":2,"action":"system_command","param":"close_application"}]}
     
+    User: "play the song on spotify" or "spotify pe gaana chalao"
+    JSON:
+    {"intent":"software_automation","target_application":"Spotify","steps":[{"step_number":1,"action":"focus_application","param":"Spotify"},{"step_number":2,"action":"system_command","param":"play_music"}]}
+
     User: "Play the current video" or "video chalao"
     JSON:
     {"intent":"system_control","target_application":"Browser","steps":[{"step_number":1,"action":"focus_application","param":"Safari"},{"step_number":2,"action":"visual_locate_and_click","param":"Video Play button"}]}
@@ -160,6 +172,54 @@ public final class LLMIntentOrchestrator: @unchecked Sendable {
     /// Synthesizes valid schema-conforming JSON for fast deterministic operations (zero token cost)
     public func synthesizeDeterministicPlan(for query: String) -> String {
         let lower = query.lowercased()
+        
+        // 1. Volume & Audio Control
+        if lower.contains("volume") || lower.contains("aawaz") || lower.contains("sound") || lower.contains("mute") || lower.contains("unmute") {
+            let param: String
+            if lower.contains("unmute") {
+                param = "unmute"
+            } else if lower.contains("mute") || lower.contains("zero") || lower.contains("0%") || lower.contains("0 percent") || lower.contains("to 0") {
+                param = "volume_level 0"
+            } else if lower.contains("100") || lower.contains("full") || lower.contains("max") {
+                param = "volume_level 100"
+            } else if lower.contains("50") || lower.contains("half") {
+                param = "volume_level 50"
+            } else {
+                let digits = lower.components(separatedBy: CharacterSet.decimalDigits.inverted).filter { !$0.isEmpty }
+                if let d = digits.first {
+                    param = "volume_level \(d)"
+                } else if lower.contains("down") || lower.contains("kam") || lower.contains("lower") || lower.contains("decrease") || lower.contains("quieter") {
+                    param = "volume_down"
+                } else if lower.contains("up") || lower.contains("tez") || lower.contains("raise") || lower.contains("increase") || lower.contains("louder") {
+                    param = "volume_up"
+                } else {
+                    param = "volume_down"
+                }
+            }
+            return """
+            {
+              "intent": "system_control",
+              "target_application": "System",
+              "steps": [
+                { "step_number": 1, "action": "system_command", "param": "\(param)" }
+              ]
+            }
+            """
+        }
+        
+        // 2. Spotify Playback
+        if lower.contains("spotify") && (lower.contains("play") || lower.contains("chalao") || lower.contains("song") || lower.contains("gaana") || lower.contains("music")) && !lower.contains("close") && !lower.contains("band") {
+            return """
+            {
+              "intent": "software_automation",
+              "target_application": "Spotify",
+              "steps": [
+                { "step_number": 1, "action": "focus_application", "param": "Spotify" },
+                { "step_number": 2, "action": "system_command", "param": "play_music" }
+              ]
+            }
+            """
+        }
         
         if lower.contains("blender") {
             return """

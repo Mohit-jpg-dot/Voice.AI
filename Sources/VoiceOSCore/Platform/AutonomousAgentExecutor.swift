@@ -103,25 +103,8 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         // Mode B: Computer Control Mode (⌘ Command Key Pressed & Held or Default)
         // -------------------------------------------------------------
         if ModelRouter.shared.currentMode != .googleSearch {
-            // 1. Direct Native macOS Tools (volume, mute, apps, screenshots, brightness)
-            if let _ = AgentToolParser.parse(query: trimmed) {
-                let dispatchResult = await AgentActionDispatcher.shared.dispatch(transcript: trimmed)
-                LocalMemoryManager.shared.remember(
-                    content: "\(trimmed) -> \(dispatchResult.summary)",
-                    category: "task",
-                    tags: [dispatchResult.appName]
-                )
-                return AutonomousExecutionResult(
-                    success: dispatchResult.success,
-                    summary: dispatchResult.summary,
-                    targetAppName: dispatchResult.appName,
-                    targetURL: dispatchResult.deepLinkURL,
-                    executedSteps: ["Executed native macOS system command", dispatchResult.summary]
-                )
-            }
-            
-            // 2. Structured Multi-Step Computer Automation via LLMIntentOrchestrator
-            onProgress?("Translating to macOS computer action...")
+            // 1. Send command through LLM (Llama 3.2) to orchestrate native macOS computer instructions
+            onProgress?("Translating voice command to computer instructions with LLM...")
             if let plan = try? await LLMIntentOrchestrator.shared.plan(transcript: trimmed) {
                 if plan.intent == "software_automation" || plan.intent == "system_control" {
                     let execution = await executeOrchestratedPlan(plan, onProgress: onProgress)
@@ -148,6 +131,23 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                         executedSteps: ["Executed web search for \"\(searchStep.param)\""]
                     )
                 }
+            }
+            
+            // 2. Direct Native macOS Tools Fallback
+            if let _ = AgentToolParser.parse(query: trimmed) {
+                let dispatchResult = await AgentActionDispatcher.shared.dispatch(transcript: trimmed)
+                LocalMemoryManager.shared.remember(
+                    content: "\(trimmed) -> \(dispatchResult.summary)",
+                    category: "task",
+                    tags: [dispatchResult.appName]
+                )
+                return AutonomousExecutionResult(
+                    success: dispatchResult.success,
+                    summary: dispatchResult.summary,
+                    targetAppName: dispatchResult.appName,
+                    targetURL: dispatchResult.deepLinkURL,
+                    executedSteps: ["Executed native macOS system command", dispatchResult.summary]
+                )
             }
             
             // 3. Fallback General AI Reasoning (if conversational query)
@@ -259,18 +259,34 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 
             case "system_command":
                 let cmd = step.param.lowercased()
-                if cmd.contains("volume_up") || cmd.contains("volume up") {
-                    let res = AccessibilityControlEngine.shared.adjustVolume(delta: 0.15, absoluteLevel: nil)
-                    executed.append("System volume set to \(Int(res.newLevel * 100))%")
-                } else if cmd.contains("volume_down") || cmd.contains("volume down") {
-                    let res = AccessibilityControlEngine.shared.adjustVolume(delta: -0.15, absoluteLevel: nil)
-                    executed.append("System volume set to \(Int(res.newLevel * 100))%")
+                if cmd.contains("volume_level") || cmd.contains("volume to") || cmd.contains("set_volume") || cmd.contains("volume") || cmd.contains("aawaz") {
+                    let digits = cmd.components(separatedBy: CharacterSet.decimalDigits.inverted).filter { !$0.isEmpty }
+                    if let firstDigit = digits.first, let val = Double(firstDigit) {
+                        let normalized = min(1.0, max(0.0, val / 100.0))
+                        let res = AccessibilityControlEngine.shared.adjustVolume(delta: nil, absoluteLevel: normalized)
+                        executed.append("System volume set to \(Int(res.newLevel * 100))%")
+                    } else if cmd.contains("volume_up") || cmd.contains("volume up") || cmd.contains("louder") || cmd.contains("tez") {
+                        let res = AccessibilityControlEngine.shared.adjustVolume(delta: 0.15, absoluteLevel: nil)
+                        executed.append("System volume set to \(Int(res.newLevel * 100))%")
+                    } else if cmd.contains("volume_down") || cmd.contains("volume down") || cmd.contains("quieter") || cmd.contains("kam") {
+                        let res = AccessibilityControlEngine.shared.adjustVolume(delta: -0.15, absoluteLevel: nil)
+                        executed.append("System volume set to \(Int(res.newLevel * 100))%")
+                    } else if cmd.contains("zero") || cmd.contains("mute") || cmd.contains("0") {
+                        let res = AccessibilityControlEngine.shared.adjustVolume(delta: nil, absoluteLevel: 0.0)
+                        executed.append("System volume set to 0%")
+                    } else {
+                        executed.append("Executed \(step.param)")
+                    }
                 } else if cmd.contains("mute") && !cmd.contains("unmute") {
                     _ = AccessibilityControlEngine.shared.performSystemControl("mute")
                     executed.append("Muted audio")
                 } else if cmd.contains("unmute") {
                     _ = AccessibilityControlEngine.shared.performSystemControl("unmute")
                     executed.append("Unmuted audio")
+                } else if cmd.contains("play_music") || cmd.contains("play") {
+                    let mediaApp = targetApp == "System" || targetApp == "macOS" ? "Spotify" : targetApp
+                    _ = AccessibilityControlEngine.shared.controlMedia(app: mediaApp, action: "play", query: nil)
+                    executed.append("Playing music on \(mediaApp)")
                 } else if cmd.contains("close") {
                     let res = AccessibilityControlEngine.shared.closeApplication(named: targetApp)
                     executed.append(res.summary)

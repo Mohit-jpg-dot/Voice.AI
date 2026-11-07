@@ -311,7 +311,12 @@ public enum AgentToolParser {
                 return .systemControl(action: "mute")
             }
             
-            // Percentage extraction: e.g. "volume 80%", "set volume to 75", "volume 40"
+            // Zero volume / Mute
+            if lower.contains("zero") || lower.contains("0%") || lower.contains("0 percent") || lower.contains("to 0") {
+                return .setVolume(level: 0.0, delta: nil)
+            }
+            
+            // Percentage extraction: e.g. "volume 80%", "set volume to 75", "volume 40", "volume down to 0 percent"
             if let pctMatch = extractVolumePercentage(from: lower) {
                 return .setVolume(level: pctMatch, delta: nil)
             }
@@ -325,8 +330,7 @@ public enum AgentToolParser {
             } else if lower.contains("badha") || lower.contains("tez") || lower.contains("up") || lower.contains("raise") || lower.contains("increase") || lower.contains("louder") || lower.contains("more sound") {
                 return .setVolume(level: nil, delta: 0.15)
             } else {
-                // If user just says "set volume" or "adjust volume" without specific direction, set to 75%
-                return .setVolume(level: 0.75, delta: nil)
+                return .setVolume(level: nil, delta: nil)
             }
         }
         
@@ -805,12 +809,12 @@ public enum AgentToolParser {
     }
     
     private static func extractVolumePercentage(from text: String) -> Double? {
-        let pattern = #"(?:to|at|is)?\s*(\d{1,3})\s*(?:%|percent)?"#
+        let pattern = #"(?:to|at|is|down to|up to)?\s*(\d{1,3})\s*(?:%|percent)?"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
               let match = regex.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)),
               match.numberOfRanges > 1,
               let range = Range(match.range(at: 1), in: text),
-              let val = Double(text[range]), val > 0 && val <= 100 else {
+              let val = Double(text[range]), val >= 0 && val <= 100 else {
             return nil
         }
         return val / 100.0

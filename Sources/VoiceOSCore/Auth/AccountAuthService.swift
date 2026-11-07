@@ -165,11 +165,44 @@ public final class AccountAuthService: NSObject, @unchecked Sendable, ASWebAuthe
         return accounts.values.first(where: { $0.account.id == session.accountId })?.account
     }
     
+    public var isSelfHosted: Bool {
+        get {
+            return (VoiceOSConfigStore.shared.get("auth") as? [String: Any])?["isSelfHosted"] as? Bool ?? false
+        }
+        set {
+            var current = (VoiceOSConfigStore.shared.get("auth") as? [String: Any]) ?? [:]
+            current["isSelfHosted"] = newValue
+            VoiceOSConfigStore.shared.set("auth", value: current)
+        }
+    }
+    
     public var isAuthenticated: Bool {
+        if isSelfHosted { return true }
         guard let session = currentSession else { return false }
         if !session.isExpired { return true }
         // Offline grace period check (30 days from login)
         return session.isWithinOfflineGracePeriod
+    }
+    
+    // MARK: - Supabase OAuth & Auth State Bridge (APP-SECRET.md line 71, 114)
+    
+    public func generateNewAuthState(redirectUri: String = "https://api.voiceos.com/callback") -> [String: String] {
+        return VoiceOSIPCSurface.shared.generateNewAuthState(redirectUri: redirectUri)
+    }
+    
+    public func exchangeAuthCode(code: String, state: String) async throws -> [String: Any] {
+        let session = try await VoiceOSIPCSurface.shared.exchangeAuthCode(code: code, state: state)
+        if let token = session["access_token"] as? String {
+            self.activeSession = AuthSession(
+                token: token,
+                refreshToken: (session["refresh_token"] as? String) ?? "",
+                accountId: ((session["user"] as? [String: Any])?["id"] as? String) ?? UUID().uuidString,
+                issuedAt: Date(),
+                expiresAt: Date().addingTimeInterval(3600),
+                offlineGraceUntil: Date().addingTimeInterval(30 * 86400)
+            )
+        }
+        return session
     }
     
     public var isSessionDegradedOffline: Bool {

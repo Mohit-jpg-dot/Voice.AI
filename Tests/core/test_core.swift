@@ -631,6 +631,55 @@ assertEqual(summary.chatProvider, "Ollama", "Chat provider set to Ollama in loca
 assertEqual(summary.visionProvider, "Ollama", "Vision provider set to Ollama in local mode")
 assertTrue(summary.privacyDescription.contains("100% On-Device"), "Local mode ensures 100% On-Device privacy")
 
+// Test Suite 29: VoiceOS IPC Surface & Key Interception
+print("\n[Suite 29] VoiceOS IPC Surface & Key Interception (APP-SECRET.md)")
+let ipc = VoiceOSIPCSurface.shared
+let defaultMic = await ipc.getDefaultMicrophoneName()
+assertTrue(defaultMic.contains("Microphone"), "Default microphone name discovered via IPC")
+let audioDevices = await ipc.getNativeAudioDevicesWithInfo()
+assertTrue(audioDevices.count > 0, "Native audio devices enumerated via IPC")
+
+let blockOk = ipc.blockKeys(["cmd_c", "cmd_v"])
+assertTrue(blockOk, "Key suppression registered in IPC")
+let blocked = ipc.getBlockedKeys()
+assertTrue(blocked.contains("cmd_c"), "Blocked key present in blocked list")
+let unblockOk = ipc.unblockKey("cmd_c")
+assertTrue(unblockOk, "Key successfully unblocked")
+
+// Test Suite 30: SQLite3 Database & Unified Config Store
+print("\n[Suite 30] SQLite3 voice_session_insights & Config Store")
+let db = VoiceOSDatabaseManager.shared
+let testInsightId = "test_insight_" + UUID().uuidString
+let inserted = try db.insertInsight(
+    id: testInsightId,
+    userId: "user_test_42",
+    sourceUpdatedAt: "2026-11-07T00:00:00Z",
+    metricsJSON: "{\"duration\": 4.2, \"wpm\": 145}"
+)
+assertTrue(inserted, "Inserted insight row into SQLite voice_session_insights table")
+let insights = db.fetchInsights(for: "user_test_42")
+assertTrue(insights.contains { ($0["id"] as? String) == testInsightId }, "Fetched insight from SQLite matching user_id index")
+
+let config = VoiceOSConfigStore.shared
+config.set("test_key", value: "voiceos_verified")
+let retrievedVal = config.get("test_key") as? String
+assertEqual(retrievedVal, "voiceos_verified", "Retrieved value from unified config.json store")
+config.delete("test_key")
+
+// Test Suite 31: Supabase Auth & ConnectRPC Schemas
+print("\n[Suite 31] Supabase Auth Flow & ConnectRPC Protobuf Schemas")
+let auth = AccountAuthService.shared
+let authState = auth.generateNewAuthState()
+assertTrue(authState["url"]?.contains("supabase.co") == true, "Generated valid Supabase OAuth authorize URL")
+auth.isSelfHosted = true
+assertTrue(auth.isAuthenticated, "isSelfHosted flag grants local authenticated state")
+auth.isSelfHosted = false
+
+let streamMsg = StreamMessageSchema(conversationId: "conv_1", chunkIndex: 0, deltaText: "Hello VoiceOS", isFinal: false)
+assertEqual(streamMsg.deltaText, "Hello VoiceOS", "StreamMessageSchema serialization parity")
+let screenContext = ScreenshotContextSchema(screenWidth: 1920, screenHeight: 1080, activeApplicationName: "Safari", base64JPEGData: "test_b64")
+assertEqual(screenContext.activeApplicationName, "Safari", "ScreenshotContextSchema context parity")
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

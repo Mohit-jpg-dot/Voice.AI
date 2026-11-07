@@ -401,6 +401,24 @@ public final class AppState: ObservableObject, @unchecked Sendable {
             persona: PersonaManager.shared.getActivePersona().rawValue,
             actions: actionItems
         )
+        
+        // Persist to SQLite Database (APP-SECRET.md line 122-131)
+        let userId = AccountAuthService.shared.currentAccount?.id ?? "local_user"
+        let sessionId = UUID().uuidString
+        VoiceOSDatabaseManager.shared.insertSession(
+            id: sessionId,
+            userId: userId,
+            transcript: prompt,
+            mode: mode.rawValue,
+            durationMs: Double(wordCount) * 200.0
+        )
+        let metricsJSON = "{\"words\":\(wordCount),\"timeSaved\":\(self.timeSavedMinutes),\"mode\":\"\(mode.rawValue)\"}"
+        _ = try? VoiceOSDatabaseManager.shared.insertInsight(
+            id: sessionId,
+            userId: userId,
+            sourceUpdatedAt: ISO8601DateFormatter().string(from: Date()),
+            metricsJSON: metricsJSON
+        )
 
         recomputeAppUsages()
     }

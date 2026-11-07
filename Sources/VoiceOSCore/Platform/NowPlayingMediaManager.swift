@@ -360,8 +360,18 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         case .appleMusic:
             _ = runAppleScript("tell application \"Music\" to playpause")
         case .youtube:
-            // Toggle spacebar on frontmost browser
-            _ = runAppleScript("tell application \"System Events\" to key code 49")
+            let script = """
+            tell application "System Events"
+                if exists (process "Google Chrome") then
+                    tell process "Google Chrome" to keystroke "k"
+                else if exists (process "Safari") then
+                    tell process "Safari" to keystroke "k"
+                else
+                    key code 49
+                end if
+            end tell
+            """
+            _ = runAppleScript(script)
         }
         pollMediaState()
     }
@@ -374,7 +384,18 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         case .appleMusic:
             _ = runAppleScript("tell application \"Music\" to next track")
         case .youtube:
-            _ = runAppleScript("tell application \"System Events\" to key code 124 using {shift down}") // Shift+N
+            let script = """
+            tell application "System Events"
+                if exists (process "Google Chrome") then
+                    tell process "Google Chrome" to keystroke "N" using {shift down}
+                else if exists (process "Safari") then
+                    tell process "Safari" to keystroke "N" using {shift down}
+                else
+                    key code 124 using {shift down}
+                end if
+            end tell
+            """
+            _ = runAppleScript(script)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.pollMediaState()
@@ -389,7 +410,18 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         case .appleMusic:
             _ = runAppleScript("tell application \"Music\" to previous track")
         case .youtube:
-            _ = runAppleScript("tell application \"System Events\" to key code 123 using {shift down}") // Shift+P
+            let script = """
+            tell application "System Events"
+                if exists (process "Google Chrome") then
+                    tell process "Google Chrome" to keystroke "P" using {shift down}
+                else if exists (process "Safari") then
+                    tell process "Safari" to keystroke "P" using {shift down}
+                else
+                    key code 123 using {shift down}
+                end if
+            end tell
+            """
+            _ = runAppleScript(script)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.pollMediaState()

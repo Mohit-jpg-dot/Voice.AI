@@ -19,6 +19,7 @@ public struct NotchGlassIslandView: View {
     }
     
     private var isOpen: Bool {
+        if appState.isMediaExpanded { return true }
         switch appState.islandState {
         case .resting, .voiceCompact:
             return false
@@ -43,6 +44,9 @@ public struct NotchGlassIslandView: View {
     // MARK: - Dynamic Response-Adaptive Sizing Engine
     // Automatically calculates opening width and height based on current response length or view mode
     private var dynamicDimensions: (width: CGFloat, height: CGFloat) {
+        if appState.isMediaExpanded {
+            return (460.0, 185.0)
+        }
         if !isOpen {
             if case .voiceCompact = appState.islandState {
                 let count = appState.currentTranscript.count
@@ -51,7 +55,7 @@ public struct NotchGlassIslandView: View {
                 return (width, height)
             }
             if let media = appState.currentMedia, media.isPlaying {
-                return (physicalNotchWidth + 180.0, physicalNotchHeight + 6.0)
+                return (physicalNotchWidth + 100.0, physicalNotchHeight + 6.0)
             }
             return (physicalNotchWidth, physicalNotchHeight)
         }
@@ -165,7 +169,9 @@ public struct NotchGlassIslandView: View {
         ZStack(alignment: .top) {
             // Main Animated Notch Body (Liquid Translucent Black Glass)
             VStack(spacing: 0) {
-                if isOpen {
+                if appState.isMediaExpanded, let media = appState.currentMedia {
+                    aestheticMediaPanel(media: media)
+                } else if isOpen {
                     if isCompactMode || appState.isCompactResponseMode {
                         compactResponsePillView
                     } else {
@@ -174,7 +180,7 @@ public struct NotchGlassIslandView: View {
                 } else if case .voiceCompact = appState.islandState {
                     liveActivityWings
                 } else if let media = appState.currentMedia, media.isPlaying {
-                    nowPlayingWings(media: media)
+                    restingMediaWings(media: media)
                 } else {
                     restingHardwareNotchPill
                 }
@@ -271,6 +277,7 @@ public struct NotchGlassIslandView: View {
             appState.stopVoice()
             withAnimation(NotchAnimations.closeSpring) {
                 appState.islandState = .resting
+                appState.isMediaExpanded = false
                 appState.isPinned = false
             }
         }
@@ -301,7 +308,11 @@ public struct NotchGlassIslandView: View {
                 await MainActor.run {
                     guard self.isHovering, !self.isOpen, !self.appState.isPinned else { return }
                     withAnimation(NotchAnimations.openSpring) {
-                        self.appState.setHoverExpanded(true)
+                        if let media = self.appState.currentMedia, media.isPlaying {
+                            self.appState.isMediaExpanded = true
+                        } else {
+                            self.appState.setHoverExpanded(true)
+                        }
                     }
                 }
             }
@@ -322,9 +333,10 @@ public struct NotchGlassIslandView: View {
                         self.appState.stopVoice()
                     }
                     
-                    if self.isOpen || self.appState.islandState != .resting {
+                    if self.isOpen || self.appState.islandState != .resting || self.appState.isMediaExpanded {
                         withAnimation(NotchAnimations.closeSpring) {
                             self.appState.setHoverExpanded(false)
+                            self.appState.isMediaExpanded = false
                             self.appState.islandState = .resting
                         }
                     }
@@ -462,42 +474,40 @@ public struct NotchGlassIslandView: View {
         return "Listening"
     }
     
-    // MARK: - Now Playing Flanking Wings (Apple Dynamic Island / boring.notch style)
-    private func nowPlayingWings(media: NowPlayingItem) -> some View {
+    // MARK: - Resting Media Wings (BoringNotch style: Left & Right of physical camera notch)
+    private func restingMediaWings(media: NowPlayingItem) -> some View {
         Button(action: {
             withAnimation(NotchAnimations.openSpring) {
-                appState.setHoverExpanded(true)
+                appState.isMediaExpanded = true
             }
         }) {
-            HStack(spacing: 8) {
-                // Left Wing: Source Icon + Title
-                HStack(spacing: 5) {
+            HStack(spacing: 0) {
+                // Left Wing: Source Icon (placed safely to the left of the MacBook camera notch)
+                HStack(spacing: 4) {
                     ZStack {
                         Circle()
                             .fill(media.source == .spotify ? Color(red: 0.11, green: 0.73, blue: 0.33) : (media.source == .youtube ? Color.red : Color(red: 0.98, green: 0.14, blue: 0.24)))
-                            .frame(width: 15, height: 15)
+                            .frame(width: 17, height: 17)
+                            .shadow(color: (media.source == .spotify ? Color.green : Color.red).opacity(0.4), radius: 3)
                         Image(systemName: media.source.iconName)
-                            .font(.system(size: 7.5, weight: .bold))
+                            .font(.system(size: 8.5, weight: .bold))
                             .foregroundColor(.white)
                     }
-                    
-                    Text(media.title)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
                 }
-                .frame(maxWidth: 135, alignment: .leading)
-                .padding(.leading, 10)
+                .frame(width: 45, alignment: .center)
                 
-                Spacer(minLength: 4)
+                // Center Spacer: Exact width of the physical MacBook Notch
+                // Ensures ZERO text or controls are placed behind the plastic camera!
+                Spacer(minLength: 0)
+                    .frame(width: physicalNotchWidth)
                 
-                // Right Wing: EQ Bars + Play/Pause Button
-                HStack(spacing: 6) {
+                // Right Wing: EQ Bars + Play/Pause Button (placed safely to the right of the notch)
+                HStack(spacing: 5) {
                     HStack(spacing: 2) {
                         ForEach(0..<4, id: \.self) { idx in
                             RoundedRectangle(cornerRadius: 1)
-                                .fill(media.source == .spotify ? Color(red: 0.11, green: 0.85, blue: 0.4) : Color.cyan)
-                                .frame(width: 2, height: CGFloat(media.isPlaying ? [8, 13, 6, 11][idx] : 3))
+                                .fill(media.source == .spotify ? Color(red: 0.11, green: 0.85, blue: 0.4) : Color.red)
+                                .frame(width: 2, height: CGFloat(media.isPlaying ? [7, 13, 5, 11][idx] : 3))
                         }
                     }
                     
@@ -508,24 +518,219 @@ public struct NotchGlassIslandView: View {
                         Image(systemName: media.isPlaying ? "pause.fill" : "play.fill")
                             .font(.system(size: 7.5, weight: .bold))
                             .foregroundColor(.white)
-                            .frame(width: 17, height: 17)
-                            .background(Color.white.opacity(0.18))
+                            .frame(width: 16, height: 16)
+                            .background(Color.white.opacity(0.2))
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.trailing, 10)
+                .frame(width: 50, alignment: .center)
             }
             .frame(width: currentWidth, height: currentHeight)
-            .background(Color.black.opacity(0.95))
+            .background(Color.black)
             .clipShape(Capsule())
             .overlay(
                 Capsule()
-                    .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
             )
-            .shadow(color: Color.black.opacity(0.4), radius: 6, x: 0, y: 3)
         }
         .buttonStyle(.plain)
+        .help("Click to expand media player")
+    }
+    
+    // MARK: - Aesthetic Dark Glass Media Control Panel (YouTube & Spotify)
+    private func aestheticMediaPanel(media: NowPlayingItem) -> some View {
+        VStack(spacing: 8) {
+            // Top notch avoidance padding: ensure all controls and text begin safely below the MacBook camera notch!
+            Spacer()
+                .frame(height: physicalNotchHeight > 30 ? (physicalNotchHeight - 8) : 6)
+            
+            // Header Bar: Source Badge + EQ + Close
+            HStack(alignment: .center) {
+                // Source Pill
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(media.source == .spotify ? Color(red: 0.11, green: 0.73, blue: 0.33) : (media.source == .youtube ? Color.red : Color.pink))
+                        .frame(width: 7, height: 7)
+                    Text(media.source.rawValue.uppercased())
+                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3.5)
+                .background(Color.white.opacity(0.08))
+                .cornerRadius(6)
+                
+                Spacer()
+                
+                // Live EQ Visualizer
+                HStack(spacing: 2) {
+                    ForEach(0..<5, id: \.self) { idx in
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(media.source == .spotify ? Color(red: 0.11, green: 0.85, blue: 0.4) : Color.red)
+                            .frame(width: 2, height: CGFloat(media.isPlaying ? [8, 14, 5, 12, 7][idx] : 3))
+                    }
+                }
+                .padding(.trailing, 8)
+                
+                // Collapse / Close Button
+                Button(action: {
+                    withAnimation(NotchAnimations.closeSpring) {
+                        appState.isMediaExpanded = false
+                    }
+                }) {
+                    Image(systemName: "chevron.up.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundColor(Color.white.opacity(0.6))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            
+            // Middle Row: Album Artwork + Title & Scrubber
+            HStack(spacing: 12) {
+                // Album Art / Video Thumbnail Container
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    media.source == .spotify ? Color(red: 0.1, green: 0.3, blue: 0.15) : Color(red: 0.35, green: 0.08, blue: 0.08),
+                                    Color.black
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 48, height: 48)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                        )
+                    
+                    Image(systemName: media.source == .spotify ? "music.note" : "play.rectangle.fill")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(media.source == .spotify ? Color(red: 0.11, green: 0.85, blue: 0.4) : Color.red)
+                }
+                
+                // Track Info & Progress Bar
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(media.title)
+                        .font(.system(size: 12.5, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    
+                    Text(media.artistOrChannel.isEmpty ? media.source.rawValue : media.artistOrChannel)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.6))
+                        .lineLimit(1)
+                    
+                    // Scrubber Bar
+                    VStack(spacing: 2) {
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(Color.white.opacity(0.15))
+                                    .frame(height: 3)
+                                Capsule()
+                                    .fill(media.source == .spotify ? Color(red: 0.11, green: 0.85, blue: 0.4) : Color.white)
+                                    .frame(width: max(4.0, geo.size.width * CGFloat(media.progress)), height: 3)
+                            }
+                        }
+                        .frame(height: 3)
+                        
+                        HStack {
+                            Text(String(format: "%d:%02d", media.positionSeconds / 60, media.positionSeconds % 60))
+                                .font(.system(size: 8.5, design: .monospaced))
+                                .foregroundColor(Color.white.opacity(0.5))
+                            Spacer()
+                            if media.durationSeconds > 0 {
+                                Text(String(format: "%d:%02d", media.durationSeconds / 60, media.durationSeconds % 60))
+                                    .font(.system(size: 8.5, design: .monospaced))
+                                    .foregroundColor(Color.white.opacity(0.5))
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            
+            // Bottom Controls Bar: Previous | Play/Pause | Next
+            HStack(spacing: 28) {
+                Spacer()
+                
+                // Previous Button
+                Button(action: {
+                    BoringSoundEngine.shared.playTap()
+                    NowPlayingMediaManager.shared.previousTrack()
+                }) {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.85))
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Previous Track (Shift+P)")
+                
+                // Play / Pause Button (Prominent Center)
+                Button(action: {
+                    BoringSoundEngine.shared.playTap()
+                    NowPlayingMediaManager.shared.togglePlayPause()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 36, height: 36)
+                            .shadow(color: Color.white.opacity(0.25), radius: 5)
+                        Image(systemName: media.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.black)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help(media.isPlaying ? "Pause" : "Play")
+                
+                // Next Button
+                Button(action: {
+                    BoringSoundEngine.shared.playTap()
+                    NowPlayingMediaManager.shared.nextTrack()
+                }) {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.85))
+                        .frame(width: 32, height: 32)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Next Track (Shift+N)")
+                
+                Spacer()
+            }
+            .padding(.bottom, 12)
+        }
+        .frame(width: 460, height: 185)
+        .background(
+            ZStack {
+                VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
+                Color.black.opacity(0.96)
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.22), Color.white.opacity(0.06)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.8
+                )
+        )
+        .shadow(color: Color.black.opacity(0.7), radius: 16, x: 0, y: 8)
     }
     
     // MARK: - Now Playing Mini Player Bar (Interactive Playback Controls)

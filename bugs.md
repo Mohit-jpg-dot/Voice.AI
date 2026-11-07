@@ -110,6 +110,30 @@ Voice.AI's core offline engine was subjected to a comprehensive live empirical t
 
 ---
 
+### Bug #5: Media Text & Controls Obscured Behind MacBook Physical Notch
+- **Severity**: High (UI/UX Obstruction)
+- **Observed Behavior**: Active media titles (e.g., `"695) Shinchan Bann..."`) and player controls were rendered across the entire notch pill, causing text to run directly behind the physical MacBook camera cutout bezel.
+- **Fix Implemented**:
+  - Re-architected resting media state into **BoringNotch Flanking Wings**:
+    * **Left Wing** (45px): Glowing app badge (YouTube / Spotify / Apple Music) positioned safely to the left of the physical notch.
+    * **Center Spacer** (`physicalNotchWidth` ~185px): Leaves the physical hardware notch cutout completely untouched and free of any text or controls.
+    * **Right Wing** (50px): Animated equalizer visualizer bars + mini Play/Pause toggle positioned safely to the right of the notch.
+
+---
+
+### Bug #6: Media Control Panel Stuck & Lacking Aesthetic Controls
+- **Severity**: Medium (Feature / UX)
+- **Observed Behavior**: Media playback could not be easily expanded or controlled (Play/Pause, Next, Previous) with buttery-smooth interactions.
+- **Fix Implemented**:
+  - Implemented a dedicated 460x185 matte black liquid glass **BoringNotch Media Island Panel**:
+    * **Top Notch Clearance**: Dynamic spacer (`physicalNotchHeight - 8`) guarantees all content drops down safely *below* the physical camera bezel.
+    * **Header**: Glowing source indicator pill, animated 5-bar live audio EQ visualizer, and collapse button.
+    * **Middle Track Card**: Rounded gradient album artwork/video thumbnail container, bold track title, artist/channel name, and interactive progress scrubber with elapsed/total timestamps.
+    * **Controls**: Previous Track (`backward.fill`), prominent circular Play/Pause button (`play.fill`/`pause.fill`), and Next Track (`forward.fill`).
+    * **Cross-App Support**: Direct AppleScript keystroke dispatch to Google Chrome, Safari, Spotify, and Apple Music without losing window focus.
+
+---
+
 ## Part 4: Performance & Latency Benchmark Table
 
 | Subsystem / Operation | Benchmark / Measured Metric | Status | Evaluation |
@@ -135,3 +159,4 @@ Voice.AI's core offline engine was subjected to a comprehensive live empirical t
 2. **Machines with 8 GB Unified Memory**:
    - **Mandatory Guardrail**: **Hybrid Mode** (Local Brain 3B + Cloud Vision API).
    - Local LLaVA-7B should be disabled to prevent macOS kernel memory compression lockups.
+

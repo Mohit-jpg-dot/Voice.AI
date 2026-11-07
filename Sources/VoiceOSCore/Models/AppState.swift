@@ -19,6 +19,7 @@ public final class AppState: ObservableObject, @unchecked Sendable {
         }
     }
     @Published public var isPinned: Bool = false
+    @Published public var isMediaExpanded: Bool = false
     @Published public var isNotchHUDVisible: Bool = true
     @Published public var isFloatingOrbVisible: Bool = true {
         didSet {

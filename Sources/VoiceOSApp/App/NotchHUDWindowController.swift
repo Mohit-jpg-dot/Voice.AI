@@ -72,7 +72,7 @@ public final class NotchHUDWindowController: NSWindowController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] size in
                 guard let self = self, let panel = self.window as? NotchPanel else { return }
-                guard self.appState.islandState != .resting else { return }
+                guard self.appState.islandState != .resting || self.appState.isMediaExpanded else { return }
                 let windowWidth = Self.panelWindowWidth
                 let windowHeight = Self.panelWindowHeight
                 let visibleX = (windowWidth - size.width) / 2.0
@@ -97,9 +97,12 @@ public final class NotchHUDWindowController: NSWindowController {
                 
                 switch state {
                 case .resting:
-                    isClosed = true
-                    if let m = self.appState.currentMedia, m.isPlaying {
-                        visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 180.0
+                    isClosed = !self.appState.isMediaExpanded
+                    if self.appState.isMediaExpanded {
+                        visibleWidth = 460.0
+                        visibleHeight = 185.0
+                    } else if let m = self.appState.currentMedia, m.isPlaying {
+                        visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
                         visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0
                     } else {
                         visibleWidth = Self.calculateClosedNotchWidth(for: screen)
@@ -139,6 +142,37 @@ public final class NotchHUDWindowController: NSWindowController {
             }
             .store(in: &cancellables)
             
+        // 2b. Observe Media Panel Expansion
+        appState.$isMediaExpanded
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] expanded in
+                guard let self = self, let panel = self.window as? NotchPanel else { return }
+                let screen = Self.targetNotchScreen()
+                let windowWidth = Self.panelWindowWidth
+                let windowHeight = Self.panelWindowHeight
+                let visibleWidth: CGFloat
+                let visibleHeight: CGFloat
+                if expanded {
+                    visibleWidth = 460.0
+                    visibleHeight = 185.0
+                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                } else if self.appState.islandState == .resting {
+                    if let m = self.appState.currentMedia, m.isPlaying {
+                        visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
+                        visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0
+                    } else {
+                        visibleWidth = Self.calculateClosedNotchWidth(for: screen)
+                        visibleHeight = Self.calculateClosedNotchHeight(for: screen)
+                    }
+                } else {
+                    return
+                }
+                let visibleX = (windowWidth - visibleWidth) / 2.0
+                let visibleY = windowHeight - visibleHeight
+                panel.visibleNotchBounds = NSRect(x: visibleX, y: visibleY, width: visibleWidth, height: visibleHeight)
+            }
+            .store(in: &cancellables)
+            
         // 3. Observe Current Media to adapt resting notch wings size
         appState.$currentMedia
             .receive(on: DispatchQueue.main)
@@ -150,8 +184,11 @@ public final class NotchHUDWindowController: NSWindowController {
                 let windowHeight = Self.panelWindowHeight
                 let visibleWidth: CGFloat
                 let visibleHeight: CGFloat
-                if let m = media, m.isPlaying {
-                    visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 180.0
+                if self.appState.isMediaExpanded {
+                    visibleWidth = 460.0
+                    visibleHeight = 165.0
+                } else if let m = media, m.isPlaying {
+                    visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
                     visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0
                 } else {
                     visibleWidth = Self.calculateClosedNotchWidth(for: screen)

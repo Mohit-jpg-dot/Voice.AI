@@ -37,6 +37,16 @@ public struct SettingsView: View {
     @State private var selectedVoiceIdentifier: String = UserDefaults.standard.string(forKey: "voiceos.selected_voice_id") ?? ""
     @State private var isAuditioningVoice: Bool = false
     
+    // Account Authentication State
+    @State private var authIsLoginMode: Bool = true
+    @State private var authEmailInput: String = ""
+    @State private var authPasswordInput: String = ""
+    @State private var authNameInput: String = ""
+    @State private var authErrorMessage: String = ""
+    @State private var authSuccessMessage: String = ""
+    @State private var isAuthLoading: Bool = false
+    @State private var currentAccount: UserAccount? = AccountAuthService.shared.currentAccount
+    
     // AI Brain State
     @State private var activeMode: ModelMode = ModelRouter.shared.currentMode
     @State private var openAIKey: String = KeychainService.shared.get(.openAIApiKey) ?? ""
@@ -60,19 +70,20 @@ public struct SettingsView: View {
     public var body: some View {
         VStack(spacing: 0) {
             // Header Bar
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Settings")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                    Text("Configure your voice assistant, local models, hardware preferences, and system privileges.")
-                        .font(.system(size: 12))
-                        .foregroundColor(DesignTokens.Monochrome.textMuted)
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Settings")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                        Text("Preferences, voice configuration, local models, and account privacy.")
+                            .font(.system(size: 12))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                    }
+                    Spacer()
                 }
                 
-                Spacer()
-                
-                // Segmented Tab Picker
+                // Segmented Tab Picker (Full width, single line, zero text squishing)
                 HStack(spacing: 4) {
                     ForEach(SettingsTab.allCases) { tab in
                         Button(action: {
@@ -82,11 +93,13 @@ public struct SettingsView: View {
                                 Image(systemName: tab.icon)
                                     .font(.system(size: 11))
                                 Text(tab.rawValue)
-                                    .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .regular))
+                                    .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .medium))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
                             }
                             .foregroundColor(selectedTab == tab ? DesignTokens.Monochrome.textPrimary : DesignTokens.Monochrome.textMuted)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
                             .background(
                                 RoundedRectangle(cornerRadius: 6)
                                     .fill(selectedTab == tab ? DesignTokens.Monochrome.surfaceElevated : Color.clear)
@@ -94,6 +107,7 @@ public struct SettingsView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    Spacer()
                 }
                 .padding(3)
                 .background(DesignTokens.Monochrome.surface)
@@ -104,8 +118,8 @@ public struct SettingsView: View {
                 )
             }
             .padding(.horizontal, 24)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
+            .padding(.top, 18)
+            .padding(.bottom, 14)
             
             Divider()
                 .overlay(DesignTokens.Monochrome.border)
@@ -155,6 +169,7 @@ public struct SettingsView: View {
             self.profileName = appState.userName
             self.profileEmail = appState.userEmail
             self.isSoundEnabled = BoringSoundEngine.shared.isSoundEnabled
+            self.currentAccount = AccountAuthService.shared.currentAccount
         }
     }
     
@@ -680,9 +695,9 @@ public struct SettingsView: View {
     private var accountAndPrivacyTab: some View {
         VStack(alignment: .leading, spacing: 20) {
             // Account Session
-            settingsCard(title: "Account & Offline Grace Period", icon: "person.badge.shield.checkmark.fill") {
-                VStack(spacing: 12) {
-                    if let account = AccountAuthService.shared.currentAccount {
+            settingsCard(title: currentAccount != nil ? "Account & Offline Grace Period" : "Sign In to Voice.AI Account", icon: currentAccount != nil ? "person.badge.shield.checkmark.fill" : "person.badge.key.fill") {
+                VStack(spacing: 14) {
+                    if let account = currentAccount {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(account.displayName)
@@ -695,8 +710,14 @@ public struct SettingsView: View {
                             Spacer()
                             Button("Log Out") {
                                 AccountAuthService.shared.logOut()
+                                currentAccount = nil
+                                authEmailInput = ""
+                                authPasswordInput = ""
+                                authErrorMessage = ""
+                                authSuccessMessage = "Logged out successfully."
                             }
-                            .font(.system(size: 11))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Color.red.opacity(0.85))
                         }
                         
                         Divider().overlay(DesignTokens.Monochrome.border)
@@ -716,15 +737,110 @@ public struct SettingsView: View {
                                 .foregroundColor(Color.green)
                         }
                     } else {
-                        HStack {
-                            Text("Running Voice.AI in Local Guest Session.")
-                                .font(.system(size: 12))
-                                .foregroundColor(DesignTokens.Monochrome.textSecondary)
-                            Spacer()
-                            Button("Sign Up / Log In") {
-                                SetupWindowController.shared.showSetupWindow(appState: appState) {}
+                        // Inline Log In / Create Account Form
+                        VStack(alignment: .leading, spacing: 14) {
+                            Picker("", selection: $authIsLoginMode) {
+                                Text("Log In").tag(true)
+                                Text("Create Account").tag(false)
                             }
-                            .font(.system(size: 11, weight: .bold))
+                            .pickerStyle(.segmented)
+                            .frame(maxWidth: 240)
+                            
+                            if !authIsLoginMode {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Display Name")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                                    TextField("Your Name", text: $authNameInput)
+                                        .textFieldStyle(.roundedBorder)
+                                }
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Email Address")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                                TextField("name@example.com", text: $authEmailInput)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Password")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                                SecureField(authIsLoginMode ? "Enter password" : "At least 8 chars (upper, lower, number)", text: $authPasswordInput)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+                            
+                            if !authErrorMessage.isEmpty {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.orange)
+                                        .font(.system(size: 12))
+                                    Text(authErrorMessage)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.orange)
+                                }
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.orange.opacity(0.1))
+                                .cornerRadius(6)
+                            }
+                            
+                            if !authSuccessMessage.isEmpty {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                        .font(.system(size: 12))
+                                    Text(authSuccessMessage)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.green)
+                                }
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.green.opacity(0.1))
+                                .cornerRadius(6)
+                            }
+                            
+                            HStack(spacing: 12) {
+                                Button(action: {
+                                    performInlineAuth()
+                                }) {
+                                    HStack(spacing: 6) {
+                                        if isAuthLoading {
+                                            ProgressView().controlSize(.small)
+                                        }
+                                        Text(authIsLoginMode ? "Log In" : "Sign Up")
+                                            .font(.system(size: 12, weight: .semibold))
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 7)
+                                    .background(Color.blue)
+                                    .cornerRadius(6)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isAuthLoading)
+                                
+                                Button(action: {
+                                    performGoogleAuth()
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "globe")
+                                        Text("Continue with Google")
+                                            .font(.system(size: 12, weight: .medium))
+                                    }
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 7)
+                                    .background(DesignTokens.Monochrome.surfaceElevated)
+                                    .cornerRadius(6)
+                                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(DesignTokens.Monochrome.border, lineWidth: 1))
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Spacer()
+                            }
                         }
                     }
                 }
@@ -870,5 +986,65 @@ public struct SettingsView: View {
                 self.isTestingGoogle = false
             }
         }
+    }
+    
+    // MARK: - Inline Account Authentication
+    
+    private func performInlineAuth() {
+        authErrorMessage = ""
+        authSuccessMessage = ""
+        let trimmedEmail = authEmailInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedEmail.isEmpty else {
+            authErrorMessage = "Please enter your email."
+            return
+        }
+        guard trimmedEmail.contains("@") && trimmedEmail.contains(".") else {
+            authErrorMessage = "Please enter a valid email address (e.g. name@example.com)."
+            return
+        }
+        guard !authPasswordInput.isEmpty else {
+            authErrorMessage = "Please enter your password."
+            return
+        }
+        
+        isAuthLoading = true
+        do {
+            if authIsLoginMode {
+                let account = try AccountAuthService.shared.logIn(email: trimmedEmail, password: authPasswordInput)
+                currentAccount = account
+                appState.userName = account.displayName
+                appState.userEmail = account.email
+                authSuccessMessage = "Welcome back, \(account.displayName)!"
+            } else {
+                do {
+                    let account = try AccountAuthService.shared.signUp(email: trimmedEmail, password: authPasswordInput, displayName: authNameInput)
+                    currentAccount = account
+                    appState.userName = account.displayName
+                    appState.userEmail = account.email
+                    authSuccessMessage = "Account created successfully!"
+                } catch AuthError.userAlreadyExists {
+                    // Try logging in with the credentials
+                    let account = try AccountAuthService.shared.logIn(email: trimmedEmail, password: authPasswordInput)
+                    currentAccount = account
+                    appState.userName = account.displayName
+                    appState.userEmail = account.email
+                    authSuccessMessage = "Welcome back, \(account.displayName)!"
+                }
+            }
+        } catch {
+            authErrorMessage = error.localizedDescription
+        }
+        isAuthLoading = false
+    }
+    
+    private func performGoogleAuth() {
+        let trimmed = authEmailInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let emailToUse = (trimmed.contains("@") && trimmed.contains(".")) ? trimmed : nil
+        let nameToUse = authNameInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : authNameInput
+        let account = AccountAuthService.shared.signInWithGoogle(email: emailToUse, displayName: nameToUse)
+        currentAccount = account
+        appState.userName = account.displayName
+        appState.userEmail = account.email
+        authSuccessMessage = "Signed in with Google as \(account.displayName)!"
     }
 }

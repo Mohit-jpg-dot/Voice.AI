@@ -288,8 +288,20 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                     executed.append("Unmuted audio")
                 } else if cmd.contains("play_music") || cmd.contains("play") {
                     let mediaApp = targetApp == "System" || targetApp == "macOS" ? "Spotify" : targetApp
-                    _ = AccessibilityControlEngine.shared.controlMedia(app: mediaApp, action: "play", query: nil)
-                    executed.append("Playing music on \(mediaApp)")
+                    let songQuery: String?
+                    if cmd.hasPrefix("play_music ") {
+                        songQuery = String(step.param.dropFirst("play_music ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    } else if cmd.hasPrefix("play ") {
+                        songQuery = String(step.param.dropFirst("play ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    } else {
+                        songQuery = AgentToolParser.extractMediaQuery(from: step.param)
+                    }
+                    _ = AccessibilityControlEngine.shared.controlMedia(app: mediaApp, action: "play", query: songQuery)
+                    if let sq = songQuery, !sq.isEmpty {
+                        executed.append("Playing \"\(sq)\" on \(mediaApp)")
+                    } else {
+                        executed.append("Playing music on \(mediaApp)")
+                    }
                 } else if cmd.contains("close") {
                     let res = AccessibilityControlEngine.shared.closeApplication(named: targetApp)
                     executed.append(res.summary)

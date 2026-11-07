@@ -152,6 +152,13 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
     
     public func controlMedia(app: String = "Spotify", action: String, query: String? = nil) -> Bool {
         if app.lowercased().contains("youtube") || app.lowercased().contains("video") {
+            if let q = query, !q.isEmpty, action == "play" {
+                let encoded = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
+                if let url = URL(string: "https://www.youtube.com/results?search_query=\(encoded)") {
+                    NSWorkspace.shared.open(url)
+                }
+                return true
+            }
             return controlYouTubePlayback(action: action)
         }
         
@@ -202,17 +209,26 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                         tell process "Spotify"
                             set frontmost to true
                             try
-                                set w to first window
-                                set pos to position of w
-                                set pX to (item 1 of pos) + 360
-                                set pY to (item 2 of pos) + 240
-                                click at {pX, pY}
+                                -- Commit search
+                                key code 36
+                                delay 0.2
+                                -- Focus and select top result track
+                                key code 125
                                 delay 0.1
-                                click at {pX, pY}
+                                -- Play selected track
+                                key code 36
+                                delay 0.2
                             on error
                                 key code 49
                             end try
                         end tell
+                    end tell
+                    tell application "Spotify"
+                        try
+                            if player state is not playing then
+                                play
+                            end if
+                        end try
                     end tell
                     """
                 }

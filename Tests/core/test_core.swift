@@ -448,6 +448,12 @@ print("\n[Suite 23] Hands-free Spotify Controls & Colloquial Phrasing")
 let spotifyGenericSong = AgentToolParser.parse(query: "play a song on spotify")
 assertEqual(spotifyGenericSong, .mediaPlay(app: "Spotify", query: "Top Hits", action: "play"), "Parsed 'play a song on spotify' to Top Hits")
 
+let spotifyVoicePlayThisSong = AgentToolParser.parse(query: "Voice play this song Starboy")
+assertEqual(spotifyVoicePlayThisSong, .mediaPlay(app: "Spotify", query: "Starboy", action: "play"), "Parsed 'Voice play this song Starboy' to specific track Starboy")
+
+let spotifyPlayThisSongDilNu = AgentToolParser.parse(query: "play this song Dil Nu on Spotify")
+assertEqual(spotifyPlayThisSongDilNu, .mediaPlay(app: "Spotify", query: "Dil Nu", action: "play"), "Parsed 'play this song Dil Nu on Spotify' to Dil Nu")
+
 let spotifyChangeIt = AgentToolParser.parse(query: "change it")
 assertEqual(spotifyChangeIt, .mediaPlay(app: "Spotify", query: nil, action: "next"), "Parsed 'change it' to next track")
 

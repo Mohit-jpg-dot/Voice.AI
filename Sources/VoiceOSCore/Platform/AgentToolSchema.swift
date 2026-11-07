@@ -447,15 +447,13 @@ public enum AgentToolParser {
                 return .mediaPlay(app: targetMediaApp, query: nil, action: "previous")
             }
             
-            // Check for contextual song ("ye gana laga do", "ye gana chalao")
-            if lower.contains("ye gana") || lower.contains("is gaane") || lower.contains("play this") {
-                let resolvedQuery = resolveContextualMediaTrack()
-                return .mediaPlay(app: targetMediaApp, query: resolvedQuery, action: "play")
-            }
-            
-            // Extract Artist / Song Query
+            // Extract Artist / Song Query first so "play this song <Name>" extracts <Name>
             var queryTarget = extractMediaQuery(from: normalized)
-            if queryTarget == nil && (lower.contains("a song on spotify") || lower.contains("play top hits") || lower.contains("top hits")) {
+            
+            // If user only said "play this song" or "ye gana chalao" with NO explicit song title:
+            if queryTarget == nil && (lower.contains("ye gana") || lower.contains("is gaane") || lower.contains("play this") || lower.contains("play that")) {
+                queryTarget = resolveContextualMediaTrack()
+            } else if queryTarget == nil && (lower.contains("a song on spotify") || lower.contains("play top hits") || lower.contains("top hits")) {
                 queryTarget = "Top Hits"
             }
             return .mediaPlay(app: targetMediaApp, query: queryTarget, action: "play")
@@ -579,25 +577,44 @@ public enum AgentToolParser {
         return cleaned.isEmpty ? text : cleaned
     }
     
-    private static func extractMediaQuery(from text: String) -> String? {
+    public static func extractMediaQuery(from text: String) -> String? {
         var str = text.lowercased()
+        for prefix in ["the voice ", "hey voice ", "ok voice ", "voice "] {
+            if str.hasPrefix(prefix) {
+                str = String(str.dropFirst(prefix.count))
+                break
+            }
+        }
         let strips = [
             "play the song on spotify", "play a song on spotify", "play a song in spotify", "play a song from spotify", "play a song",
             "play the song", "play some song", "play song on spotify", "play song",
             "play some music on spotify", "play some music", "play music on spotify", "play music",
-            "spotify pe", "spotify par", "spotify mein", "spotify", "on spotify", "in spotify", "from spotify",
+            "play this song on spotify", "play this track on spotify", "play this song", "play this track", "play this",
+            "play that song on spotify", "play that track on spotify", "play that song", "play that track", "play that",
+            "on spotify", "in spotify", "from spotify", "spotify pe", "spotify par", "spotify mein", "spotify",
             "ke gaane chalao", "ka gana chalao", "ke gaane", "ka gana", "ke gaana",
             "gana chalao", "gaana chalao", "gaane chalao", "chalao", "chala do", "laga do", "bajao", "sunao",
-            "play this song", "play track", "play top hits", "play",
+            "play track", "play top hits", "play",
             "a song on", "a song in", "a song", "the song on", "the song", "some song", "some music", "song on", "song"
-        ]
+        ].sorted { $0.count > $1.count }
         for s in strips {
             str = str.replacingOccurrences(of: s, with: " ")
         }
-        let cleaned = str.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        var cleaned = str.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        for p in ["called ", "named ", "by "] {
+            if cleaned.lowercased().hasPrefix(p) {
+                cleaned = String(cleaned.dropFirst(p.count)).trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            }
+        }
+        for suffix in [" on", " in", " from", " pe", " par", " mein"] {
+            if cleaned.lowercased().hasSuffix(suffix) {
+                cleaned = String(cleaned.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            }
+        }
         let genericFilters: Set<String> = [
             "", "a", "a song", "a song on", "on", "song", "songs", "music", "some music",
-            "track", "a track", "top", "hits", "top hits", "gana", "gaana", "some", "the", "the song"
+            "track", "a track", "top", "hits", "top hits", "gana", "gaana", "some", "the", "the song",
+            "this", "this song", "that", "that song", "it"
         ]
         if genericFilters.contains(cleaned.lowercased()) {
             return nil
@@ -847,14 +864,16 @@ public enum AgentToolParser {
         return "new.java"
     }
     
-    /// Resolves contextual ambiguity (e.g. "ye gana laga do") by inspecting frontmost window and screen context
-    private static func resolveContextualMediaTrack() -> String {
-        if let frontApp = NSWorkspace.shared.frontmostApplication?.localizedName {
-            if frontApp.contains("Chrome") || frontApp.contains("Safari") {
-                return "Trending Video Soundtrack"
-            }
+    /// Resolves contextual ambiguity (e.g. "ye gana laga do") by inspecting current media, clipboard, or active window
+    private static func resolveContextualMediaTrack() -> String? {
+        if let current = NowPlayingMediaManager.shared.currentMedia, !current.title.isEmpty {
+            return current.title
         }
-        return "Arijit Singh Essentials"
+        let pb = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !pb.isEmpty && pb.count < 80 && !pb.contains("\n") {
+            return pb
+        }
+        return nil
     }
 
     private static func extractClickTarget(from text: String) -> String {

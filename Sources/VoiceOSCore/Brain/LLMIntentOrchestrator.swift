@@ -48,7 +48,7 @@ public final class LLMIntentOrchestrator: @unchecked Sendable {
        - "visual_locate_and_click": param is description of the UI element to locate visually on screen (e.g., "Sculpt Mode dropdown menu", "Play button", "New File icon")
        - "keystroke": param is key combination (e.g., "Shift+A", "Space", "Return", "Command+S", "Control+tilde")
        - "type_text": param is text string to insert
-       - "system_command": param is system action (e.g., "volume_level 0", "volume_level 50", "volume_level 100", "volume_up", "volume_down", "mute", "unmute", "close_application", "screenshot", "lock", "sleep")
+       - "system_command": param is system action (e.g., "volume_level 0", "volume_level 50", "volume_level 100", "volume_up", "volume_down", "mute", "unmute", "play_music <Song Name>", "play_music", "close_application", "screenshot", "lock", "sleep")
        - "web_search": param is web query string
     
     JSON SCHEMA:
@@ -82,6 +82,10 @@ public final class LLMIntentOrchestrator: @unchecked Sendable {
     User: "play the song on spotify" or "spotify pe gaana chalao"
     JSON:
     {"intent":"software_automation","target_application":"Spotify","steps":[{"step_number":1,"action":"focus_application","param":"Spotify"},{"step_number":2,"action":"system_command","param":"play_music"}]}
+
+    User: "play the song Starboy on spotify" or "Voice play this song Starboy" or "Spotify pe Starboy chalao"
+    JSON:
+    {"intent":"software_automation","target_application":"Spotify","steps":[{"step_number":1,"action":"focus_application","param":"Spotify"},{"step_number":2,"action":"system_command","param":"play_music Starboy"}]}
 
     User: "Play the current video" or "video chalao"
     JSON:
@@ -208,14 +212,16 @@ public final class LLMIntentOrchestrator: @unchecked Sendable {
         }
         
         // 2. Spotify Playback
-        if lower.contains("spotify") && (lower.contains("play") || lower.contains("chalao") || lower.contains("song") || lower.contains("gaana") || lower.contains("music")) && !lower.contains("close") && !lower.contains("band") {
+        if (lower.contains("spotify") || lower.contains("play") || lower.contains("song") || lower.contains("gana") || lower.contains("gaana") || lower.contains("music")) && (lower.contains("play") || lower.contains("chalao") || lower.contains("chala do") || lower.contains("bajao")) && !lower.contains("close") && !lower.contains("band") && !lower.contains("video") {
+            let extracted = AgentToolParser.extractMediaQuery(from: query)
+            let cmdParam = extracted != nil && !extracted!.isEmpty ? "play_music \(extracted!)" : "play_music"
             return """
             {
               "intent": "software_automation",
               "target_application": "Spotify",
               "steps": [
                 { "step_number": 1, "action": "focus_application", "param": "Spotify" },
-                { "step_number": 2, "action": "system_command", "param": "play_music" }
+                { "step_number": 2, "action": "system_command", "param": "\(cmdParam)" }
               ]
             }
             """

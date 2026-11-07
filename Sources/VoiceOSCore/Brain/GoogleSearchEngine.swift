@@ -70,6 +70,13 @@ public final class GoogleSearchEngine: @unchecked Sendable {
         return lastAnswerCard
     }
     
+    public func clearLastAnswer() {
+        stateLock.lock()
+        self.lastAnswerCard = nil
+        self.lastEntityQuery = ""
+        stateLock.unlock()
+    }
+    
     private func updateLastEntity(_ entity: String) {
         stateLock.lock()
         self.lastEntityQuery = entity

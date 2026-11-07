@@ -547,7 +547,7 @@ public final class AppState: ObservableObject, @unchecked Sendable {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 12.0) {
                                 guard !self.isPinned else { return }
                                 if case .speaking = self.executionState { return }
-                                if self.isAwaitingRedirectConfirmation { return }
+                                self.isAwaitingRedirectConfirmation = false
                                 if case .hoverExpanded = self.islandState {
                                     self.islandState = .resting
                                 }
@@ -627,6 +627,7 @@ public final class AppState: ObservableObject, @unchecked Sendable {
     }
     
     public func triggerVoice(mode: VoiceTriggerMode) {
+        GoogleSearchEngine.shared.clearLastAnswer()
         BoringSoundEngine.shared.playQueued()
         executionState = .listening(mode)
         islandState = .voiceCompact(mode)

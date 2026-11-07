@@ -119,7 +119,7 @@ public struct NotchGlassIslandView: View {
         let count = text.count
         let width: CGFloat = max(540.0, min(680.0, CGFloat(count) * 1.2 + 440.0))
         
-        let hasLink = (GoogleSearchEngine.shared.lastAnswer?.sourceURL != nil) || text.contains("http")
+        let hasLink = (activeSourceURL != nil) || text.contains("http")
         let linkExtra: CGFloat = hasLink ? 38.0 : 0.0
         
         let height: CGFloat
@@ -867,13 +867,13 @@ public struct NotchGlassIslandView: View {
                 // Right: Dark circular stop button with white square inside
                 Button(action: {
                     BoringSoundEngine.shared.playTap()
-                    if isVoiceActive {
-                        appState.stopVoice()
-                    } else if !appState.currentAgentReply.isEmpty {
-                        appState.currentAgentReply = ""
-                    }
+                    appState.stopVoice()
+                    appState.currentAgentReply = ""
+                    appState.isAwaitingRedirectConfirmation = false
+                    GoogleSearchEngine.shared.clearLastAnswer()
                     withAnimation(NotchAnimations.closeSpring) {
                         appState.setHoverExpanded(false)
+                        appState.islandState = .resting
                     }
                 }) {
                     ZStack {
@@ -972,16 +972,22 @@ public struct NotchGlassIslandView: View {
     }
     
     private var activeSourceURL: URL? {
-        if let card = GoogleSearchEngine.shared.lastAnswer {
+        if let targetURL = appState.latestAutonomousResult?.targetURL {
+            return targetURL
+        }
+        if ModelRouter.shared.currentMode == .googleSearch, let card = GoogleSearchEngine.shared.lastAnswer {
             return card.sourceURL
         }
         let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
-        let matches = detector?.matches(in: compactDisplayText, options: [], range: NSRange(location: 0, length: compactDisplayText.utf16.count))
+        let matches = detector?.matches(in: cleanedAnswerText, options: [], range: NSRange(location: 0, length: cleanedAnswerText.utf16.count))
         return matches?.first?.url
     }
     
     private var activeSourceTitle: String {
-        if let card = GoogleSearchEngine.shared.lastAnswer {
+        if let targetName = appState.latestAutonomousResult?.targetAppName, !targetName.isEmpty {
+            return "Open on \(targetName)"
+        }
+        if ModelRouter.shared.currentMode == .googleSearch, let card = GoogleSearchEngine.shared.lastAnswer {
             let title = card.sourceTitle.isEmpty ? "Google Search" : card.sourceTitle
             return "Open on \(title)"
         }
@@ -989,14 +995,34 @@ public struct NotchGlassIslandView: View {
     }
     
     private var cleanedAnswerText: String {
-        if let card = GoogleSearchEngine.shared.lastAnswer, !card.answerText.isEmpty {
+        // 1. Live agent response takes top priority!
+        if !appState.currentAgentReply.isEmpty {
+            let raw = appState.currentAgentReply
+            if let range = raw.range(of: "\n\n—") {
+                return String(raw[..<range.lowerBound]).replacingOccurrences(of: "\"", with: "")
+            }
+            return raw
+        }
+        // 2. While running or thinking, show live execution state
+        if case .executing(let step) = appState.executionState {
+            return step
+        }
+        if case .thinking(let msg) = appState.executionState {
+            return msg
+        }
+        // 3. While listening, show live transcription
+        if !appState.currentTranscript.isEmpty {
+            return appState.currentTranscript
+        }
+        // 4. Latest user chat message
+        if let lastMsg = appState.chatMessages.last, !lastMsg.text.isEmpty {
+            return lastMsg.text
+        }
+        // 5. Only in explicit Google Search Mode, fallback to Google card
+        if ModelRouter.shared.currentMode == .googleSearch, let card = GoogleSearchEngine.shared.lastAnswer, !card.answerText.isEmpty {
             return card.answerText
         }
-        let raw = compactDisplayText
-        if let range = raw.range(of: "\n\n—") {
-            return String(raw[..<range.lowerBound]).replacingOccurrences(of: "\"", with: "")
-        }
-        return raw
+        return "Listening..."
     }
     
     private var compactDisplayText: String {

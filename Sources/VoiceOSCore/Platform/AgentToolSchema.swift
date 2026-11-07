@@ -454,7 +454,10 @@ public enum AgentToolParser {
             }
             
             // Extract Artist / Song Query
-            let queryTarget = extractMediaQuery(from: normalized)
+            var queryTarget = extractMediaQuery(from: normalized)
+            if queryTarget == nil && (lower.contains("a song on spotify") || lower.contains("play top hits") || lower.contains("top hits")) {
+                queryTarget = "Top Hits"
+            }
             return .mediaPlay(app: targetMediaApp, query: queryTarget, action: "play")
         }
         

@@ -8,6 +8,7 @@ public enum HotkeyTargetMode: String, Codable, Sendable {
 
 public enum HotkeyChoice: String, Codable, Sendable, CaseIterable {
     case holdFn = "fn (Hold to Speak)"
+    case holdCtrl = "⌃ Control (Hold)"
     case holdRightCmd = "Right ⌘ (Hold)"
     case holdCmd = "⌘ Command (Hold)"
     case ctrlSpace = "⌃ Control + Space"
@@ -46,7 +47,7 @@ public final class HotkeyManager: @unchecked Sendable {
     public static let holdThresholdSeconds: Double = 0.250 // 250ms threshold
 
     public private(set) var dictationKey: HotkeyChoice = .holdFn
-    public private(set) var agentKey: HotkeyChoice = .holdCmd
+    public private(set) var agentKey: HotkeyChoice = .holdCtrl
 
     private var activePressStartTimes: [String: CFAbsoluteTime] = [:]
     private let lock = NSLock()
@@ -55,10 +56,10 @@ public final class HotkeyManager: @unchecked Sendable {
     private var globalKeyMonitor: Any?
     private var localKeyMonitor: Any?
     private var holdTimer: DispatchWorkItem?
-    private var cmdHoldTimer: DispatchWorkItem?
+    private var ctrlHoldTimer: DispatchWorkItem?
     private var isFunctionKeyPressed = false
-    private var isCommandKeyPressed = false
-    private var cmdComboCancelled = false
+    private var isControlKeyPressed = false
+    private var ctrlComboCancelled = false
 
     public var onHoldToSpeakTriggered: (@Sendable (HotkeyTargetMode) -> Void)?
     public var onKeyReleased: (@Sendable (KeyEventResult) -> Void)?
@@ -73,7 +74,7 @@ public final class HotkeyManager: @unchecked Sendable {
         let flagsHandler: (NSEvent) -> Void = { [weak self] event in
             guard let self = self else { return }
             let fnNow = event.modifierFlags.contains(.function)
-            let cmdNow = event.modifierFlags.contains(.command)
+            let ctrlNow = event.modifierFlags.contains(.control)
             let timestamp = CFAbsoluteTimeGetCurrent()
 
             // 1. Fn Key Handling (Hold to Dictate)
@@ -101,44 +102,44 @@ public final class HotkeyManager: @unchecked Sendable {
                 }
             }
 
-            // 2. Command Key Handling (Hold to Speak Agent Action)
-            if cmdNow && !self.isCommandKeyPressed {
-                self.isCommandKeyPressed = true
-                self.cmdComboCancelled = false
-                self.handleKeyDown(key: "cmd", timestamp: timestamp)
+            // 2. Control Key Handling (Hold to Speak Agent Action / Computer Control)
+            if ctrlNow && !self.isControlKeyPressed {
+                self.isControlKeyPressed = true
+                self.ctrlComboCancelled = false
+                self.handleKeyDown(key: "ctrl", timestamp: timestamp)
 
                 let work = DispatchWorkItem { [weak self] in
-                    guard let self = self, self.isCommandKeyPressed, !self.cmdComboCancelled else { return }
+                    guard let self = self, self.isControlKeyPressed, !self.ctrlComboCancelled else { return }
                     DispatchQueue.main.async {
                         self.onHoldToSpeakTriggered?(.agent)
                     }
                 }
-                self.cmdHoldTimer = work
+                self.ctrlHoldTimer = work
                 DispatchQueue.main.asyncAfter(deadline: .now() + HotkeyManager.holdThresholdSeconds, execute: work)
 
-            } else if !cmdNow && self.isCommandKeyPressed {
-                self.isCommandKeyPressed = false
-                self.cmdHoldTimer?.cancel()
-                self.cmdHoldTimer = nil
+            } else if !ctrlNow && self.isControlKeyPressed {
+                self.isControlKeyPressed = false
+                self.ctrlHoldTimer?.cancel()
+                self.ctrlHoldTimer = nil
 
-                if !self.cmdComboCancelled {
-                    let result = self.handleKeyUp(key: "cmd", timestamp: timestamp)
+                if !self.ctrlComboCancelled {
+                    let result = self.handleKeyUp(key: "ctrl", timestamp: timestamp)
                     DispatchQueue.main.async {
                         self.onKeyReleased?(result)
                     }
                 } else {
-                    _ = self.handleKeyUp(key: "cmd", timestamp: timestamp)
+                    _ = self.handleKeyUp(key: "ctrl", timestamp: timestamp)
                 }
             }
         }
 
-        // Cancel command push-to-talk if regular keys are pressed with Cmd (e.g. Cmd+C, Cmd+V, Cmd+Tab)
+        // Cancel control push-to-talk if regular keys are pressed with Ctrl (e.g. Ctrl+C, Ctrl+Tab)
         let keyDownHandler: (NSEvent) -> Void = { [weak self] _ in
             guard let self = self else { return }
-            if self.isCommandKeyPressed {
-                self.cmdComboCancelled = true
-                self.cmdHoldTimer?.cancel()
-                self.cmdHoldTimer = nil
+            if self.isControlKeyPressed {
+                self.ctrlComboCancelled = true
+                self.ctrlHoldTimer?.cancel()
+                self.ctrlHoldTimer = nil
             }
         }
 
@@ -176,11 +177,11 @@ public final class HotkeyManager: @unchecked Sendable {
         }
         holdTimer?.cancel()
         holdTimer = nil
-        cmdHoldTimer?.cancel()
-        cmdHoldTimer = nil
+        ctrlHoldTimer?.cancel()
+        ctrlHoldTimer = nil
         isFunctionKeyPressed = false
-        isCommandKeyPressed = false
-        cmdComboCancelled = false
+        isControlKeyPressed = false
+        ctrlComboCancelled = false
     }
 
     // --- Configuration & Rebinding ---

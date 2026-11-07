@@ -273,6 +273,20 @@ public final class LLMIntentOrchestrator: @unchecked Sendable {
             """
         }
         
+        if lower.contains("note") {
+            return """
+            {
+              "intent": "software_automation",
+              "target_application": "Apple Notes",
+              "steps": [
+                { "step_number": 1, "action": "focus_application", "param": "Notes" },
+                { "step_number": 2, "action": "keystroke", "param": "Command+N" },
+                { "step_number": 3, "action": "type_text", "param": "\(query.replacingOccurrences(of: "\"", with: "\\\""))" }
+              ]
+            }
+            """
+        }
+        
         return """
         {
           "intent": "web_search",

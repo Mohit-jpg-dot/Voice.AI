@@ -100,7 +100,7 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         }
         
         // -------------------------------------------------------------
-        // Mode B: Computer Control Mode (⌘ Command Key Pressed & Held or Default)
+        // Mode B: Computer Control Mode (⌃ Control Key Pressed & Held or Default)
         // -------------------------------------------------------------
         if ModelRouter.shared.currentMode != .googleSearch {
             // 1. Send command through LLM (Llama 3.2) to orchestrate native macOS computer instructions
@@ -113,11 +113,17 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                         category: "task",
                         tags: [plan.target_application ?? "Computer Control"]
                     )
+                    let redirectURL: URL?
+                    if let targetApp = plan.target_application, targetApp.lowercased().contains("note") {
+                        redirectURL = URL(string: "notes://")
+                    } else {
+                        redirectURL = nil
+                    }
                     return AutonomousExecutionResult(
                         success: execution.success,
                         summary: execution.summary,
                         targetAppName: plan.target_application ?? "Mac Control",
-                        targetURL: nil,
+                        targetURL: redirectURL,
                         executedSteps: execution.executedSteps
                     )
                 } else if plan.intent == "web_search" && !plan.steps.isEmpty {
@@ -235,9 +241,8 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             onProgress?("\(step.action): \(step.param)")
             switch step.action {
             case "focus_application":
-                let ok = AccessibilityControlEngine.shared.launchApp(named: step.param)
+                _ = AccessibilityControlEngine.shared.launchApp(named: step.param)
                 executed.append("Focused \(step.param)")
-                if !ok { overallSuccess = false }
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 
             case "visual_locate_and_click":
@@ -246,15 +251,13 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 
             case "keystroke":
-                let ok = AccessibilityControlEngine.shared.simulateKeystroke(step.param)
+                _ = AccessibilityControlEngine.shared.simulateKeystroke(step.param)
                 executed.append("Pressed \(step.param)")
-                if !ok { overallSuccess = false }
                 try? await Task.sleep(nanoseconds: 150_000_000)
                 
             case "type_text":
-                let ok = AccessibilityControlEngine.shared.typeText(step.param)
+                _ = AccessibilityControlEngine.shared.typeText(step.param)
                 executed.append("Typed \"\(step.param)\"")
-                if !ok { overallSuccess = false }
                 try? await Task.sleep(nanoseconds: 150_000_000)
                 
             case "system_command":

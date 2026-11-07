@@ -183,7 +183,7 @@ public struct AppsView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .help("Dictate action or command by voice (or hold Command key)")
+                        .help("Dictate action or command by voice (or hold Control key)")
                         
                         // Dispatch Button with Return Keycap
                         Button(action: {

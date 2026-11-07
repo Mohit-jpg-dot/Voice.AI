@@ -371,7 +371,7 @@ public struct SettingsView: View {
                                 .foregroundColor(DesignTokens.Monochrome.textMuted)
                         }
                         Spacer()
-                        Text("⌘ Command (Hold)")
+                        Text("⌃ Control (Hold)")
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)

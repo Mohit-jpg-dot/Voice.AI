@@ -94,6 +94,16 @@ if case .holdToSpeak(let d, let mode) = holdRes {
     assertTrue(false, "Expected holdToSpeak for 320ms key press")
 }
 
+// Long hold: 320ms ctrl
+hk.handleKeyDown(key: "ctrl", timestamp: t0)
+let holdCtrlRes = hk.handleKeyUp(key: "ctrl", timestamp: t0 + 0.32)
+if case .holdToSpeak(let d, let mode) = holdCtrlRes {
+    assertTrue(d >= 250, "Hold >= 250ms triggered VoiceOS (\(Int(d))ms)")
+    assertEqual(mode, .agent, "ctrl key triggers agent mode")
+} else {
+    assertTrue(false, "Expected holdToSpeak for 320ms ctrl key press")
+}
+
 // Test Suite 5: Connector Registry Integrity
 print("\n[Suite 5] Connector Registry Parity")
 let connectors = ConnectorRegistry.shared.connectors

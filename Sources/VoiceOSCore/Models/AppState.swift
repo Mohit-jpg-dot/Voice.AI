@@ -23,8 +23,11 @@ public final class AppState: ObservableObject, @unchecked Sendable {
     @Published public var isNotchMediaDisplayEnabled: Bool = true {
         didSet {
             UserDefaults.standard.set(isNotchMediaDisplayEnabled, forKey: "VoiceAI_NotchMediaDisplayEnabled")
+            VoiceOSConfigStore.shared.set("showMediaInNotch", value: isNotchMediaDisplayEnabled)
             if !isNotchMediaDisplayEnabled {
                 isMediaExpanded = false
+                currentMedia = nil
+                NowPlayingMediaManager.shared.clearMedia()
             }
         }
     }

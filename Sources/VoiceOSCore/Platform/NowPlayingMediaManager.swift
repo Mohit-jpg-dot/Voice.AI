@@ -84,6 +84,15 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         return _cachedMedia
     }
     
+    public func clearMedia() {
+        stateLock.lock()
+        _cachedMedia = nil
+        stateLock.unlock()
+        DispatchQueue.main.async { [weak self] in
+            self?.onMediaChanged?(nil)
+        }
+    }
+    
     public init() {
         startPolling()
     }
@@ -219,13 +228,22 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
             try
                 repeat with w in windows
                     repeat with t in tabs of w
-                        set isAudioPlaying to false
-                        try
-                            set isAudioPlaying to (audible of t)
-                        end try
-                        if isAudioPlaying then
-                            set tTitle to title of t
-                            if (tTitle contains " - YouTube") or (tTitle contains "YouTube" and tTitle is not "YouTube") then
+                        set tTitle to title of t
+                        if (tTitle contains " - YouTube") or (tTitle contains "YouTube" and tTitle is not "YouTube") then
+                            set isPlaying to false
+                            try
+                                set jsCheck to (execute t javascript "var v = document.querySelector('video'); (v && !v.paused && !v.ended && v.currentTime > 0 && v.readyState >= 2) ? 'PLAYING' : 'NOT_PLAYING';")
+                                if jsCheck is "PLAYING" then
+                                    set isPlaying to true
+                                else if jsCheck is "NOT_PLAYING" then
+                                    set isPlaying to false
+                                end if
+                            on error
+                                try
+                                    set isPlaying to (audible of t)
+                                end try
+                            end try
+                            if isPlaying then
                                 return tTitle
                             end if
                         end if
@@ -280,9 +298,9 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
                 repeat with w in windows
                     repeat with t in tabs of w
                         set tName to name of t
-                        if tName contains " - YouTube" then
+                        if (tName contains " - YouTube") or (tName contains "YouTube" and tName is not "YouTube") then
                             try
-                                set isPlaying to do JavaScript "var v = document.querySelector('video'); !!(v && !v.paused && !v.ended && v.currentTime > 0);" in t
+                                set isPlaying to do JavaScript "var v = document.querySelector('video'); !!(v && !v.paused && !v.ended && v.currentTime > 0 && v.readyState >= 2);" in t
                                 if isPlaying is true or isPlaying is "true" then
                                     return tName
                                 end if

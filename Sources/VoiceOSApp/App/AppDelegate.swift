@@ -244,6 +244,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         window.titlebarAppearsTransparent = true
         window.isOpaque = false
         window.backgroundColor = .clear
+        window.minSize = NSSize(width: 880, height: 600)
         window.delegate = self
         
         let hostingView = NSHostingView(rootView: MainWindowView(appState: appState))

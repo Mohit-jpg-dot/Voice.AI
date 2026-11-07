@@ -69,7 +69,8 @@ public struct SetupFlowView: View {
         
         let savedStepRaw = UserDefaults.standard.integer(forKey: "voiceos.setup.current_step")
         let initialStep = SetupStep(rawValue: savedStepRaw) ?? .welcome
-        _currentStep = State(initialValue: initialStep)
+        let effectiveStep = (initialStep == .done) ? .welcome : initialStep
+        _currentStep = State(initialValue: effectiveStep)
     }
     
     private func advanceTo(step: SetupStep) {

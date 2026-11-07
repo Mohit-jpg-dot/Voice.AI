@@ -573,17 +573,35 @@ public struct NotchGlassIslandView: View {
                 }
                 .padding(.trailing, 8)
                 
-                // Collapse / Close Button
-                Button(action: {
-                    withAnimation(NotchAnimations.closeSpring) {
-                        appState.isMediaExpanded = false
+                HStack(spacing: 8) {
+                    // Dismiss / Clear Media Button
+                    Button(action: {
+                        withAnimation(NotchAnimations.closeSpring) {
+                            appState.isMediaExpanded = false
+                            appState.currentMedia = nil
+                            NowPlayingMediaManager.shared.clearMedia()
+                        }
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15))
+                            .foregroundColor(Color.white.opacity(0.6))
                     }
-                }) {
-                    Image(systemName: "chevron.up.circle.fill")
-                        .font(.system(size: 15))
-                        .foregroundColor(Color.white.opacity(0.6))
+                    .buttonStyle(.plain)
+                    .help("Dismiss now playing media")
+                    
+                    // Collapse Button
+                    Button(action: {
+                        withAnimation(NotchAnimations.closeSpring) {
+                            appState.isMediaExpanded = false
+                        }
+                    }) {
+                        Image(systemName: "chevron.up.circle.fill")
+                            .font(.system(size: 15))
+                            .foregroundColor(Color.white.opacity(0.6))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Collapse media panel")
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, 16)
             

@@ -90,33 +90,36 @@ public struct SettingsView: View {
                     Spacer()
                 }
                 
-                // Segmented Tab Picker (Full width, single line, zero text squishing)
-                HStack(spacing: 4) {
-                    ForEach(SettingsTab.allCases) { tab in
-                        Button(action: {
-                            selectedTab = tab
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: tab.icon)
-                                    .font(.system(size: 11))
-                                Text(tab.rawValue)
-                                    .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .medium))
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
+                // Segmented Tab Picker (Scrollable if narrow, fixedSize single line, never squished)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(SettingsTab.allCases) { tab in
+                            Button(action: {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    selectedTab = tab
+                                }
+                            }) {
+                                HStack(spacing: 7) {
+                                    Image(systemName: tab.icon)
+                                        .font(.system(size: 12, weight: .semibold))
+                                    Text(tab.rawValue)
+                                        .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .medium))
+                                        .lineLimit(1)
+                                }
+                                .foregroundColor(selectedTab == tab ? DesignTokens.Monochrome.textPrimary : DesignTokens.Monochrome.textMuted)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(selectedTab == tab ? DesignTokens.Monochrome.surfaceElevated : Color.clear)
+                                )
                             }
-                            .foregroundColor(selectedTab == tab ? DesignTokens.Monochrome.textPrimary : DesignTokens.Monochrome.textMuted)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(selectedTab == tab ? DesignTokens.Monochrome.surfaceElevated : Color.clear)
-                            )
+                            .buttonStyle(.plain)
+                            .fixedSize(horizontal: true, vertical: true)
                         }
-                        .buttonStyle(.plain)
                     }
-                    Spacer()
+                    .padding(3)
                 }
-                .padding(3)
                 .background(DesignTokens.Monochrome.surface)
                 .cornerRadius(8)
                 .overlay(
@@ -765,10 +768,12 @@ public struct SettingsView: View {
                             Button("Log Out") {
                                 AccountAuthService.shared.logOut()
                                 currentAccount = nil
+                                appState.userName = "Local User"
+                                appState.userEmail = ""
                                 authEmailInput = ""
                                 authPasswordInput = ""
                                 authErrorMessage = ""
-                                authSuccessMessage = "Logged out successfully."
+                                authSuccessMessage = "Logged out successfully. You can sign in below or continue offline."
                             }
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(Color.red.opacity(0.85))
@@ -1062,13 +1067,28 @@ public struct SettingsView: View {
         }
         
         isAuthLoading = true
+        defer { isAuthLoading = false }
         do {
             if authIsLoginMode {
-                let account = try AccountAuthService.shared.logIn(email: trimmedEmail, password: authPasswordInput)
-                currentAccount = account
-                appState.userName = account.displayName
-                appState.userEmail = account.email
-                authSuccessMessage = "Welcome back, \(account.displayName)!"
+                do {
+                    let account = try AccountAuthService.shared.logIn(email: trimmedEmail, password: authPasswordInput)
+                    currentAccount = account
+                    appState.userName = account.displayName
+                    appState.userEmail = account.email
+                    authSuccessMessage = "Welcome back, \(account.displayName)!"
+                } catch AuthError.invalidCredentials {
+                    // If account doesn't exist yet, automatically create it with these credentials
+                    do {
+                        let defaultName = trimmedEmail.components(separatedBy: "@").first?.capitalized ?? "User"
+                        let account = try AccountAuthService.shared.signUp(email: trimmedEmail, password: authPasswordInput, displayName: defaultName)
+                        currentAccount = account
+                        appState.userName = account.displayName
+                        appState.userEmail = account.email
+                        authSuccessMessage = "New account created and signed in as \(account.displayName)!"
+                    } catch {
+                        authErrorMessage = "Invalid credentials or password doesn't meet requirements. Switch to 'Create Account' above to set up a new account."
+                    }
+                }
             } else {
                 do {
                     let account = try AccountAuthService.shared.signUp(email: trimmedEmail, password: authPasswordInput, displayName: authNameInput)
@@ -1088,7 +1108,6 @@ public struct SettingsView: View {
         } catch {
             authErrorMessage = error.localizedDescription
         }
-        isAuthLoading = false
     }
     
     private func performGoogleAuth() {

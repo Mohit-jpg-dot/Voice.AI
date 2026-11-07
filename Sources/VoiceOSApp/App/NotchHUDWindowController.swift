@@ -154,7 +154,7 @@ public final class NotchHUDWindowController: NSWindowController {
                 let visibleHeight: CGFloat
                 if expanded {
                     visibleWidth = 460.0
-                    visibleHeight = 185.0
+                    visibleHeight = 195.0
                     NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
                 } else if self.appState.islandState == .resting {
                     if let m = self.appState.currentMedia, m.isPlaying {
@@ -186,7 +186,7 @@ public final class NotchHUDWindowController: NSWindowController {
                 let visibleHeight: CGFloat
                 if self.appState.isMediaExpanded {
                     visibleWidth = 460.0
-                    visibleHeight = 165.0
+                    visibleHeight = 195.0
                 } else if let m = media, m.isPlaying {
                     visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
                     visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0

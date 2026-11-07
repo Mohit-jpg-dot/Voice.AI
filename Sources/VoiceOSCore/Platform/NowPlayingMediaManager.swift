@@ -93,7 +93,7 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
             guard let self = self else { return }
             self.refreshTimer?.invalidate()
             self.pollMediaState()
-            self.refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            self.refreshTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
                 self?.pollMediaState()
             }
         }
@@ -129,10 +129,19 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
             }
         }
         
-        // 2. Check YouTube in Google Chrome
-        if runningApps.contains(where: { $0.bundleIdentifier == "com.google.Chrome" || $0.localizedName?.lowercased() == "google chrome" }) {
-            if let ytItem = queryChromeYouTube() {
-                return ytItem
+        // 2. Check YouTube in Chromium browsers (Google Chrome, Arc, Brave, Microsoft Edge)
+        let chromiumBrowsers = [
+            ("Google Chrome", "com.google.Chrome"),
+            ("Arc", "company.thebrowser.Browser"),
+            ("Brave Browser", "com.brave.Browser"),
+            ("Microsoft Edge", "com.microsoft.edgemac")
+        ]
+        
+        for (appName, bundleId) in chromiumBrowsers {
+            if runningApps.contains(where: { $0.bundleIdentifier == bundleId || $0.localizedName == appName }) {
+                if let ytItem = queryChromiumYouTube(appName: appName) {
+                    return ytItem
+                }
             }
         }
         
@@ -202,17 +211,23 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         )
     }
     
-    // MARK: - YouTube in Google Chrome AppleScript
+    // MARK: - YouTube in Chromium AppleScript (Chrome, Arc, Brave, Edge)
     
-    private func queryChromeYouTube() -> NowPlayingItem? {
+    private func queryChromiumYouTube(appName: String = "Google Chrome") -> NowPlayingItem? {
         let script = """
-        tell application "Google Chrome"
+        tell application "\(appName)"
             try
                 repeat with w in windows
                     repeat with t in tabs of w
-                        set tTitle to title of t
-                        if tTitle contains "- YouTube" or tTitle contains "YouTube" then
-                            return tTitle
+                        set isAudioPlaying to false
+                        try
+                            set isAudioPlaying to (audible of t)
+                        end try
+                        if isAudioPlaying then
+                            set tTitle to title of t
+                            if (tTitle contains " - YouTube") or (tTitle contains "YouTube" and tTitle is not "YouTube") then
+                                return tTitle
+                            end if
                         end if
                     end repeat
                 end repeat
@@ -247,7 +262,7 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         return NowPlayingItem(
             title: title,
             artistOrChannel: channel,
-            albumOrContext: "YouTube Web Player",
+            albumOrContext: "\(appName) Player",
             source: .youtube,
             isPlaying: true,
             progress: 0.35,
@@ -265,8 +280,15 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
                 repeat with w in windows
                     repeat with t in tabs of w
                         set tName to name of t
-                        if tName contains "- YouTube" or tName contains "YouTube" then
-                            return tName
+                        if tName contains " - YouTube" then
+                            try
+                                set isPlaying to do JavaScript "var v = document.querySelector('video'); !!(v && !v.paused && !v.ended && v.currentTime > 0);" in t
+                                if isPlaying is true or isPlaying is "true" then
+                                    return tName
+                                end if
+                            on error
+                                -- If JavaScript is not allowed, do not falsely report playing
+                            end try
                         end if
                     end repeat
                 end repeat

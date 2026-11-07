@@ -224,6 +224,9 @@ public final class AppState: ObservableObject, @unchecked Sendable {
         NowPlayingMediaManager.shared.onMediaChanged = { [weak self] item in
             DispatchQueue.main.async {
                 self?.currentMedia = item
+                if item == nil || !(item?.isPlaying ?? false) {
+                    self?.isMediaExpanded = false
+                }
             }
         }
         

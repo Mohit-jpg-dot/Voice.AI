@@ -45,7 +45,7 @@ public struct NotchGlassIslandView: View {
     // Automatically calculates opening width and height based on current response length or view mode
     private var dynamicDimensions: (width: CGFloat, height: CGFloat) {
         if appState.isMediaExpanded {
-            return (460.0, 185.0)
+            return (460.0, 195.0)
         }
         if !isOpen {
             if case .voiceCompact = appState.islandState {
@@ -433,7 +433,7 @@ public struct NotchGlassIslandView: View {
                 .help("Cancel / Stop Listening")
             }
             .padding(.horizontal, 14)
-            .padding(.top, physicalNotchHeight > 30 ? (physicalNotchHeight - 16) : 8)
+            .padding(.top, max(physicalNotchHeight + 4.0, 36.0))
             
             // Bottom Content: Live Speech Transcript (PROMINENT, CRISP, VISIBLE)
             HStack {
@@ -543,7 +543,7 @@ public struct NotchGlassIslandView: View {
         VStack(spacing: 8) {
             // Top notch avoidance padding: ensure all controls and text begin safely below the MacBook camera notch!
             Spacer()
-                .frame(height: physicalNotchHeight > 30 ? (physicalNotchHeight - 8) : 6)
+                .frame(height: max(physicalNotchHeight + 6.0, 38.0))
             
             // Header Bar: Source Badge + EQ + Close
             HStack(alignment: .center) {
@@ -890,7 +890,7 @@ public struct NotchGlassIslandView: View {
                 .help("Stop / Dismiss")
             }
             .padding(.horizontal, 14)
-            .padding(.top, physicalNotchHeight > 30 ? 10 : 6)
+            .padding(.top, max(physicalNotchHeight + 4.0, 36.0))
             
             // Bottom Capsule: Translucent smoky dark glass pill with the text and interactive source link
             VStack(spacing: 8) {
@@ -1069,7 +1069,7 @@ public struct NotchGlassIslandView: View {
             .transition(NotchAnimations.contentTransition)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 4)
+        .padding(.top, max(physicalNotchHeight + 4.0, 36.0))
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }

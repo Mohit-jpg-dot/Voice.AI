@@ -930,27 +930,13 @@ public final class AgentActionDispatcher: @unchecked Sendable {
     }
 
     private func controlSpotify(command: String) -> DispatchedActionResult {
-        let scriptSource = """
-        tell application "Spotify"
-            \(command)
-        end tell
-        """
-        if let script = NSAppleScript(source: scriptSource) {
-            var errorInfo: NSDictionary?
-            script.executeAndReturnError(&errorInfo)
-            if errorInfo == nil {
-                return DispatchedActionResult(
-                    success: true,
-                    summary: command == "pause" ? "Paused Spotify playback." : "Playing Spotify playback.",
-                    appName: "Spotify",
-                    deepLinkURL: URL(string: "spotify://")
-                )
-            }
-        }
+        let success = AccessibilityControlEngine.shared.controlMedia(app: "Spotify", action: command, query: nil)
+        NowPlayingMediaManager.shared.pollMediaState()
         return DispatchedActionResult(
-            success: true,
-            summary: "Spotify \(command) executed.",
-            appName: "Spotify"
+            success: success,
+            summary: command == "pause" ? "Paused Spotify playback." : "Playing Spotify playback.",
+            appName: "Spotify",
+            deepLinkURL: URL(string: "spotify://")
         )
     }
 

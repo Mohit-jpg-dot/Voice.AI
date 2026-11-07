@@ -572,16 +572,17 @@ public enum AgentToolParser {
         return cleaned.isEmpty ? text : cleaned
     }
     
-    private static func extractMediaQuery(from text: String) -> String {
+    private static func extractMediaQuery(from text: String) -> String? {
         var str = text.lowercased()
         let strips = [
-            "play a song on spotify", "play a song in spotify", "play a song from spotify", "play a song",
+            "play the song on spotify", "play a song on spotify", "play a song in spotify", "play a song from spotify", "play a song",
+            "play the song", "play some song", "play song on spotify", "play song",
             "play some music on spotify", "play some music", "play music on spotify", "play music",
             "spotify pe", "spotify par", "spotify mein", "spotify", "on spotify", "in spotify", "from spotify",
             "ke gaane chalao", "ka gana chalao", "ke gaane", "ka gana", "ke gaana",
             "gana chalao", "gaana chalao", "gaane chalao", "chalao", "chala do", "laga do", "bajao", "sunao",
-            "play song", "play this song", "play track", "play top hits", "play",
-            "a song on", "a song in", "a song", "some song", "some music", "song on", "song"
+            "play this song", "play track", "play top hits", "play",
+            "a song on", "a song in", "a song", "the song on", "the song", "some song", "some music", "song on", "song"
         ]
         for s in strips {
             str = str.replacingOccurrences(of: s, with: " ")
@@ -589,10 +590,10 @@ public enum AgentToolParser {
         let cleaned = str.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
         let genericFilters: Set<String> = [
             "", "a", "a song", "a song on", "on", "song", "songs", "music", "some music",
-            "track", "a track", "top", "hits", "top hits", "gana", "gaana", "some", "the"
+            "track", "a track", "top", "hits", "top hits", "gana", "gaana", "some", "the", "the song"
         ]
         if genericFilters.contains(cleaned.lowercased()) {
-            return "Top Hits"
+            return nil
         }
         return cleaned.capitalized
     }

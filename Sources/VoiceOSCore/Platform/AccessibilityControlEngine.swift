@@ -169,22 +169,53 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
         }
         
         if let query = query, !query.isEmpty, action == "play" {
-            // Search & Play query
+            let lowerQuery = query.lowercased()
+            let isGeneric = lowerQuery.isEmpty || lowerQuery == "top hits" || lowerQuery == "song" || lowerQuery == "songs" || lowerQuery == "music"
             let script: String
             if targetApp == "Spotify" {
-                let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-                script = """
-                tell application "Spotify"
-                    activate
-                    try
-                        play track "spotify:search:\(encoded)"
-                        delay 0.5
-                        play
-                    on error
-                        play
-                    end try
-                end tell
-                """
+                if isGeneric {
+                    script = """
+                    tell application "Spotify"
+                        activate
+                        try
+                            if player state is paused then
+                                play
+                            else if player state is stopped then
+                                play track "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"
+                            else
+                                play
+                            end if
+                        on error
+                            play track "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"
+                        end try
+                    end tell
+                    """
+                } else {
+                    let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+                    script = """
+                    tell application "Spotify"
+                        activate
+                        open location "spotify:search:\(encoded)"
+                    end tell
+                    delay 0.8
+                    tell application "System Events"
+                        tell process "Spotify"
+                            set frontmost to true
+                            try
+                                set w to first window
+                                set pos to position of w
+                                set pX to (item 1 of pos) + 360
+                                set pY to (item 2 of pos) + 240
+                                click at {pX, pY}
+                                delay 0.1
+                                click at {pX, pY}
+                            on error
+                                key code 49
+                            end try
+                        end tell
+                    end tell
+                    """
+                }
             } else {
                 script = """
                 tell application "Music"
@@ -197,7 +228,9 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                 end tell
                 """
             }
-            return executeAppleScript(script).success
+            let res = executeAppleScript(script).success
+            NowPlayingMediaManager.shared.pollMediaState()
+            return res
         }
         
         let scriptAction: String
@@ -209,7 +242,23 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
         case "previous":
             scriptAction = "previous track\n        delay 0.2\n        play"
         default:
-            scriptAction = "play"
+            if targetApp == "Spotify" {
+                scriptAction = """
+                try
+                    if player state is paused then
+                        play
+                    else if player state is stopped then
+                        play track "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"
+                    else
+                        play
+                    end if
+                on error
+                    play track "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"
+                end try
+                """
+            } else {
+                scriptAction = "play"
+            }
         }
         
         let script = """
@@ -218,7 +267,9 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
             \(scriptAction)
         end tell
         """
-        return executeAppleScript(script).success
+        let res = executeAppleScript(script).success
+        NowPlayingMediaManager.shared.pollMediaState()
+        return res
     }
     
     public func controlYouTubePlayback(action: String) -> Bool {
@@ -403,17 +454,26 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
         if let role = role {
             var roleValue: AnyObject?
             AXUIElementCopyAttributeValue(root, kAXRoleAttribute as CFString, &roleValue)
-            if (roleValue as? String) != role { matched = false }
+            if (roleValue as? String)?.lowercased() != role.lowercased() { matched = false }
         }
         if matched, let title = title {
-            var titleValue: AnyObject?
-            AXUIElementCopyAttributeValue(root, kAXTitleAttribute as CFString, &titleValue)
-            if (titleValue as? String) != title { matched = false }
+            let lowerTarget = title.lowercased()
+            var textFound = false
+            for attr in [kAXTitleAttribute, kAXDescriptionAttribute, kAXRoleDescriptionAttribute, kAXValueAttribute, kAXIdentifierAttribute] {
+                var val: AnyObject?
+                if AXUIElementCopyAttributeValue(root, attr as CFString, &val) == .success,
+                   let str = val as? String,
+                   str.lowercased().contains(lowerTarget) {
+                    textFound = true
+                    break
+                }
+            }
+            if !textFound { matched = false }
         }
         if matched, let identifier = identifier {
             var idValue: AnyObject?
             AXUIElementCopyAttributeValue(root, kAXIdentifierAttribute as CFString, &idValue)
-            if (idValue as? String) != identifier { matched = false }
+            if (idValue as? String)?.lowercased() != identifier.lowercased() { matched = false }
         }
         
         if matched && (role != nil || title != nil || identifier != nil) {
@@ -473,23 +533,53 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
     }
     
     @discardableResult
-    public func postClick(at point: CGPoint) -> Bool {
+    public func postClick(at point: CGPoint, doubleClick: Bool = false) -> Bool {
         // 1. Physically warp hardware mouse pointer to target coordinate
         CGWarpMouseCursorPosition(point)
-        usleep(15000) // 15ms settle time
         
-        // 2. Synthesize mouse down & mouse up with explicit clickState = 1
-        guard let downEvent = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
-              let upEvent = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
+        let source = CGEventSource(stateID: .combinedSessionState) ?? CGEventSource(stateID: .hidSystemState)
+        
+        // 2. Synthesize mouse move to update WindowServer hit-testing under the cursor
+        if let moveEvent = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) {
+            moveEvent.post(tap: .cgSessionEventTap)
+            moveEvent.post(tap: .cghidEventTap)
+        }
+        usleep(25000) // 25ms settle time
+        
+        // 3. Post LeftMouseDown & LeftMouseUp with session & HID event taps
+        guard let downEvent = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
+              let upEvent = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
             return false
         }
         
         downEvent.setIntegerValueField(.mouseEventClickState, value: 1)
         upEvent.setIntegerValueField(.mouseEventClickState, value: 1)
         
+        downEvent.post(tap: .cgSessionEventTap)
         downEvent.post(tap: .cghidEventTap)
-        usleep(40000) // 40ms realistic click duration
+        usleep(45000) // 45ms realistic mouse press duration
+        upEvent.post(tap: .cgSessionEventTap)
         upEvent.post(tap: .cghidEventTap)
+        
+        // 4. Double-click support for opening media / items
+        if doubleClick {
+            usleep(60000) // 60ms inter-click pause
+            if let down2 = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
+               let up2 = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) {
+                down2.setIntegerValueField(.mouseEventClickState, value: 2)
+                up2.setIntegerValueField(.mouseEventClickState, value: 2)
+                down2.post(tap: .cgSessionEventTap)
+                down2.post(tap: .cghidEventTap)
+                usleep(45000)
+                up2.post(tap: .cgSessionEventTap)
+                up2.post(tap: .cghidEventTap)
+            }
+        }
+        
+        // 5. Hardware AppleScript System Events Click Fallback
+        let script = "tell application \"System Events\" to click at {\(Int(point.x)), \(Int(point.y))}"
+        _ = executeAppleScript(script)
+        
         return true
     }
     
@@ -683,21 +773,41 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                 if pressElement(foundElem) {
                     clickSucceeded = true
                 }
+                
+                // Extract real on-screen element position and size
+                var posVal: AnyObject?
+                var sizeVal: AnyObject?
+                if AXUIElementCopyAttributeValue(foundElem, kAXPositionAttribute as CFString, &posVal) == .success,
+                   AXUIElementCopyAttributeValue(foundElem, kAXSizeAttribute as CFString, &sizeVal) == .success {
+                    var elemPos = CGPoint.zero
+                    var elemSize = CGSize.zero
+                    if let p = posVal, CFGetTypeID(p) == AXValueGetTypeID() {
+                        AXValueGetValue(p as! AXValue, .cgPoint, &elemPos)
+                    }
+                    if let s = sizeVal, CFGetTypeID(s) == AXValueGetTypeID() {
+                        AXValueGetValue(s as! AXValue, .cgSize, &elemSize)
+                    }
+                    if elemSize.width > 0 && elemSize.height > 0 {
+                        targetPoint = CGPoint(x: elemPos.x + elemSize.width / 2.0, y: elemPos.y + elemSize.height / 2.0)
+                    }
+                }
             }
         }
         
-        // 4. Autonomous Visual Cursor Steering to Target Point
-        await VisualCursorGuideEngine.shared.moveCursorSmoothly(to: targetPoint, duration: 0.35)
+        let isVideo = lowerDesc.contains("video") || lowerDesc.contains("first") || lowerDesc.contains("youtube") || lowerDesc.contains("song")
         
-        // 5. Post Physical CGEvent Left Click
-        let eventClicked = postClick(at: targetPoint)
+        // 4. Autonomous Visual Cursor Steering to Target Point
+        await VisualCursorGuideEngine.shared.moveCursorSmoothly(to: targetPoint, duration: 0.25)
+        
+        // 5. Post Physical Authentic Hardware Left Click
+        let eventClicked = postClick(at: targetPoint, doubleClick: isVideo)
         if eventClicked {
             clickSucceeded = true
         }
         
         // 6. Visual click ripple feedback and auto-dismiss pointer
         VisualCursorGuideEngine.shared.triggerClickFeedback(at: targetPoint)
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        try? await Task.sleep(nanoseconds: 200_000_000)
         VisualCursorGuideEngine.shared.dismissPointer()
         
         BoringSoundEngine.shared.playTap()

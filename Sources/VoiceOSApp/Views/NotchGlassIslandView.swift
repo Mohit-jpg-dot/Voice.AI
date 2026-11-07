@@ -54,7 +54,7 @@ public struct NotchGlassIslandView: View {
                 let height: CGFloat = count > 60 ? 125.0 : 96.0
                 return (width, height)
             }
-            if let media = appState.currentMedia, media.isPlaying {
+            if appState.isNotchMediaDisplayEnabled, let media = appState.currentMedia, media.isPlaying {
                 return (physicalNotchWidth + 100.0, physicalNotchHeight + 6.0)
             }
             return (physicalNotchWidth, physicalNotchHeight)
@@ -169,7 +169,7 @@ public struct NotchGlassIslandView: View {
         ZStack(alignment: .top) {
             // Main Animated Notch Body (Liquid Translucent Black Glass)
             VStack(spacing: 0) {
-                if appState.isMediaExpanded, let media = appState.currentMedia {
+                if appState.isNotchMediaDisplayEnabled && appState.isMediaExpanded, let media = appState.currentMedia {
                     aestheticMediaPanel(media: media)
                 } else if isOpen {
                     if isCompactMode || appState.isCompactResponseMode {
@@ -179,7 +179,7 @@ public struct NotchGlassIslandView: View {
                     }
                 } else if case .voiceCompact = appState.islandState {
                     liveActivityWings
-                } else if let media = appState.currentMedia, media.isPlaying {
+                } else if appState.isNotchMediaDisplayEnabled, let media = appState.currentMedia, media.isPlaying {
                     restingMediaWings(media: media)
                 } else {
                     restingHardwareNotchPill
@@ -308,7 +308,7 @@ public struct NotchGlassIslandView: View {
                 await MainActor.run {
                     guard self.isHovering, !self.isOpen, !self.appState.isPinned else { return }
                     withAnimation(NotchAnimations.openSpring) {
-                        if let media = self.appState.currentMedia, media.isPlaying {
+                        if self.appState.isNotchMediaDisplayEnabled, let media = self.appState.currentMedia, media.isPlaying {
                             self.appState.isMediaExpanded = true
                         } else {
                             self.appState.setHoverExpanded(true)
@@ -1049,7 +1049,7 @@ public struct NotchGlassIslandView: View {
                 .frame(height: 32)
             
             // 2. Now Playing Mini Bar (if playing Spotify, YouTube, or Apple Music)
-            if let media = appState.currentMedia {
+            if appState.isNotchMediaDisplayEnabled, let media = appState.currentMedia {
                 nowPlayingBar(media: media)
             }
             

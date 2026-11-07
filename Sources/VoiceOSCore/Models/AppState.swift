@@ -20,6 +20,14 @@ public final class AppState: ObservableObject, @unchecked Sendable {
     }
     @Published public var isPinned: Bool = false
     @Published public var isMediaExpanded: Bool = false
+    @Published public var isNotchMediaDisplayEnabled: Bool = true {
+        didSet {
+            UserDefaults.standard.set(isNotchMediaDisplayEnabled, forKey: "VoiceAI_NotchMediaDisplayEnabled")
+            if !isNotchMediaDisplayEnabled {
+                isMediaExpanded = false
+            }
+        }
+    }
     @Published public var isNotchHUDVisible: Bool = true
     @Published public var isFloatingOrbVisible: Bool = true {
         didSet {
@@ -193,6 +201,8 @@ public final class AppState: ObservableObject, @unchecked Sendable {
         // 4. Initialize stored properties for "THE VOICE" Mode & Background Search Permissions
         let theVoiceSaved = UserDefaults.standard.object(forKey: "VoiceAI_TheVoiceModeActive") == nil ? true : UserDefaults.standard.bool(forKey: "VoiceAI_TheVoiceModeActive")
         self.isTheVoiceModeEnabled = theVoiceSaved
+        let mediaDisplaySaved = UserDefaults.standard.object(forKey: "VoiceAI_NotchMediaDisplayEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "VoiceAI_NotchMediaDisplayEnabled")
+        self.isNotchMediaDisplayEnabled = mediaDisplaySaved
         self.hasGrantedBackgroundSearchPermission = UserDefaults.standard.bool(forKey: "VoiceAI_BackgroundSearchPermissionGranted")
 
         // 5. Setup real connected macOS apps

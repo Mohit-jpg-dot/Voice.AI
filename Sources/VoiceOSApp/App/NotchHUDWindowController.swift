@@ -98,10 +98,10 @@ public final class NotchHUDWindowController: NSWindowController {
                 switch state {
                 case .resting:
                     isClosed = !self.appState.isMediaExpanded
-                    if self.appState.isMediaExpanded {
+                    if self.appState.isNotchMediaDisplayEnabled && self.appState.isMediaExpanded {
                         visibleWidth = 460.0
-                        visibleHeight = 185.0
-                    } else if let m = self.appState.currentMedia, m.isPlaying {
+                        visibleHeight = 195.0
+                    } else if self.appState.isNotchMediaDisplayEnabled, let m = self.appState.currentMedia, m.isPlaying {
                         visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
                         visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0
                     } else {
@@ -152,12 +152,12 @@ public final class NotchHUDWindowController: NSWindowController {
                 let windowHeight = Self.panelWindowHeight
                 let visibleWidth: CGFloat
                 let visibleHeight: CGFloat
-                if expanded {
+                if expanded && self.appState.isNotchMediaDisplayEnabled {
                     visibleWidth = 460.0
                     visibleHeight = 195.0
                     NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
                 } else if self.appState.islandState == .resting {
-                    if let m = self.appState.currentMedia, m.isPlaying {
+                    if self.appState.isNotchMediaDisplayEnabled, let m = self.appState.currentMedia, m.isPlaying {
                         visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
                         visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0
                     } else {
@@ -184,10 +184,34 @@ public final class NotchHUDWindowController: NSWindowController {
                 let windowHeight = Self.panelWindowHeight
                 let visibleWidth: CGFloat
                 let visibleHeight: CGFloat
-                if self.appState.isMediaExpanded {
+                if self.appState.isNotchMediaDisplayEnabled && self.appState.isMediaExpanded {
                     visibleWidth = 460.0
                     visibleHeight = 195.0
-                } else if let m = media, m.isPlaying {
+                } else if self.appState.isNotchMediaDisplayEnabled, let m = media, m.isPlaying {
+                    visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
+                    visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0
+                } else {
+                    visibleWidth = Self.calculateClosedNotchWidth(for: screen)
+                    visibleHeight = Self.calculateClosedNotchHeight(for: screen)
+                }
+                let visibleX = (windowWidth - visibleWidth) / 2.0
+                let visibleY = windowHeight - visibleHeight
+                panel.visibleNotchBounds = NSRect(x: visibleX, y: visibleY, width: visibleWidth, height: visibleHeight)
+            }
+            .store(in: &cancellables)
+            
+        // 3.5. Observe Notch Media Display Setting
+        appState.$isNotchMediaDisplayEnabled
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] enabled in
+                guard let self = self, let panel = self.window as? NotchPanel else { return }
+                guard self.appState.islandState == .resting else { return }
+                let screen = Self.targetNotchScreen()
+                let windowWidth = Self.panelWindowWidth
+                let windowHeight = Self.panelWindowHeight
+                let visibleWidth: CGFloat
+                let visibleHeight: CGFloat
+                if enabled, let m = self.appState.currentMedia, m.isPlaying {
                     visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
                     visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0
                 } else {

@@ -382,6 +382,42 @@ public struct SettingsView: View {
                 }
             }
             
+            // Notch Media Display Card (Spotify & YouTube)
+            settingsCard(title: "Notch Media Display (Spotify & YouTube)", icon: "play.rectangle.on.rectangle.fill") {
+                VStack(spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Show Media in Notch Display")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text("Shows interactive wings and hover controls on the MacBook notch when Spotify or YouTube is actively playing.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                        Spacer()
+                        
+                        Toggle("", isOn: $appState.isNotchMediaDisplayEnabled)
+                            .labelsHidden()
+                            .toggleStyle(SwitchToggleStyle(tint: Color.blue))
+                    }
+                    
+                    if !appState.isNotchMediaDisplayEnabled {
+                        HStack(spacing: 8) {
+                            Image(systemName: "eye.slash.fill")
+                                .foregroundColor(.secondary)
+                                .font(.system(size: 11))
+                            Text("Media wings and playback controls are hidden from the notch display.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(DesignTokens.Monochrome.surfaceElevated)
+                        .cornerRadius(6)
+                    }
+                }
+            }
+            
             // Audio Feedback Card
             settingsCard(title: "Acoustic Audio Feedback", icon: "speaker.wave.2.fill") {
                 HStack {

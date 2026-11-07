@@ -52,13 +52,75 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
     
     // MARK: - Health & Tag Discovery
     
+    public var isOllamaInstalledOnSystem: Bool {
+        if FileManager.default.fileExists(atPath: "/Applications/Ollama.app") { return true }
+        if NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ollama.ollama") != nil { return true }
+        let paths = ["/usr/local/bin/ollama", "/opt/homebrew/bin/ollama", "/usr/bin/ollama"]
+        return paths.contains { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+    
     public func isRunning() async -> Bool {
         do {
-            let models = try await listLocalModels()
-            return !models.isEmpty || true
+            _ = try await listLocalModels()
+            return true
         } catch {
             return false
         }
+    }
+    
+    /// Launches the Ollama application or background daemon process
+    public func launchOllamaDaemon() {
+        // A. If Ollama.app exists, launch via NSWorkspace
+        if let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ollama.ollama") {
+            NSWorkspace.shared.openApplication(at: appUrl, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+        } else if FileManager.default.fileExists(atPath: "/Applications/Ollama.app") {
+            NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/Ollama.app"))
+        }
+        
+        // B. Also attempt launching the CLI daemon process in the background
+        DispatchQueue.global(qos: .userInitiated).async {
+            let possiblePaths = [
+                "/usr/local/bin/ollama",
+                "/opt/homebrew/bin/ollama",
+                "/usr/bin/ollama"
+            ]
+            let resolvedBin = possiblePaths.first { FileManager.default.isExecutableFile(atPath: $0) }
+            guard let bin = resolvedBin else { return }
+            
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: bin)
+            proc.arguments = ["serve"]
+            proc.standardOutput = Pipe()
+            proc.standardError = Pipe()
+            try? proc.run()
+        }
+    }
+    
+    /// Ensures Ollama daemon is running, launching it if necessary, and waits for it to become ready
+    @discardableResult
+    public func ensureRunningAndConnected(timeoutSeconds: Double = 12.0) async -> (success: Bool, message: String, models: [OllamaModelInfo]) {
+        // 1. Fast check if already running
+        if let models = try? await listLocalModels() {
+            return (true, "Ollama is running with \(models.count) local model(s) discovered.", models)
+        }
+        
+        // 2. Launch Ollama app or daemon
+        launchOllamaDaemon()
+        
+        // 3. Poll until responsive
+        let startTime = Date()
+        while Date().timeIntervalSince(startTime) < timeoutSeconds {
+            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
+            if let models = try? await listLocalModels() {
+                return (true, "Connected to Ollama! Discovered \(models.count) local model(s).", models)
+            }
+        }
+        
+        if let models = try? await listLocalModels() {
+            return (true, "Connected to Ollama! Discovered \(models.count) local model(s).", models)
+        }
+        
+        return (false, "Could not connect to Ollama at \(hostURL.absoluteString). Please verify Ollama is installed.", [])
     }
     
     public func listLocalModels() async throws -> [OllamaModelInfo] {

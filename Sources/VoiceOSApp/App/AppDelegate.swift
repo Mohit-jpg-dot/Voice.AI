@@ -52,6 +52,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         }
         triggerProactiveGreeting()
         
+        // Auto-turn on and connect local offline models if user previously selected Local Mode
+        if ModelRouter.shared.currentMode == .local {
+            Task {
+                _ = await ModelRouter.shared.connectLocalOfflineModels(timeoutSeconds: 8.0)
+            }
+        }
+        
         appState.onToggleMainWindow = { [weak self] in
             DispatchQueue.main.async {
                 self?.toggleMainWindow()

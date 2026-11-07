@@ -620,6 +620,17 @@ let spokenLiveGuide = SpeechPipelineEngine.formatMinimalisticSpokenReply(
 )
 assertEqual(spokenLiveGuide, "Guiding you through the steps now, sir.", "Spoken live guide mapped to natural reply")
 
+// Test Suite 28: Local Offline Mode Automatic Ollama Connection
+print("\n[Suite 28] Local Offline Mode Automatic Ollama Connection")
+ModelRouter.shared.currentMode = .local
+assertEqual(ModelRouter.shared.currentMode, .local, "ModelRouter switched to local mode")
+let isInstalled = OllamaProvider.shared.isOllamaInstalledOnSystem
+assertTrue(isInstalled, "Ollama installation detected on macOS")
+let summary = ModelRouter.shared.getStatusSummary()
+assertEqual(summary.chatProvider, "Ollama", "Chat provider set to Ollama in local mode")
+assertEqual(summary.visionProvider, "Ollama", "Vision provider set to Ollama in local mode")
+assertTrue(summary.privacyDescription.contains("100% On-Device"), "Local mode ensures 100% On-Device privacy")
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

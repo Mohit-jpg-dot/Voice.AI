@@ -61,6 +61,13 @@ public struct SettingsView: View {
     @State private var healthProbeResult: String = ""
     @State private var isSoundEnabled: Bool = BoringSoundEngine.shared.isSoundEnabled
     
+    // Local AI Auto-Connection State
+    @State private var isConnectingLocalModels: Bool = false
+    @State private var localModelStatusMessage: String = ""
+    @State private var isLocalModelConnected: Bool = false
+    @State private var localDiscoveredCount: Int = 0
+    @State private var localActiveModelName: String = ""
+    
     public init(appState: AppState) {
         self.appState = appState
         _profileName = State(initialValue: appState.userName)
@@ -170,6 +177,9 @@ public struct SettingsView: View {
             self.profileEmail = appState.userEmail
             self.isSoundEnabled = BoringSoundEngine.shared.isSoundEnabled
             self.currentAccount = AccountAuthService.shared.currentAccount
+            if activeMode == .local {
+                connectLocalAIModels()
+            }
         }
     }
     
@@ -533,7 +543,15 @@ public struct SettingsView: View {
                         .frame(width: 240)
                         .onChange(of: activeMode) { newMode in
                             ModelRouter.shared.currentMode = newMode
+                            if newMode == .local {
+                                connectLocalAIModels()
+                            }
                         }
+                    }
+                    
+                    if activeMode == .local {
+                        Divider().overlay(DesignTokens.Monochrome.border)
+                        localModelStatusBanner
                     }
                 }
             }
@@ -1082,5 +1100,82 @@ public struct SettingsView: View {
         appState.userName = account.displayName
         appState.userEmail = account.email
         authSuccessMessage = "Signed in with Google as \(account.displayName)!"
+    }
+    
+    private var bannerColor: Color {
+        if isLocalModelConnected { return .green }
+        if isConnectingLocalModels { return .blue }
+        return .orange
+    }
+    
+    @ViewBuilder
+    private var localModelStatusBanner: some View {
+        HStack(spacing: 10) {
+            if isConnectingLocalModels {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Turning on Ollama & connecting local AI models...")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Color.blue)
+            } else if isLocalModelConnected {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 8, height: 8)
+                Text("Local AI Models Online & Connected (\(localDiscoveredCount) discovered • Active: \(localActiveModelName))")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Color.green)
+                Spacer()
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(Color.green)
+            } else {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 8, height: 8)
+                Text(localModelStatusMessage.isEmpty ? "Local models ready to start via Ollama" : localModelStatusMessage)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Color.orange)
+                Spacer()
+                Button(action: {
+                    connectLocalAIModels()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Connect Ollama Now")
+                    }
+                    .font(.system(size: 10, weight: .semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(5)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(bannerColor.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(bannerColor.opacity(0.2), lineWidth: 1)
+        )
+    }
+    
+    private func connectLocalAIModels() {
+        isConnectingLocalModels = true
+        localModelStatusMessage = "Turning on Ollama daemon & starting local AI models..."
+        Task {
+            let res = await ModelRouter.shared.connectLocalOfflineModels(timeoutSeconds: 12.0)
+            await MainActor.run {
+                self.isConnectingLocalModels = false
+                self.isLocalModelConnected = res.success
+                self.localModelStatusMessage = res.message
+                self.localDiscoveredCount = res.models.count
+                self.localActiveModelName = ModelRouter.shared.ollamaChatModel
+            }
+        }
     }
 }

@@ -51,6 +51,11 @@ public final class ModelRouter: @unchecked Sendable {
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: modeKey)
+            if newValue == .local {
+                Task {
+                    _ = await connectLocalOfflineModels()
+                }
+            }
         }
     }
     
@@ -252,5 +257,63 @@ public final class ModelRouter: @unchecked Sendable {
             hasCloudKey: hasCloud,
             privacyDescription: privacy
         )
+    }
+    
+    // MARK: - Auto-Connect Local Offline Models
+    
+    @discardableResult
+    public func connectLocalOfflineModels(timeoutSeconds: Double = 12.0) async -> (success: Bool, message: String, models: [String]) {
+        let result = await OllamaProvider.shared.ensureRunningAndConnected(timeoutSeconds: timeoutSeconds)
+        
+        if result.success {
+            let modelNames = result.models.map { $0.name }
+            
+            // If Ollama is running and has models, verify or auto-assign active models
+            if !result.models.isEmpty {
+                let hasCurrentChat = result.models.contains { $0.name.lowercased().contains(ollamaChatModel.lowercased()) }
+                if !hasCurrentChat {
+                    if let bestChat = result.models.first(where: {
+                        let n = $0.name.lowercased()
+                        return n.contains("llama3.2") || n.contains("qwen2.5") || n.contains("mistral") || n.contains("llama")
+                    }) {
+                        self.ollamaChatModel = bestChat.name
+                    } else if let first = result.models.first {
+                        self.ollamaChatModel = first.name
+                    }
+                }
+                
+                let hasCurrentVision = result.models.contains { $0.name.lowercased().contains(ollamaVisionModel.lowercased()) }
+                if !hasCurrentVision {
+                    if let bestVision = result.models.first(where: {
+                        let n = $0.name.lowercased()
+                        return n.contains("llava") || n.contains("qwen2-vl") || n.contains("vision")
+                    }) {
+                        self.ollamaVisionModel = bestVision.name
+                    }
+                }
+            }
+            
+            // Pre-warm local model weights into memory in the background
+            prewarmLocalModel()
+            
+            // Refresh catalog download status
+            await LocalModelDownloadManager.shared.refreshInstalledStatuses()
+            
+            return (true, result.message, modelNames)
+        } else {
+            return (false, result.message, [])
+        }
+    }
+    
+    public func prewarmLocalModel() {
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self = self else { return }
+            let chatModel = self.resolveLocalChatModel()
+            _ = try? await chatModel.sendMessage(
+                messages: [LLMChatMessage(role: .user, content: "hi")],
+                tools: nil,
+                jsonMode: false
+            )
+        }
     }
 }

@@ -82,6 +82,8 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
     
     // MARK: - Volume Management & CoreAudio
     
+    private var lastKnownVolumeLevel: Double = 0.75
+    
     public func adjustVolume(delta: Double?, absoluteLevel: Double?) -> (success: Bool, newLevel: Double) {
         let currentLevel = getVolumeLevel()
         var targetLevel = currentLevel
@@ -92,20 +94,58 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
             targetLevel = max(0.0, min(1.0, currentLevel + d))
         }
         
+        lastKnownVolumeLevel = targetLevel
         let percent = Int(targetLevel * 100.0)
-        let script = "set volume output volume \(percent)"
+        let script = "set volume output volume \(percent) without output muted"
         let result = executeAppleScript(script)
         
-        return (result.success, getVolumeLevel())
+        return (result.success, targetLevel)
     }
     
     public func getVolumeLevel() -> Double {
         let script = "output volume of (get volume settings)"
         let result = executeAppleScript(script)
-        if let out = result.output, let vol = Double(out) {
-            return vol / 100.0
+        if let out = result.output, let vol = Double(out), vol >= 0 {
+            let normalized = vol / 100.0
+            lastKnownVolumeLevel = normalized
+            return normalized
         }
-        return 0.5
+        return lastKnownVolumeLevel
+    }
+    
+    // MARK: - Keystroke & Keyboard Simulation
+    
+    public func simulateKeystroke(_ combo: String) -> Bool {
+        let lower = combo.lowercased()
+        var modifiers: [String] = []
+        if lower.contains("command") || lower.contains("cmd") { modifiers.append("command down") }
+        if lower.contains("shift") { modifiers.append("shift down") }
+        if lower.contains("control") || lower.contains("ctrl") { modifiers.append("control down") }
+        if lower.contains("option") || lower.contains("alt") { modifiers.append("option down") }
+        
+        let modStr = modifiers.isEmpty ? "" : " using {\(modifiers.joined(separator: ", "))}"
+        
+        let parts = combo.components(separatedBy: CharacterSet(charactersIn: "+- "))
+        let rawKey = parts.last ?? combo
+        
+        let script: String
+        switch rawKey.lowercased() {
+        case "space":
+            script = "tell application \"System Events\" to key code 49\(modStr)"
+        case "return", "enter":
+            script = "tell application \"System Events\" to key code 36\(modStr)"
+        case "escape", "esc":
+            script = "tell application \"System Events\" to key code 53"
+        default:
+            script = "tell application \"System Events\" to keystroke \"\(rawKey)\"\(modStr)"
+        }
+        return executeAppleScript(script).success
+    }
+    
+    public func typeText(_ text: String) -> Bool {
+        let escaped = text.replacingOccurrences(of: "\"", with: "\\\"")
+        let script = "tell application \"System Events\" to keystroke \"\(escaped)\""
+        return executeAppleScript(script).success
     }
     
     // MARK: - Media Controls (Spotify / YouTube / Apple Music)

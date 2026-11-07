@@ -300,23 +300,33 @@ public enum AgentToolParser {
         }
         
         // 2. Volume & Audio Mute Control
-        if lower.contains("unmute") {
-            return .systemControl(action: "unmute")
-        }
-        if lower.contains("mute") || lower.contains("shant karo") {
-            return .systemControl(action: "mute")
-        }
-        if lower.contains("volume") || lower.contains("aawaz") || lower.contains("sound") || lower.contains("mute") {
-            if lower.contains("mute") || lower.contains("silent") || lower.contains("zero") || lower.contains("off") {
-                return .setVolume(level: 0.0, delta: nil)
-            } else if lower.contains("full") || lower.contains("max") || lower.contains("100") || lower.contains("pura") || lower.contains("poora") {
+        let isVolumeQuery = lower.contains("volume") || lower.contains("aawaz") || lower.contains("sound") ||
+                            lower.contains("mute") || lower.contains("unmute") || lower.contains("louder") ||
+                            lower.contains("quieter") || lower.contains("turn it up") || lower.contains("turn it down")
+        if isVolumeQuery {
+            if lower.contains("unmute") || (lower.contains("mute") && (lower.contains("hatao") || lower.contains("off") || lower.contains("un") || lower.contains("kholo"))) {
+                return .systemControl(action: "unmute")
+            }
+            if lower.contains("mute") || lower.contains("silent") || lower.contains("shant") || lower.contains("zero volume") {
+                return .systemControl(action: "mute")
+            }
+            
+            // Percentage extraction: e.g. "volume 80%", "set volume to 75", "volume 40"
+            if let pctMatch = extractVolumePercentage(from: lower) {
+                return .setVolume(level: pctMatch, delta: nil)
+            }
+            
+            if lower.contains("full") || lower.contains("max") || lower.contains("100") || lower.contains("pura") || lower.contains("poora") || lower.contains("high") {
                 return .setVolume(level: 1.0, delta: nil)
             } else if lower.contains("half") || lower.contains("50") || lower.contains("aadha") {
                 return .setVolume(level: 0.5, delta: nil)
-            } else if lower.contains("kam") || lower.contains("dheema") || lower.contains("ghata") || lower.contains("down") || lower.contains("lower") || lower.contains("decrease") {
+            } else if lower.contains("kam") || lower.contains("dheema") || lower.contains("ghata") || lower.contains("down") || lower.contains("lower") || lower.contains("decrease") || lower.contains("quieter") || lower.contains("softer") {
                 return .setVolume(level: nil, delta: -0.15)
-            } else if lower.contains("badha") || lower.contains("tez") || lower.contains("up") || lower.contains("raise") || lower.contains("increase") {
+            } else if lower.contains("badha") || lower.contains("tez") || lower.contains("up") || lower.contains("raise") || lower.contains("increase") || lower.contains("louder") || lower.contains("more sound") {
                 return .setVolume(level: nil, delta: 0.15)
+            } else {
+                // If user just says "set volume" or "adjust volume" without specific direction, set to 75%
+                return .setVolume(level: 0.75, delta: nil)
             }
         }
         
@@ -791,6 +801,18 @@ public enum AgentToolParser {
         }
         let clean = str.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
         return clean.isEmpty ? "echo 'Command executed successfully'" : clean
+    }
+    
+    private static func extractVolumePercentage(from text: String) -> Double? {
+        let pattern = #"(?:to|at|is)?\s*(\d{1,3})\s*(?:%|percent)?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count)),
+              match.numberOfRanges > 1,
+              let range = Range(match.range(at: 1), in: text),
+              let val = Double(text[range]), val > 0 && val <= 100 else {
+            return nil
+        }
+        return val / 100.0
     }
     
     private static func extractFilename(from text: String) -> String {

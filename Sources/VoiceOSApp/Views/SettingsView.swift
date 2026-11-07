@@ -4,6 +4,7 @@ import AppKit
 
 public enum SettingsTab: String, CaseIterable, Identifiable {
     case general = "General"
+    case voice = "Voice & Wake-Word"
     case brain = "AI Brain & Models"
     case permissions = "System Access"
     case account = "Account & Privacy"
@@ -13,6 +14,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
     public var icon: String {
         switch self {
         case .general: return "gearshape.fill"
+        case .voice: return "waveform.badge.mic"
         case .brain: return "brain.head.profile"
         case .permissions: return "hand.raised.fill"
         case .account: return "person.crop.circle.badge.checkmark"
@@ -29,6 +31,11 @@ public struct SettingsView: View {
     @State private var profileSavedNotice: Bool = false
     @State private var showingResetAlert: Bool = false
     @State private var showingModelSetupSheet: Bool = false
+    
+    // Voice & Audition State
+    @State private var availableVoices: [VoiceOption] = []
+    @State private var selectedVoiceIdentifier: String = UserDefaults.standard.string(forKey: "voiceos.selected_voice_id") ?? ""
+    @State private var isAuditioningVoice: Bool = false
     
     // AI Brain State
     @State private var activeMode: ModelMode = ModelRouter.shared.currentMode
@@ -109,6 +116,8 @@ public struct SettingsView: View {
                     switch selectedTab {
                     case .general:
                         generalSettingsTab
+                    case .voice:
+                        voiceSettingsTab
                     case .brain:
                         aiBrainSettingsTab
                     case .permissions:
@@ -118,6 +127,12 @@ public struct SettingsView: View {
                     }
                 }
                 .padding(24)
+            }
+        }
+        .onAppear {
+            availableVoices = VoiceAuditionManager.shared.listAllAvailableVoices()
+            if selectedVoiceIdentifier.isEmpty, let first = availableVoices.first {
+                selectedVoiceIdentifier = first.identifier
             }
         }
         .background(DesignTokens.Monochrome.windowBg)
@@ -140,6 +155,166 @@ public struct SettingsView: View {
             self.profileName = appState.userName
             self.profileEmail = appState.userEmail
             self.isSoundEnabled = BoringSoundEngine.shared.isSoundEnabled
+        }
+    }
+    
+    // MARK: - Tab: Voice & Hands-Free Ambient Wake-Word
+    
+    private var voiceSettingsTab: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // 1. Hands-Free Ambient Wake-Word Card
+            settingsCard(title: "Hands-Free Ambient Wake-Word (\"Voice ...\")", icon: "waveform.badge.mic") {
+                VStack(spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(appState.isTheVoiceModeEnabled ? Color.green : Color.gray)
+                                    .frame(width: 8, height: 8)
+                                Text("Enable \"Voice ...\" Ambient Wake-Word")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            }
+                            Text("When enabled, Voice.AI runs low-power background listening. You can speak 'Voice, adjust volume to 80%' or 'Voice, open Spotify' hands-free without touching any key.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $appState.isTheVoiceModeEnabled)
+                            .labelsHidden()
+                            .toggleStyle(SwitchToggleStyle(tint: Color.blue))
+                    }
+                    
+                    if appState.isTheVoiceModeEnabled {
+                        HStack(spacing: 8) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundColor(.blue)
+                                .font(.system(size: 11))
+                            Text("Active: Say \"Voice, set volume to full\" or \"Voice, open Spotify\" anytime hands-free.")
+                                .font(.system(size: 11))
+                                .foregroundColor(Color.blue.opacity(0.9))
+                        }
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.blue.opacity(0.08))
+                        .cornerRadius(6)
+                    }
+                }
+            }
+            
+            // 2. Offline Neural Voice Card (Kokoro-82M)
+            settingsCard(title: "Offline Neural Voice (Kokoro-82M)", icon: "speaker.wave.3.fill") {
+                VStack(spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Kokoro-82M Local TTS Engine")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text("Runs on-device quantized neural audio synthesis in ~/.voiceos/models/ with sub-100ms conversational response.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                        Spacer()
+                        
+                        let hasKokoro = LocalModelDownloadManager.checkRealKokoroOnDisk()
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(hasKokoro ? Color.green : Color.orange)
+                                .frame(width: 8, height: 8)
+                            Text(hasKokoro ? "Ready (86 MB)" : "Local Engine")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundColor(hasKokoro ? Color.green : Color.orange)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(DesignTokens.Monochrome.surfaceElevated)
+                        .cornerRadius(6)
+                    }
+                    
+                    HStack {
+                        Button(action: {
+                            SpeechPipelineEngine.shared.speakResponse("Hello sir! Voice.AI offline neural voice synthesis is online and ready to control your computer.")
+                        }) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "speaker.wave.2")
+                                Text("Test Spoken Output")
+                            }
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(DesignTokens.Monochrome.surfaceElevated)
+                            .cornerRadius(6)
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(DesignTokens.Monochrome.border, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Spacer()
+                    }
+                }
+            }
+            
+            // 3. System & Accent Voice Selection Card
+            settingsCard(title: "System & Accent Voice Selection", icon: "person.wave.2.fill") {
+                VStack(spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Active Spoken Voice")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text("Select preferred voice persona and accent for assistant speech.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                        Spacer()
+                        
+                        if !availableVoices.isEmpty {
+                            Picker("", selection: $selectedVoiceIdentifier) {
+                                ForEach(availableVoices, id: \.identifier) { voice in
+                                    Text(voice.name).tag(voice.identifier)
+                                }
+                            }
+                            .frame(width: 220)
+                            .onChange(of: selectedVoiceIdentifier) { newId in
+                                UserDefaults.standard.set(newId, forKey: "voiceos.selected_voice_id")
+                            }
+                        } else {
+                            Text("Default System Voice (Ava / Samantha)")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                    }
+                    
+                    HStack {
+                        Button(action: {
+                            if let opt = availableVoices.first(where: { $0.identifier == selectedVoiceIdentifier }) {
+                                Task {
+                                    isAuditioningVoice = true
+                                    try? await VoiceAuditionManager.shared.auditionVoice(voice: opt)
+                                    isAuditioningVoice = false
+                                }
+                            } else {
+                                SpeechPipelineEngine.shared.speakResponse("This is your assistant speaking.")
+                            }
+                        }) {
+                            HStack(spacing: 5) {
+                                Image(systemName: isAuditioningVoice ? "waveform" : "play.circle")
+                                Text(isAuditioningVoice ? "Playing Audition..." : "Audition Voice Sample")
+                            }
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(DesignTokens.Monochrome.surfaceElevated)
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isAuditioningVoice)
+                        
+                        Spacer()
+                    }
+                }
+            }
         }
     }
     

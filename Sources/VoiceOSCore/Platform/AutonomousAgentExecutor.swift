@@ -120,32 +120,40 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 )
             }
             
-            // 2. Structured Multi-Step Software Automation via LLMIntentOrchestrator
-            if lower.contains("blender") ||
-               lower.contains("sculpt") ||
-               (HinglishParser.isHinglishQuery(trimmed) && (lower.contains("karo") || lower.contains("kar do") || lower.contains("chalao"))) {
-                if let plan = try? await LLMIntentOrchestrator.shared.plan(transcript: trimmed) {
-                    if plan.intent == "software_automation" || plan.intent == "system_control" {
-                        var executedSteps: [String] = []
-                        for step in plan.steps {
-                            executedSteps.append("\(step.action)(\(step.param))")
-                        }
-                        let summary = "Executed \(plan.intent) plan for \(plan.target_application ?? "macOS") with \(plan.steps.count) steps."
-                        return AutonomousExecutionResult(
-                            success: true,
-                            summary: summary,
-                            targetAppName: plan.target_application ?? "Voice.AI Brain",
-                            targetURL: nil,
-                            executedSteps: executedSteps
-                        )
-                    }
+            // 2. Structured Multi-Step Computer Automation via LLMIntentOrchestrator
+            onProgress?("Translating to macOS computer action...")
+            if let plan = try? await LLMIntentOrchestrator.shared.plan(transcript: trimmed) {
+                if plan.intent == "software_automation" || plan.intent == "system_control" {
+                    let execution = await executeOrchestratedPlan(plan, onProgress: onProgress)
+                    LocalMemoryManager.shared.remember(
+                        content: "\(trimmed) -> \(execution.summary)",
+                        category: "task",
+                        tags: [plan.target_application ?? "Computer Control"]
+                    )
+                    return AutonomousExecutionResult(
+                        success: execution.success,
+                        summary: execution.summary,
+                        targetAppName: plan.target_application ?? "Mac Control",
+                        targetURL: nil,
+                        executedSteps: execution.executedSteps
+                    )
+                } else if plan.intent == "web_search" && !plan.steps.isEmpty {
+                    let searchStep = plan.steps.first { $0.action == "web_search" } ?? plan.steps[0]
+                    let dispatchResult = await AgentActionDispatcher.shared.dispatch(transcript: "search \(searchStep.param)")
+                    return AutonomousExecutionResult(
+                        success: dispatchResult.success,
+                        summary: dispatchResult.summary,
+                        targetAppName: dispatchResult.appName,
+                        targetURL: dispatchResult.deepLinkURL,
+                        executedSteps: ["Executed web search for \"\(searchStep.param)\""]
+                    )
                 }
             }
             
-            // 3. Fallback General AI Reasoning (if not an explicit OS tool)
+            // 3. Fallback General AI Reasoning (if conversational query)
             let chatModel = ModelRouter.shared.resolveChatModel()
             let messages = [
-                LLMChatMessage(role: .system, content: "You are Voice.AI, an autonomous voice assistant for macOS. You can control the Mac. Provide direct, conversational, natural, and helpful answers."),
+                LLMChatMessage(role: .system, content: "You are Voice.AI, an autonomous voice assistant for macOS. You can control the Mac. Provide direct, natural, and helpful spoken answers."),
                 LLMChatMessage(role: .user, content: trimmed)
             ]
             
@@ -211,5 +219,89 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             targetURL: dispatchResult.deepLinkURL,
             executedSteps: steps
         )
+    }
+    
+    // MARK: - Orchestrated Step Execution Engine
+    
+    private func executeOrchestratedPlan(
+        _ plan: OrchestratedPlan,
+        onProgress: (@Sendable (String) -> Void)? = nil
+    ) async -> (success: Bool, summary: String, executedSteps: [String]) {
+        var executed: [String] = []
+        var overallSuccess = true
+        let targetApp = plan.target_application ?? "macOS"
+        
+        for step in plan.steps {
+            onProgress?("\(step.action): \(step.param)")
+            switch step.action {
+            case "focus_application":
+                let ok = AccessibilityControlEngine.shared.launchApp(named: step.param)
+                executed.append("Focused \(step.param)")
+                if !ok { overallSuccess = false }
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                
+            case "visual_locate_and_click":
+                _ = await AgentActionDispatcher.shared.dispatch(transcript: "click \(step.param)")
+                executed.append("Clicked \(step.param)")
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                
+            case "keystroke":
+                let ok = AccessibilityControlEngine.shared.simulateKeystroke(step.param)
+                executed.append("Pressed \(step.param)")
+                if !ok { overallSuccess = false }
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                
+            case "type_text":
+                let ok = AccessibilityControlEngine.shared.typeText(step.param)
+                executed.append("Typed \"\(step.param)\"")
+                if !ok { overallSuccess = false }
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                
+            case "system_command":
+                let cmd = step.param.lowercased()
+                if cmd.contains("volume_up") || cmd.contains("volume up") {
+                    let res = AccessibilityControlEngine.shared.adjustVolume(delta: 0.15, absoluteLevel: nil)
+                    executed.append("System volume set to \(Int(res.newLevel * 100))%")
+                } else if cmd.contains("volume_down") || cmd.contains("volume down") {
+                    let res = AccessibilityControlEngine.shared.adjustVolume(delta: -0.15, absoluteLevel: nil)
+                    executed.append("System volume set to \(Int(res.newLevel * 100))%")
+                } else if cmd.contains("mute") && !cmd.contains("unmute") {
+                    _ = AccessibilityControlEngine.shared.performSystemControl("mute")
+                    executed.append("Muted audio")
+                } else if cmd.contains("unmute") {
+                    _ = AccessibilityControlEngine.shared.performSystemControl("unmute")
+                    executed.append("Unmuted audio")
+                } else if cmd.contains("close") {
+                    let res = AccessibilityControlEngine.shared.closeApplication(named: targetApp)
+                    executed.append(res.summary)
+                } else if cmd.contains("screenshot") {
+                    _ = await AgentActionDispatcher.shared.dispatch(transcript: "screenshot")
+                    executed.append("Captured screenshot")
+                } else if cmd.contains("lock") {
+                    _ = AccessibilityControlEngine.shared.performSystemControl("lock")
+                    executed.append("Locked Mac")
+                } else if cmd.contains("sleep") {
+                    _ = AccessibilityControlEngine.shared.performSystemControl("sleep")
+                    executed.append("Put Mac to sleep")
+                } else {
+                    executed.append("Executed \(step.param)")
+                }
+                
+            case "web_search":
+                _ = await AgentActionDispatcher.shared.dispatch(transcript: "search \(step.param)")
+                executed.append("Searched \(step.param)")
+                
+            default:
+                executed.append("Executed \(step.action)(\(step.param))")
+            }
+        }
+        
+        let summary: String
+        if plan.intent == "system_control" || plan.intent == "software_automation" {
+            summary = executed.last ?? "Completed \(plan.steps.count) computer actions for \(targetApp)."
+        } else {
+            summary = "Completed task for \(targetApp)."
+        }
+        return (overallSuccess, summary, executed)
     }
 }

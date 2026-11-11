@@ -500,7 +500,11 @@ public struct NotchGlassIslandView: View {
     
     private var listeningModeTitle: String {
         if case .voiceCompact(let mode) = appState.islandState {
-            return mode == .dictation ? "💬 Conversation (Fn)" : "⚡ Computer Control (⌃)"
+            switch mode {
+            case .dictation: return "💬 Conversation (Fn)"
+            case .clipboardDictation: return "📋 Clipboard Dictation (Fn+D)"
+            case .agent, .ask: return "⚡ Computer Control (⌃)"
+            }
         }
         return "Listening"
     }

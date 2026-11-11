@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import VoiceOSCore
 
@@ -1229,6 +1230,60 @@ assertTrue(registry.tool(named: "plugin.custom_greeter.greet") == nil, "Uninstal
 
 let prohibitedNames = ["suit_control", "flight_control", "weapons_fire", "satellite_scan"]
 assertTrue(prohibitedNames.allSatisfy { registry.tool(named: $0) == nil }, "Out-of-scope suit/flight/weapons/satellite capabilities remain excluded")
+
+// =========================================================================
+// [Suite 37] Fn+D Automatic Clipboard Dictation Mode
+// =========================================================================
+print("\n[Suite 37] Fn+D Automatic Clipboard Dictation Mode")
+
+assertEqual(
+    HotkeyManager.isFnPlusD(keyCode: 2, charactersIgnoringModifiers: "d", hasFunctionFlag: true),
+    true,
+    "HotkeyManager.isFnPlusD detects Fn + D combo"
+)
+assertEqual(
+    HotkeyManager.isFnPlusD(keyCode: 2, charactersIgnoringModifiers: "d", hasFunctionFlag: false),
+    false,
+    "Plain 'd' without Fn modifier does not trigger clipboard dictation"
+)
+
+final class ClipboardEventRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    var count: Int = 0
+    func increment() { lock.withLock { count += 1 } }
+}
+let cbRecorder = ClipboardEventRecorder()
+let cbSub = EventBus.shared.subscribe(matching: .custom("clipboard_dictation_copied")) { _ in
+    cbRecorder.increment()
+}
+
+final class ClipboardWriteSpy: @unchecked Sendable {
+    private let lock = NSLock()
+    var lastWritten: String? = nil
+    func record(_ s: String) { lock.withLock { lastWritten = s } }
+}
+let spy = ClipboardWriteSpy()
+let savedClipboard = NSPasteboard.general.string(forType: .string)
+let testAppState = AppState()
+testAppState.onWriteToClipboard = { text in
+    spy.record(text)
+}
+let dictated = testAppState.finalizeClipboardDictation(
+    "um please open the report and send my notes by five pm",
+    writeToPasteboard: true
+)
+assertTrue(!dictated.lowercased().hasPrefix("um "), "Clipboard dictation polishes filler words")
+assertTrue(dictated.contains("send my notes"), "Clipboard dictation preserves command/question words literally as text")
+assertEqual(testAppState.lastCopiedDictation, dictated, "AppState stores latest copied dictation")
+let livePasteboardValue = NSPasteboard.general.string(forType: .string)
+assertTrue(spy.lastWritten == dictated && (livePasteboardValue == nil || livePasteboardValue == dictated), "Dictated speech is dispatched automatically to clipboard for pasting anywhere")
+assertTrue(cbRecorder.count >= 1, "EventBus publishes clipboard_dictation_copied confirmation")
+EventBus.shared.unsubscribe(cbSub)
+
+NSPasteboard.general.clearContents()
+if let prev = savedClipboard {
+    NSPasteboard.general.setString(prev, forType: .string)
+}
 
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")

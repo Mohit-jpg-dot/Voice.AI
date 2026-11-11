@@ -136,6 +136,8 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     @Published public var latestSecurityReport: SecurityScanReport? = nil
     @Published public var pairedCompanionDevices: [PairedCompanionDevice] = []
     @Published public var installedUserPlugins: [ExternalPluginManifest] = []
+    @Published public var lastCopiedDictation: String = ""
+    public var onWriteToClipboard: (@Sendable (String) -> Void)? = nil
     
     public enum NavTab: String, CaseIterable, Identifiable, Sendable {
         case dashboard = "Dashboard"
@@ -709,6 +711,14 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
             let polished = DictationPolishEngine.shared.polish(rawText: trimmed, profile: .general)
             self.currentTranscript = polished.polishedText
 
+            // Dedicated Clipboard Dictation Mode (Fn + D): copy spoken text directly to NSPasteboard.general
+            if mode == .clipboardDictation {
+                DispatchQueue.main.async {
+                    _ = self.finalizeClipboardDictation(trimmed, writeToPasteboard: true)
+                }
+                return
+            }
+
             let lower = polished.polishedText.lowercased()
             if Self.isBrainSuggestionPrompt(lower) {
                 DispatchQueue.main.async {
@@ -914,6 +924,70 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         }
         recordingWatchdogWorkItem = watchdog
         DispatchQueue.main.asyncAfter(deadline: .now() + 20.0, execute: watchdog)
+    }
+
+    public func triggerClipboardDictation() {
+        interruptAndExecute(instruction: "", mode: .clipboardDictation)
+    }
+
+    public func toggleClipboardDictation() {
+        if isCurrentlyListening {
+            stopVoice()
+        } else {
+            triggerClipboardDictation()
+        }
+    }
+
+    @discardableResult
+    public func finalizeClipboardDictation(_ rawText: String, writeToPasteboard: Bool = true) -> String {
+        let cleanedRaw = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedRaw.isEmpty else { return "" }
+
+        let polished = DictationPolishEngine.shared.polish(rawText: cleanedRaw, profile: .general).polishedText
+        let finalText = polished.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !finalText.isEmpty else { return "" }
+
+        if writeToPasteboard {
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.setString(finalText, forType: .string)
+            onWriteToClipboard?(finalText)
+        }
+
+        self.currentTranscript = finalText
+        self.lastCopiedDictation = finalText
+        self.currentAgentReply = "Copied to clipboard (press ⌘V anywhere to paste):\n\"\(finalText)\""
+        self.executionState = .completed("Copied to clipboard — ⌘V ready")
+        if !self.isPinned {
+            self.islandState = .hoverExpanded
+        }
+        BoringSoundEngine.shared.playDone()
+
+        self.recordSession(
+            mode: .clipboardDictation,
+            prompt: finalText,
+            response: "Copied spoken text to clipboard (⌘V ready).",
+            appName: "Clipboard",
+            appIcon: "doc.on.clipboard.fill"
+        )
+
+        EventBus.shared.publish(VoiceEvent(
+            kind: .custom("clipboard_dictation_copied"),
+            source: "AppState",
+            severity: .info,
+            payload: ["length": "\(finalText.count)"]
+        ))
+
+        if !self.isPinned {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) { [weak self] in
+                guard let self = self else { return }
+                if !self.isPinned && !self.isCurrentlyListening && !self.isTypingFocused,
+                   case .hoverExpanded = self.islandState {
+                    self.islandState = .resting
+                }
+            }
+        }
+        return finalText
     }
     
     public func stopVoice() {

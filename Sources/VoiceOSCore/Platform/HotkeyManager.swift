@@ -51,6 +51,18 @@ public final class HotkeyManager: @unchecked Sendable {
 
     private var activePressStartTimes: [String: CFAbsoluteTime] = [:]
     private let lock = NSLock()
+
+    public var isAnyHotkeyHeld: Bool {
+        let liveFlags = CGEventSource.flagsState(.combinedSessionState)
+        let fnOrCtrlLive = liveFlags.contains(.maskSecondaryFn) || liveFlags.contains(.maskControl)
+        lock.lock()
+        defer { lock.unlock() }
+        if !fnOrCtrlLive && !activePressStartTimes.isEmpty && NSEvent.pressedMouseButtons == 0 {
+            // Reconcile if macOS dropped a flagsChanged keyUp event (common with Fn/Globe)
+            activePressStartTimes.removeAll()
+        }
+        return !activePressStartTimes.isEmpty
+    }
     private var globalMonitor: Any?
     private var localMonitor: Any?
     private var globalKeyMonitor: Any?
@@ -59,10 +71,13 @@ public final class HotkeyManager: @unchecked Sendable {
     private var ctrlHoldTimer: DispatchWorkItem?
     private var isFunctionKeyPressed = false
     private var isControlKeyPressed = false
+    private var fnComboTriggered = false
     private var ctrlComboCancelled = false
 
     public var onHoldToSpeakTriggered: (@Sendable (HotkeyTargetMode) -> Void)?
     public var onKeyReleased: (@Sendable (KeyEventResult) -> Void)?
+    public var onCircleToAskTriggered: (@Sendable () -> Void)?
+    public var onClipboardDictationTriggered: (@Sendable () -> Void)?
 
     public init() {}
 
@@ -77,13 +92,14 @@ public final class HotkeyManager: @unchecked Sendable {
             let ctrlNow = event.modifierFlags.contains(.control)
             let timestamp = CFAbsoluteTimeGetCurrent()
 
-            // 1. Fn Key Handling (Hold to Dictate)
+            // 1. Fn Key Handling (Hold to Dictate or Fn+D Combo)
             if fnNow && !self.isFunctionKeyPressed {
                 self.isFunctionKeyPressed = true
+                self.fnComboTriggered = false
                 self.handleKeyDown(key: "fn", timestamp: timestamp)
 
                 let work = DispatchWorkItem { [weak self] in
-                    guard let self = self, self.isFunctionKeyPressed else { return }
+                    guard let self = self, self.isFunctionKeyPressed, !self.fnComboTriggered else { return }
                     DispatchQueue.main.async {
                         self.onHoldToSpeakTriggered?(.dictation)
                     }
@@ -96,9 +112,14 @@ public final class HotkeyManager: @unchecked Sendable {
                 self.holdTimer?.cancel()
                 self.holdTimer = nil
 
-                let result = self.handleKeyUp(key: "fn", timestamp: timestamp)
-                DispatchQueue.main.async {
-                    self.onKeyReleased?(result)
+                if self.fnComboTriggered {
+                    self.fnComboTriggered = false
+                    _ = self.handleKeyUp(key: "fn", timestamp: timestamp)
+                } else {
+                    let result = self.handleKeyUp(key: "fn", timestamp: timestamp)
+                    DispatchQueue.main.async {
+                        self.onKeyReleased?(result)
+                    }
                 }
             }
 
@@ -134,18 +155,45 @@ public final class HotkeyManager: @unchecked Sendable {
         }
 
         // Cancel control push-to-talk if regular keys are pressed with Ctrl (e.g. Ctrl+C, Ctrl+Tab)
-        let keyDownHandler: (NSEvent) -> Void = { [weak self] _ in
-            guard let self = self else { return }
+        // Also intercept Fn+D (keyCode 2) to open/toggle Clipboard Dictation Mode
+        let handleKeyDownEvent: (NSEvent) -> Bool = { [weak self] event in
+            guard let self = self else { return false }
             if self.isControlKeyPressed {
                 self.ctrlComboCancelled = true
                 self.ctrlHoldTimer?.cancel()
                 self.ctrlHoldTimer = nil
             }
+            let hasFn = event.modifierFlags.contains(.function) || self.isFunctionKeyPressed
+            if hasFn {
+                self.fnComboTriggered = true
+                self.holdTimer?.cancel()
+                self.holdTimer = nil
+                if Self.isFnPlusD(
+                    keyCode: event.keyCode,
+                    charactersIgnoringModifiers: event.charactersIgnoringModifiers,
+                    hasFunctionFlag: hasFn
+                ) {
+                    DispatchQueue.main.async {
+                        self.onClipboardDictationTriggered?()
+                    }
+                    return true
+                }
+            }
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if flags == [.command, .shift] && event.keyCode == 8 { // Cmd+Shift+C
+                DispatchQueue.main.async {
+                    self.onCircleToAskTriggered?()
+                }
+                return true
+            }
+            return false
         }
 
         // Global monitor catches events when VoiceOS is in the background
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, handler: flagsHandler)
-        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: keyDownHandler)
+        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+            _ = handleKeyDownEvent(event)
+        }
         
         // Local monitor catches events when VoiceOS windows have focus
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
@@ -153,9 +201,15 @@ public final class HotkeyManager: @unchecked Sendable {
             return event
         }
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            keyDownHandler(event)
-            return event
+            let consumed = handleKeyDownEvent(event)
+            return consumed ? nil : event
         }
+    }
+
+    public static func isFnPlusD(keyCode: UInt16, charactersIgnoringModifiers: String?, hasFunctionFlag: Bool) -> Bool {
+        guard hasFunctionFlag else { return false }
+        if keyCode == 2 { return true }
+        return charactersIgnoringModifiers?.lowercased() == "d"
     }
 
     public func stopGlobalEventMonitoring() {
@@ -181,6 +235,7 @@ public final class HotkeyManager: @unchecked Sendable {
         ctrlHoldTimer = nil
         isFunctionKeyPressed = false
         isControlKeyPressed = false
+        fnComboTriggered = false
         ctrlComboCancelled = false
     }
 
@@ -199,6 +254,26 @@ public final class HotkeyManager: @unchecked Sendable {
     }
 
     // --- Key Event Press & Release Tracking ---
+    
+    public static func normalizeKeyName(_ raw: String, keyCode: UInt16? = nil) -> String {
+        if keyCode == 179 || raw == "Unknown(179)" {
+            return "fn_fast"
+        }
+        let lower = raw.lowercased()
+        if lower == "function" || lower == "fn" {
+            return "fn"
+        }
+        if lower == "controlleft" || lower == "ctrl" || lower == "control-left" {
+            return "control-left"
+        }
+        if lower == "controlright" || lower == "control-right" {
+            return "control-right"
+        }
+        if lower == "command" || lower == "cmd" {
+            return "command"
+        }
+        return lower
+    }
 
     public func handleKeyDown(key: String, timestamp: CFAbsoluteTime = CFAbsoluteTimeGetCurrent()) {
         lock.lock()

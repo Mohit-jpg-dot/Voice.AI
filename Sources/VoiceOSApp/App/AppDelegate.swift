@@ -8,6 +8,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     private var mainWindow: NSWindow?
     private var notchHUDController: NotchHUDWindowController?
     private var floatingOrbController: FloatingOrbWindowController?
+    private var screenSelectionController: ScreenSelectionOverlayController?
     private var statusItem: NSStatusItem?
     private var cancellables = Set<AnyCancellable>()
     
@@ -50,10 +51,19 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         if floatingOrbController == nil {
             setupFloatingOrb()
         }
+        if screenSelectionController == nil {
+            screenSelectionController = ScreenSelectionOverlayController(appState: appState)
+        }
         triggerProactiveGreeting()
         
-        // Auto-turn on and connect local offline models if user previously selected Local Mode
-        if ModelRouter.shared.currentMode == .local {
+        // Pre-warm Kokoro worker & Whisper diagnostics off main thread for instant first response
+        _ = KokoroTTSEngine.shared
+        Task.detached(priority: .utility) {
+            _ = LocalWhisperProvider.diagnostics(forceRefresh: true)
+        }
+        
+        // Auto-turn on and connect local offline models if user selected Local or Hybrid Mode
+        if ModelRouter.shared.currentMode == .local || ModelRouter.shared.currentMode == .hybrid {
             Task {
                 _ = await ModelRouter.shared.connectLocalOfflineModels(timeoutSeconds: 8.0)
             }
@@ -70,6 +80,19 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             .receive(on: DispatchQueue.main)
             .sink { [weak self] visible in
                 self?.floatingOrbController?.setVisibility(visible)
+            }
+            .store(in: &cancellables)
+        
+        // Reactively present or dismiss Circle-to-Ask / Lasso screen selection overlay
+        appState.$isScreenCaptureActive
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] active in
+                if active {
+                    self?.screenSelectionController?.presentOverlay()
+                } else {
+                    self?.screenSelectionController?.dismissOverlay()
+                }
             }
             .store(in: &cancellables)
     }
@@ -124,6 +147,26 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             }
         }
 
+        hk.onCircleToAskTriggered = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if self.appState.isScreenCaptureActive {
+                    self.appState.cancelCircleSelection()
+                } else {
+                    self.appState.triggerCircleToAsk()
+                }
+            }
+        }
+
+        hk.onClipboardDictationTriggered = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.appState.toggleClipboardDictation()
+                self.notchHUDController?.positionUnderNotch()
+                self.notchHUDController?.window?.orderFrontRegardless()
+            }
+        }
+
         hk.startGlobalEventMonitoring()
     }
     
@@ -152,6 +195,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         let toggleOrbItem = NSMenuItem(title: "Toggle Floating Orb", action: #selector(toggleFloatingOrb), keyEquivalent: "")
         toggleOrbItem.target = self
         menu.addItem(toggleOrbItem)
+        
+        let circleItem = NSMenuItem(title: "Circle to Ask (Lasso)", action: #selector(triggerCircleToAskFromMenu), keyEquivalent: "C")
+        circleItem.keyEquivalentModifierMask = [.command, .shift]
+        circleItem.target = self
+        menu.addItem(circleItem)
+
+        let clipboardDictItem = NSMenuItem(title: "Clipboard Dictation (Fn+D)", action: #selector(triggerClipboardDictationFromMenu), keyEquivalent: "")
+        clipboardDictItem.target = self
+        menu.addItem(clipboardDictItem)
         
         menu.addItem(NSMenuItem.separator())
         
@@ -213,6 +265,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
     @objc private func toggleFloatingOrb() {
         appState.isFloatingOrbVisible.toggle()
+    }
+    
+    @objc private func triggerCircleToAskFromMenu() {
+        appState.triggerCircleToAsk()
+    }
+
+    @objc private func triggerClipboardDictationFromMenu() {
+        appState.toggleClipboardDictation()
+        notchHUDController?.positionUnderNotch()
+        notchHUDController?.window?.orderFrontRegardless()
     }
     
     @objc public func toggleMainWindow() {

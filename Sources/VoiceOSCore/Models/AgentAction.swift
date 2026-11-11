@@ -3,6 +3,7 @@ import Combine
 
 public enum VoiceTriggerMode: String, Codable, Sendable {
     case dictation = "Dictation Mode"
+    case clipboardDictation = "Clipboard Dictation"
     case agent = "Agent Mode"
     case ask = "Ask Mode"
 }

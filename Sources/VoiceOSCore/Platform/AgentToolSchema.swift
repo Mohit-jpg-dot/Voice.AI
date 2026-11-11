@@ -439,8 +439,10 @@ public enum AgentToolParser {
                 return .windowAction(action: "save_as:\(cleanName)")
             }
         }
-        if lower.hasPrefix("type ") {
-            let rawTyped = String(query.trimmingCharacters(in: .whitespacesAndNewlines).dropFirst(5))
+        if lower.hasPrefix("type ") || lower.hasPrefix("type:") {
+            let trimmedInput = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            let dropCount = lower.hasPrefix("type:") ? 5 : 5
+            let rawTyped = String(trimmedInput.dropFirst(dropCount)).trimmingCharacters(in: .whitespaces)
             let formatted = formatSpokenPunctuation(rawTyped)
             return .uiType(text: formatted)
         }

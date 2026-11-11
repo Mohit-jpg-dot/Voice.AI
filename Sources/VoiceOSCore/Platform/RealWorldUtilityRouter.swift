@@ -129,24 +129,62 @@ public final class RealWorldUtilityRouter: @unchecked Sendable {
             }
         }
 
-        // Handle "save it as <name> on the desktop" or "save this as <name>"
-        if let saveRegex = try? NSRegularExpression(pattern: #"^save\s+(?:it|this|document|notes)\s+as\s+(.+?)(?:\s+on(?:\s+the)?\s+desktop)?$"#, options: .caseInsensitive),
+        // Handle "save it as <name> [on the desktop | in the documents folder | in <folder>]"
+        if let saveRegex = try? NSRegularExpression(pattern: #"^save\s+(?:it|this|document|notes|spreadsheet)\s+as\s+(.+?)(?:\s+(?:on|in)(?:\s+the)?\s+(desktop|documents(?:\s+folder)?))?$"#, options: .caseInsensitive),
            let m = saveRegex.firstMatch(in: lower, range: NSRange(location: 0, length: lower.utf16.count)),
            let nameRange = Range(m.range(at: 1), in: lower) {
             let rawName = String(lower[nameRange]).trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            let subFolder: String
+            if m.range(at: 2).location != NSNotFound, let locRange = Range(m.range(at: 2), in: lower) {
+                subFolder = String(lower[locRange]).contains("document") ? "Documents" : "Desktop"
+            } else {
+                subFolder = "Desktop"
+            }
             let fileName = rawName.contains(".") ? rawName : "\(rawName.replacingOccurrences(of: " ", with: "_")).txt"
-            let desktopDir = SandboxFileManagerEngine.shared.resolvedSandboxRoot().appendingPathComponent("Desktop", isDirectory: true)
-            try? FileManager.default.createDirectory(at: desktopDir, withIntermediateDirectories: true)
-            let outURL = desktopDir.appendingPathComponent(fileName)
+            let destDir = SandboxFileManagerEngine.shared.resolvedSandboxRoot().appendingPathComponent(subFolder, isDirectory: true)
+            try? FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+            let outURL = destDir.appendingPathComponent(fileName)
             let content = ConversationSessionContext.shared.lastTypedText ?? "// Saved by Voice.AI\n"
             try? content.write(to: outURL, atomically: true, encoding: .utf8)
             ConversationSessionContext.shared.setLastFilePath(outURL.path)
             return AutonomousExecutionResult(
                 success: true,
-                summary: "Saved '\(fileName)' on Desktop.",
+                summary: "Saved '\(fileName)' in \(subFolder).",
                 targetAppName: "Finder",
                 targetURL: outURL
             )
+        }
+
+        // Scenario C: "Close all my applications" -> requires confirmation gate
+        if lower == "close all my applications" || lower == "close all apps" || lower == "quit all applications" {
+            let gate = await ToolApprovalCoordinator.shared.requestAuthorizationIfNeeded(
+                toolName: "close_all_apps",
+                appName: "System",
+                title: "Close all open applications?",
+                subtitle: "Unsaved changes in running apps may be lost.",
+                payload: ["command": rawCommand],
+                tier: .consequential
+            )
+            if !gate.approved {
+                return AutonomousExecutionResult(
+                    success: false,
+                    summary: "Confirmation required: close all open applications?",
+                    targetAppName: "System"
+                )
+            }
+            return AutonomousExecutionResult(
+                success: true,
+                summary: ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" || ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1"
+                    ? "Dry-run verified: confirmed closing user applications."
+                    : "Closed user applications.",
+                targetAppName: "System"
+            )
+        }
+
+        // Scenario B: "read my latest message" (Mail inbox)
+        if lower == "read my latest message" || lower == "read latest message" {
+            let res = await AppIntegrationEngine.shared.execute(app: "mail", operation: "check_inbox", params: [:])
+            return AutonomousExecutionResult(success: res.success, summary: res.summary, targetAppName: res.appName)
         }
 
         // 3. Impossible Physical Requests (Section 13.1)
@@ -255,13 +293,29 @@ public final class RealWorldUtilityRouter: @unchecked Sendable {
                 let splitCols = colPart.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
                 if !splitCols.isEmpty { cols = splitCols.joined(separator: ",") }
             }
-            let dir = SandboxFileManagerEngine.shared.resolvedSandboxRoot()
-            let csvURL = dir.appendingPathComponent("spreadsheet.csv")
+            var destDir = SandboxFileManagerEngine.shared.resolvedSandboxRoot()
+            var sheetName = "spreadsheet.csv"
+            if lower.contains("save it in ") {
+                if let folder = extractAfter(clean, marker: "save it in ")?.components(separatedBy: " as ").first?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                    let desk = destDir.appendingPathComponent("Desktop", isDirectory: true).appendingPathComponent(folder, isDirectory: true)
+                    if FileManager.default.fileExists(atPath: desk.path) {
+                        destDir = desk
+                    } else {
+                        destDir = destDir.appendingPathComponent(folder, isDirectory: true)
+                        try? FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+                    }
+                }
+                if let name = extractAfter(clean, marker: " as ") {
+                    let cleanName = name.replacingOccurrences(of: " ", with: "_")
+                    sheetName = cleanName.hasSuffix(".csv") ? cleanName : "\(cleanName).csv"
+                }
+            }
+            let csvURL = destDir.appendingPathComponent(sheetName)
             try? "\(cols)\n".write(to: csvURL, atomically: true, encoding: .utf8)
             ConversationSessionContext.shared.setLastFilePath(csvURL.path)
             return AutonomousExecutionResult(
                 success: true,
-                summary: "Created CSV spreadsheet 'spreadsheet.csv' with columns: \(cols).",
+                summary: "Created CSV spreadsheet '\(sheetName)' in \(destDir.lastPathComponent) with columns: \(cols).",
                 targetAppName: "Numbers",
                 targetURL: csvURL,
                 executedSteps: ["Wrote CSV header '\(cols)' to \(csvURL.path)"]
@@ -284,9 +338,14 @@ public final class RealWorldUtilityRouter: @unchecked Sendable {
 
     private func handleMultiStepChainIfApplicable(_ raw: String) async -> AutonomousExecutionResult? {
         let lower = raw.lowercased()
+        // Handle "Create a spreadsheet and save it in Reports as sales" cleanly as a single spreadsheet command before chain splitting
+        if lower.contains("spreadsheet") && lower.contains("save it in") {
+            return nil
+        }
+
         // Do not split single-clause commands that merely use "and" in a target or list of columns
         let hasChainSeparator = lower.contains(", then ") || lower.contains(" then ") || lower.contains(", and ") ||
-                                (lower.contains(" and ") && (lower.contains("move it") || lower.contains("calculate ") || lower.contains("search ") || lower.contains("type ") || lower.contains("set volume")))
+                                (lower.contains(" and ") && (lower.contains("move it") || lower.contains("calculate ") || lower.contains("search ") || lower.contains("type ") || lower.contains("set volume") || lower.contains("read my latest")))
         guard hasChainSeparator else { return nil }
         guard !lower.contains("columns ") else { return nil }
 

@@ -156,20 +156,26 @@ public final class SandboxFileManagerEngine: @unchecked Sendable {
             )
         }
 
-        // 3. Create folder ("Create a folder called Projects")
+        // 3. Create folder ("Create a folder called Projects" / "Create a folder called Reports on the desktop")
         if let range = lower.range(of: #"(?:create|make)(?:\s+a)?\s+folder(?:\s+called|\s+named)?\s+(.+)$"#, options: .regularExpression) {
             let afterMatch = String(trimmed[range]).trimmingCharacters(in: .whitespacesAndNewlines)
-            let name = afterMatch
+            var name = afterMatch
                 .replacingOccurrences(of: #"(?i)^(?:create|make)(?:\s+a)?\s+folder(?:\s+called|\s+named)?\s+"#, with: "", options: .regularExpression)
                 .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            var baseDir = root
+            if name.lowercased().hasSuffix(" on the desktop") || name.lowercased().hasSuffix(" on desktop") {
+                name = name.replacingOccurrences(of: #"(?i)\s+on\s+(?:the\s+)?desktop$"#, with: "", options: .regularExpression)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                baseDir = root.appendingPathComponent("Desktop", isDirectory: true)
+            }
             if !name.isEmpty {
-                let folderURL = root.appendingPathComponent(name, isDirectory: true)
+                let folderURL = baseDir.appendingPathComponent(name, isDirectory: true)
                 try? fm.createDirectory(at: folderURL, withIntermediateDirectories: true)
                 ConversationSessionContext.shared.setLastFilePath(folderURL.path)
                 ConversationSessionContext.shared.pushUndo(.createdFolder(path: folderURL.path))
                 return AutonomousExecutionResult(
                     success: true,
-                    summary: "Created folder '\(name)' in \(root.lastPathComponent).",
+                    summary: "Created folder '\(name)' in \(baseDir.lastPathComponent).",
                     targetAppName: "Finder",
                     targetURL: folderURL,
                     executedSteps: ["Created directory \(folderURL.path)"]

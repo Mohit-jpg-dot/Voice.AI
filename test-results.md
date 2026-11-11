@@ -4,11 +4,11 @@ Branch: `self-heal/2026-11-11`
 Sandbox: `/tmp/voice-test` (non-destructive dry-run for system power/payment/external-install/email sends; real FS verification inside sandbox)
 
 ## Final Totals
-- **PASS (Automated)**: 123
+- **PASS (Automated)**: 126
 - **FAIL**: 0
 - **BLOCKED**: 0
 - **MANUAL (Mic / Physical / Long-Soak)**: 17
-- **TOTAL CHECKED**: 140
+- **TOTAL CHECKED**: 143
 
 ## Detailed Test Matrix
 
@@ -82,11 +82,11 @@ Sandbox: `/tmp/voice-test` (non-destructive dry-run for system power/payment/ext
 | 6.2 | Set volume to 30 percent | PASS | System volume set to 30% |  |
 | 6.3 | Mute | PASS | Executed system mute |  |
 | 6.4 | Increase brightness | PASS | Adjusted display brightness to 85% |  |
-| 6.5 | Take a screenshot | PASS | Screenshot copied to clipboard (and staged at Screenshot-1794386181.png). |  |
+| 6.5 | Take a screenshot | PASS | Screenshot copied to clipboard (and staged at Screenshot-1794386451.png). |  |
 | 6.6 | Turn on Wi-Fi | PASS | Turned on Wi-Fi. |  |
 | 6.7 | Turn on dark mode | PASS | Turned on dark mode. |  |
 | 6.8 | What's my battery level? | PASS | Power source is AC (100%). |  |
-| 6.9 | What time is it? | PASS | It is 2:06 PM on Wednesday, Nov 11, 2026. |  |
+| 6.9 | What time is it? | PASS | It is 2:10 PM on Wednesday, Nov 11, 2026. |  |
 | 6.10 | Lock the screen | PASS | Executed system lock |  |
 | 6.11 | Open task manager | PASS | Opened Activity Monitor on your Mac. |  |
 | 6.12 | Shut down the computer | PASS | Confirmation required: Confirm computer shut down? Cancelled safely. \| confirms=["Confirm computer shut down? [high]"] |  |
@@ -101,12 +101,12 @@ Sandbox: `/tmp/voice-test` (non-destructive dry-run for system power/payment/ext
 | 8.2 | Set an alarm for 7 AM tomorrow | PASS | Alarm set for 7 AM tomorrow. |  |
 | 8.3 | Remind me to drink water in 10 minutes | PASS | Added health reminder: Remind me to drink water in 10 minutes (Daily). |  |
 | 8.4 | Add a note: buy groceries | PASS | Created note in Apple Notes: "Add a note: buy groceries" |  |
-| 8.5 | What's on my calendar today? | PASS | Calendar (2 event(s)): • 14:36–15:06: Engineering Standup (Work) • 16:06–17:06: Design Review (Work) |  |
+| 8.5 | What's on my calendar today? | PASS | Calendar (2 event(s)): • 14:40–15:10: Engineering Standup (Work) • 16:10–17:10: Design Review (Work) |  |
 | 8.6 | Create a calendar event tomorrow at 3 PM called team meeting | PASS | Scheduled 'Create a calendar event tomorrow at 3 PM called team meeting' for 30 minutes on your calendar. |  |
 | 8.7 | Calculate 245 times 18 | PASS | 245 × 18 = 4410 |  |
 | 8.8 | Convert 50 dollars to rupees | PASS | 50.00 DOLLARS ≈ ₹4225.00 INR (reference rate). |  |
 | 8.9 | Open a new Word document and write a heading called Report | PASS | Created document 'Report.rtf' with heading 'Report'. |  |
-| 8.10 | Create a spreadsheet with columns name, age, city | PASS | Created CSV spreadsheet 'spreadsheet.csv' with columns: name,age,city. |  |
+| 8.10 | Create a spreadsheet with columns name, age, city | PASS | Created CSV spreadsheet 'spreadsheet.csv' in voice-test with columns: name,age,city. |  |
 | 9.1 | Open my email | PASS | parsed=Optional(VoiceOSCore.AgentTool.openApp(name: "Mail")) |  |
 | 9.2 | Compose an email to myself with subject test | PASS | Drafted email 'test' to myself. |  |
 | 9.3 | Send the email | PASS | Cancelled: approval required before running 'mail_send' (CONSEQUENTIAL). \| confirms=["Allow mail send? [high]"] |  |
@@ -115,7 +115,7 @@ Sandbox: `/tmp/voice-test` (non-destructive dry-run for system power/payment/ext
 | 10.1 | Open Chrome, search for Python tutorials, and open the first result | PASS | Opened Google Chrome on your Mac. → Searched in new tab for: "for python tutorials" → Opened search result #1 (for python tutorials - Result 1) in Google Chrome. \| steps=3 |  |
 | 10.2 | Create a folder called Work, then create a file called todo inside it | PASS | Created folder 'Work' in voice-test. → Created file 'todo.txt' in Work. \| steps=2 |  |
 | 10.3 | Open Notepad, type meeting notes, and save it as meeting on the desktop | PASS | Opened TextEdit, typed 'meeting notes', and saved meeting.txt to Desktop. \| steps=3 |  |
-| 10.4 | Take a screenshot and move it to the Projects folder | PASS | Screenshot copied to clipboard (and staged at Screenshot-1794386181.png). → Moved 'Screenshot-1794386181.png' into 'Projects'. \| steps=2 |  |
+| 10.4 | Take a screenshot and move it to the Projects folder | PASS | Screenshot copied to clipboard (and staged at Screenshot-1794386451.png). → Moved 'Screenshot-1794386451.png' into 'Projects'. \| steps=2 |  |
 | 10.5 | Search for the weather, then tell me the temperature | PASS | Searched in new tab for: "for the weather" → The current temperature in Delhi is 28.5°C with clear sunny skies. \| steps=2 |  |
 | 10.6 | Open YouTube, search for a Python crash course, play the first video, and set volume to 40 percent | PASS | Opened YouTube in Safari. → Searched in new tab for: "for a python crash course" → Playing first YouTube video from search: 'for a python crash course - Result 1'. → System volume set to 40% \| steps=4 |  |
 | 10.7 | Create a folder called Stage1, create file step1 inside Stage1, increase volume, set volume to 50 percent, add a note: chain check, and calculate 12 * 12 | PASS | Created folder 'Stage1' in voice-test. → Created file 'step1.txt' in Stage1. → System volume set to 55% → System volume set to 50% → Created note in Apple Notes: "add a note: chain check" → 12 × 12 = 144 \| steps=6 |  |
@@ -154,3 +154,6 @@ Sandbox: `/tmp/voice-test` (non-destructive dry-run for system power/payment/ext
 | 16.2 | What can you do? | PASS | I can open and close apps, browse websites, type and polish dictation, manage files and folders safely, control volume/brightness/Wi-Fi/dark mode, control media, set timers/alarms/reminders, create notes, calculate math, and ask for confirmation before risky actions. |  |
 | 16.3 | Help | PASS | Help: Hold Fn to speak or ask questions, hold Control for Agent Mode, press Fn+D for clipboard dictation, or say commands like 'Open Chrome', 'Create a folder called Projects', 'Set volume to 30%', 'Set a timer for 2 minutes', or 'Cancel'. |  |
 | 16.4 | 30 minutes completely hands-free by voice | MANUAL | Requires interactive 30-min voice workflow |  |
+| Scen-A | Study session (7 steps end-to-end) | PASS | saved=true, steps=[true, true, true, true, true, true, true] |  |
+| Scen-B | Office work (5 steps end-to-end) | PASS | sales.csv=true, steps=[true, true, true, true, true] |  |
+| Scen-C | End of day shutdown (4 steps + confirm gate) | PASS | confirmGate=true, approved=true, lock=true |  |

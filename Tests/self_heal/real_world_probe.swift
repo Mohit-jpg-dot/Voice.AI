@@ -652,6 +652,45 @@ struct RealWorldProbeMain {
         }
         record("16.4", "30 minutes completely hands-free by voice", "MANUAL", "Requires interactive 30-min voice workflow", "")
 
+        // ============================================================
+        // DAY-IN-THE-LIFE SCENARIOS (A, B, C)
+        // ============================================================
+        print("\n=== Day-in-the-Life Scenarios (A, B, C) ===")
+        do {
+            // Scenario A: Study session
+            let a1 = await runCmd("Open Chrome and search for Python list comprehension tutorial", dryRun: true)
+            let a2 = await runCmd("Open the first result", dryRun: true)
+            let a3 = await runCmd("Open Notepad", dryRun: true)
+            let a4 = await runCmd("Type: list comprehension notes", dryRun: false)
+            let a5 = await runCmd("Save it as python notes in the documents folder", dryRun: false)
+            let a6 = await runCmd("Set a timer for 25 minutes", dryRun: false)
+            let a7 = await runCmd("Play lo-fi music on YouTube", dryRun: true)
+            let aSaved = fm.fileExists(atPath: "\(sandboxRoot)/Documents/python_notes.txt")
+            let okA = a1.res.success && a2.res.success && a3.res.success && a4.res.success && a5.res.success && a6.res.success && a7.res.success && aSaved
+            record("Scen-A", "Study session (7 steps end-to-end)", okA ? "PASS" : "FAIL", "saved=\(aSaved), steps=\([a1.res.success,a2.res.success,a3.res.success,a4.res.success,a5.res.success,a6.res.success,a7.res.success])")
+        }
+        do {
+            // Scenario B: Office work
+            let b1 = await runCmd("Open my email and read my latest message", dryRun: true)
+            let b2 = await runCmd("Create a folder called Reports on the desktop", dryRun: false)
+            let b3 = await runCmd("Create a spreadsheet and save it in Reports as sales", dryRun: false)
+            let b4 = await runCmd("Take a screenshot", dryRun: true)
+            let b5 = await runCmd("Compose an email to myself with the screenshot attached", dryRun: true)
+            let bSaved = fm.fileExists(atPath: "\(sandboxRoot)/Desktop/Reports/sales.csv")
+            let okB = b1.res.success && b2.res.success && b3.res.success && b4.res.success && b5.res.success && bSaved
+            record("Scen-B", "Office work (5 steps end-to-end)", okB ? "PASS" : "FAIL", "sales.csv=\(bSaved), steps=\([b1.res.success,b2.res.success,b3.res.success,b4.res.success,b5.res.success])")
+        }
+        do {
+            // Scenario C: End of day shutdown
+            let c1Confirm = await runCmd("Close all my applications", dryRun: true, approve: false)
+            let c1Approved = await runCmd("Close all my applications", dryRun: true, approve: true)
+            let c2 = await runCmd("Mute the volume", dryRun: true)
+            let c3 = await runCmd("Remind me to submit the report tomorrow at 9 AM", dryRun: false)
+            let c4 = await runCmd("Lock the screen", dryRun: true)
+            let okC = !c1Confirm.requestedConfirmations.isEmpty && !c1Confirm.res.success && c1Approved.res.success && c2.res.success && c3.res.success && c4.res.success
+            record("Scen-C", "End of day shutdown (4 steps + confirm gate)", okC ? "PASS" : "FAIL", "confirmGate=\(!c1Confirm.requestedConfirmations.isEmpty), approved=\(c1Approved.res.success), lock=\(c4.res.success)")
+        }
+
         // Summary
         let passCount = results.filter { $0.status == "PASS" }.count
         let failCount = results.filter { $0.status == "FAIL" }.count

@@ -450,12 +450,6 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             return
         }
 
-        // Barge-in any previous utterance cleanly before starting fresh response
-        if speechSynthesizer.isSpeaking {
-            speechSynthesizer.stopSpeaking(at: .immediate)
-        }
-        KokoroTTSEngine.shared.stop()
-
         let isHinglish = HinglishParser.isHinglishQuery(text)
         let spokenText = Self.formatMinimalisticSpokenReply(rawText: text, isHinglish: isHinglish)
         let chunks = Self.splitIntoSpeakableChunks(spokenText)
@@ -467,6 +461,7 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             return
         }
 
+        // Bump generation BEFORE stopping previous synthesizers so stale cancellation callbacks cannot misfire.
         let gen = ttsLock.withLock { () -> UInt64 in
             ttsGeneration &+= 1
             ttsChunkQueue = chunks.map { (text: $0, isHinglish: isHinglish) }
@@ -475,21 +470,27 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             return ttsGeneration
         }
 
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: .immediate)
+        }
+        KokoroTTSEngine.shared.stop()
+
         self.currentState = .speaking
         onStateChanged?(.speaking)
         playNextTTSChunk(generation: gen)
     }
 
     private func playNextTTSChunk(generation: UInt64) {
-        let nextItem = ttsLock.withLock { () -> (item: (text: String, isHinglish: Bool)?, finishCallback: (@Sendable () -> Void)?) in
-            guard generation == ttsGeneration else { return (nil, nil) }
+        let nextItem = ttsLock.withLock { () -> (item: (text: String, isHinglish: Bool)?, upcomingText: String?, finishCallback: (@Sendable () -> Void)?) in
+            guard generation == ttsGeneration else { return (nil, nil, nil) }
             if ttsChunkQueue.isEmpty {
                 isProcessingTTSQueue = false
                 let cb = ttsCompletionCallback
                 ttsCompletionCallback = nil
-                return (nil, cb)
+                return (nil, nil, cb)
             }
-            return (ttsChunkQueue.removeFirst(), nil)
+            let current = ttsChunkQueue.removeFirst()
+            return (current, ttsChunkQueue.first?.text, nil)
         }
 
         guard generation == currentTTSGeneration() else { return }
@@ -510,6 +511,9 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
 
         if KokoroTTSEngine.shared.isPreferredForTTS && !hasDevanagari &&
             FileManager.default.fileExists(atPath: KokoroTTSEngine.weightsURL.path) {
+            if let upcoming = nextItem.upcomingText {
+                KokoroTTSEngine.shared.prewarm(text: upcoming, voice: KokoroTTSEngine.shared.selectedVoiceId)
+            }
             KokoroTTSEngine.shared.speak(text: item.text, voice: KokoroTTSEngine.shared.selectedVoiceId) { [weak self] played in
                 DispatchQueue.main.async {
                     guard let self = self, generation == self.currentTTSGeneration() else { return }
@@ -813,5 +817,87 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             self?.currentState = .idle
             self?.onStateChanged?(.idle)
         }
+    }
+}
+
+/// Coordinates incremental sentence-by-sentence TTS playback while partial LLM text streams onto the screen.
+public final class StreamingSpeechTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var consumedUTF16Count: Int = 0
+    private var hasStreamedAnyChunk: Bool = false
+
+    public init() {}
+
+    public func pushPartial(_ partialText: String) {
+        let extracted = lock.withLock { () -> [String] in
+            let utf16Len = partialText.utf16.count
+            guard utf16Len > consumedUTF16Count else { return [] }
+            guard let startIdx = String.Index(utf16Offset: consumedUTF16Count, in: partialText) as String.Index? else {
+                return []
+            }
+            let slice = String(partialText[startIdx...])
+            let terminators: Set<Character> = [".", "!", "?", "।", "\n"]
+            var ready: [String] = []
+            var current = ""
+            var lastCommittedEnd = startIdx
+
+            var idx = slice.startIndex
+            while idx < slice.endIndex {
+                let ch = slice[idx]
+                current.append(ch)
+                let nextIdx = slice.index(after: idx)
+                if terminators.contains(ch) {
+                    let candidate = current.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if candidate.count >= 12 {
+                        ready.append(candidate)
+                        current = ""
+                        let offsetInSlice = slice.distance(from: slice.startIndex, to: nextIdx)
+                        lastCommittedEnd = partialText.index(startIdx, offsetBy: offsetInSlice)
+                    }
+                }
+                idx = nextIdx
+            }
+
+            if !ready.isEmpty {
+                consumedUTF16Count = partialText.utf16.distance(from: partialText.startIndex, to: lastCommittedEnd)
+                hasStreamedAnyChunk = true
+            }
+            return ready
+        }
+
+        for chunk in extracted {
+            let cleaned = Self.sanitizeForSpeech(chunk)
+            if !cleaned.isEmpty {
+                SpeechPipelineEngine.shared.enqueueStreamingSpeechChunk(cleaned)
+            }
+        }
+    }
+
+    public func finish(finalSummary: String) {
+        let state = lock.withLock { (streamed: hasStreamedAnyChunk, offset: consumedUTF16Count) }
+        guard state.streamed else {
+            SpeechPipelineEngine.shared.speakResponse(finalSummary)
+            return
+        }
+        let utf16Len = finalSummary.utf16.count
+        if utf16Len > state.offset {
+            let startIdx = String.Index(utf16Offset: state.offset, in: finalSummary)
+            let tail = Self.sanitizeForSpeech(String(finalSummary[startIdx...]))
+            if !tail.isEmpty {
+                SpeechPipelineEngine.shared.enqueueStreamingSpeechChunk(tail)
+            }
+        }
+    }
+
+    private static func sanitizeForSpeech(_ raw: String) -> String {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let urlRegex = try? NSRegularExpression(pattern: "https?://\\S+", options: .caseInsensitive) {
+            text = urlRegex.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: text.utf16.count), withTemplate: "")
+        }
+        return text
+            .replacingOccurrences(of: "#", with: "")
+            .replacingOccurrences(of: "*", with: "")
+            .replacingOccurrences(of: "`", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

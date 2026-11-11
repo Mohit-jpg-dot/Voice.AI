@@ -423,6 +423,8 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
             """
         case "tab_close":
             script = "tell application \"System Events\" to keystroke \"w\" using {command down}"
+        case "new_tab":
+            script = "tell application \"System Events\" to keystroke \"t\" using {command down}"
         case "browser_back":
             script = "tell application \"System Events\" to keystroke \"[\" using {command down}"
         case "browser_forward":

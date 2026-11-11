@@ -38,6 +38,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         }
     }
     @Published public var isHistoryDrawerOpen: Bool = false
+    @Published public var isHistorySidebarPinned: Bool = false
     @Published public var isAppBuilderOpen: Bool = false
     
     public var isCurrentlyListening: Bool {
@@ -57,8 +58,10 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     @Published public var currentCropResult: ScreenCropResult? = nil
     @Published public var isScreenCaptureActive: Bool = false
     
-    // Persistent Multi-turn Chat Memory
+    // Persistent Multi-turn Chat Memory & Sessions
     @Published public var chatMessages: [ChatMessage] = []
+    @Published public var chatSessions: [VoiceChatSession] = []
+    @Published public var activeChatSessionId: String = ""
     
     // Prompt & Query input (coexisting voice & typing)
     @Published public var promptInputText: String = ""
@@ -226,6 +229,8 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
             self.recentHistory = []
         }
         self.chatMessages = LocalChatMemoryManager.shared.allMessages()
+        self.chatSessions = LocalChatMemoryManager.shared.allSessions()
+        self.activeChatSessionId = LocalChatMemoryManager.shared.currentSessionId()
 
         // 4. Initialize stored properties for "THE VOICE" Mode & Background Search Permissions
         let theVoiceSaved = UserDefaults.standard.object(forKey: "VoiceAI_TheVoiceModeActive") == nil ? true : UserDefaults.standard.bool(forKey: "VoiceAI_TheVoiceModeActive")
@@ -758,9 +763,12 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                 _ = LocalChatMemoryManager.shared.addMessage(role: "user", text: polished.polishedText)
                 DispatchQueue.main.async {
                     self.chatMessages = LocalChatMemoryManager.shared.allMessages()
+        self.chatSessions = LocalChatMemoryManager.shared.allSessions()
+        self.activeChatSessionId = LocalChatMemoryManager.shared.currentSessionId()
                 }
 
                 let activeCrop = self.currentCropResult
+                let speechTracker = StreamingSpeechTracker()
                 self.currentAgentReply = ""
                 self.currentExecutionTask?.cancel()
                 self.currentExecutionTask = Task {
@@ -769,6 +777,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                         triggerMode: mode,
                         screenCrop: activeCrop,
                         onPartialReply: { [weak self] partial in
+                            speechTracker.pushPartial(partial)
                             Task { @MainActor in
                                 self?.currentAgentReply = partial
                             }
@@ -816,7 +825,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                             sourceURL: result.targetURL?.absoluteString,
                             sourceTitle: result.targetAppName
                         )
-                        self.chatMessages = LocalChatMemoryManager.shared.allMessages()
+                        self.syncChatMemoryFromStore()
 
                         self.recordSession(
                             mode: .agent,
@@ -825,8 +834,8 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                             appName: result.targetAppName,
                             appIcon: "sparkles"
                         )
-                        // Speak aloud direct answer / summary
-                        SpeechPipelineEngine.shared.speakResponse(result.summary)
+                        // Speak aloud direct answer / summary (or unspoken tail if already streaming)
+                        speechTracker.finish(finalSummary: result.summary)
                         if result.success {
                             self.refreshBrainSuggestions(query: polished.polishedText, reply: result.summary)
                         }
@@ -1034,8 +1043,11 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         // Add to persistent local chat memory
         _ = LocalChatMemoryManager.shared.addMessage(role: "user", text: trimmed)
         self.chatMessages = LocalChatMemoryManager.shared.allMessages()
+        self.chatSessions = LocalChatMemoryManager.shared.allSessions()
+        self.activeChatSessionId = LocalChatMemoryManager.shared.currentSessionId()
         
         let activeCrop = self.currentCropResult
+        let speechTracker = StreamingSpeechTracker()
         self.currentAgentReply = ""
         currentExecutionTask?.cancel()
         currentExecutionTask = Task {
@@ -1043,6 +1055,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                 taskDescription: trimmed,
                 screenCrop: activeCrop,
                 onPartialReply: { [weak self] partial in
+                    speechTracker.pushPartial(partial)
                     Task { @MainActor in
                         self?.currentAgentReply = partial
                     }
@@ -1089,7 +1102,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                     sourceURL: result.targetURL?.absoluteString,
                     sourceTitle: result.targetAppName
                 )
-                self.chatMessages = LocalChatMemoryManager.shared.allMessages()
+                self.syncChatMemoryFromStore()
                 
                 self.recordSession(
                     mode: .agent,
@@ -1098,7 +1111,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                     appName: result.targetAppName,
                     appIcon: "sparkles"
                 )
-                SpeechPipelineEngine.shared.speakResponse(result.summary)
+                speechTracker.finish(finalSummary: result.summary)
                 if result.success {
                     self.refreshBrainSuggestions(query: trimmed, reply: result.summary)
                 }
@@ -1143,6 +1156,8 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                     sourceTitle: "Ollama Brain Suggestions"
                 )
                 self.chatMessages = LocalChatMemoryManager.shared.allMessages()
+        self.chatSessions = LocalChatMemoryManager.shared.allSessions()
+        self.activeChatSessionId = LocalChatMemoryManager.shared.currentSessionId()
                 SpeechPipelineEngine.shared.speakResponse(outcome.insight)
             }
         }
@@ -1153,6 +1168,8 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         self.islandState = .hoverExpanded
         _ = LocalChatMemoryManager.shared.addMessage(role: "user", text: "What is currently on my screen?", isScreenContext: true)
         self.chatMessages = LocalChatMemoryManager.shared.allMessages()
+        self.chatSessions = LocalChatMemoryManager.shared.allSessions()
+        self.activeChatSessionId = LocalChatMemoryManager.shared.currentSessionId()
         
         Task {
             let captured = await ScreenVisionService.shared.captureFullScreenWithImage()
@@ -1175,6 +1192,8 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                     isScreenContext: true
                 )
                 self.chatMessages = LocalChatMemoryManager.shared.allMessages()
+        self.chatSessions = LocalChatMemoryManager.shared.allSessions()
+        self.activeChatSessionId = LocalChatMemoryManager.shared.currentSessionId()
                 SpeechPipelineEngine.shared.speakResponse(finalSummary)
             }
         }
@@ -1183,10 +1202,79 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     public func clearChatHistory() {
         BoringSoundEngine.shared.playTap()
         LocalChatMemoryManager.shared.clearChat()
-        self.chatMessages = LocalChatMemoryManager.shared.allMessages()
+        syncChatMemoryFromStore()
         self.currentAgentReply = ""
         self.currentTranscript = ""
         self.llmSuggestions = []
+    }
+
+    public func syncChatMemoryFromStore() {
+        self.chatMessages = LocalChatMemoryManager.shared.allMessages()
+        self.chatSessions = LocalChatMemoryManager.shared.allSessions()
+        self.activeChatSessionId = LocalChatMemoryManager.shared.currentSessionId()
+    }
+
+    public func toggleHistorySidebar() {
+        isHistoryDrawerOpen.toggle()
+    }
+
+    public func startNewChatSession() {
+        BoringSoundEngine.shared.playTap()
+        _ = LocalChatMemoryManager.shared.startNewSession()
+        syncChatMemoryFromStore()
+        self.currentTranscript = ""
+        self.currentAgentReply = ""
+        self.llmSuggestions = []
+        self.executionState = .idle
+        self.activeNotchTab = .ask
+        self.islandState = .hoverExpanded
+        self.isNotchHUDVisible = true
+        if !isHistorySidebarPinned {
+            isHistoryDrawerOpen = false
+        }
+    }
+
+    public func openChatSession(_ session: VoiceChatSession) {
+        BoringSoundEngine.shared.playTap()
+        guard let loaded = LocalChatMemoryManager.shared.switchToSession(id: session.id) else { return }
+        syncChatMemoryFromStore()
+        self.currentTranscript = loaded.messages.last(where: { $0.role == "user" })?.text ?? loaded.title
+        self.currentAgentReply = loaded.messages.last(where: { $0.role == "assistant" })?.text ?? ""
+        self.executionState = self.currentAgentReply.isEmpty ? .idle : .completed(self.currentAgentReply)
+        self.activeNotchTab = .ask
+        self.islandState = .hoverExpanded
+        self.isNotchHUDVisible = true
+        if !isHistorySidebarPinned {
+            isHistoryDrawerOpen = false
+        }
+    }
+
+    public func openLegacyHistoryRecord(_ record: SessionRecord) {
+        BoringSoundEngine.shared.playTap()
+        _ = LocalChatMemoryManager.shared.startNewSession()
+        _ = LocalChatMemoryManager.shared.addMessage(role: "user", text: record.prompt)
+        _ = LocalChatMemoryManager.shared.addMessage(role: "assistant", text: record.response, sourceTitle: record.appName)
+        syncChatMemoryFromStore()
+        self.currentTranscript = record.prompt
+        self.currentAgentReply = record.response
+        self.currentAction = record.action
+        self.executionState = .completed(record.response)
+        self.activeNotchTab = .ask
+        self.islandState = .hoverExpanded
+        self.isNotchHUDVisible = true
+        if !isHistorySidebarPinned {
+            isHistoryDrawerOpen = false
+        }
+    }
+
+    public func togglePinChatSession(id: String) {
+        LocalChatMemoryManager.shared.togglePinSession(id: id)
+        syncChatMemoryFromStore()
+    }
+
+    public func deleteChatSession(id: String) {
+        LocalChatMemoryManager.shared.deleteSession(id: id)
+        syncChatMemoryFromStore()
     }
     
     public func confirmRedirect() {

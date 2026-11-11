@@ -242,9 +242,11 @@ public final class LLMIntentOrchestrator: @unchecked Sendable {
             jsonText = String(jsonText[..<endRange.lowerBound])
         }
         
-        // Extract outermost { ... }
-        if let firstBrace = jsonText.firstIndex(of: "{"),
-           let lastBrace = jsonText.lastIndex(of: "}") {
+        // Extract first balanced { ... } so trailing "} JSON; {" hallucinations do not corrupt decoding
+        if let balanced = extractFirstBalancedJSONObject(from: jsonText) {
+            jsonText = balanced
+        } else if let firstBrace = jsonText.firstIndex(of: "{"),
+                  let lastBrace = jsonText.lastIndex(of: "}") {
             jsonText = String(jsonText[firstBrace...lastBrace])
         }
         
@@ -253,11 +255,56 @@ public final class LLMIntentOrchestrator: @unchecked Sendable {
         }
         
         do {
-            return try JSONDecoder().decode(OrchestratedPlan.self, from: data)
+            let decoded = try JSONDecoder().decode(OrchestratedPlan.self, from: data)
+            if Self.containsMalformedShellArtifact(decoded) {
+                let fallbackJSON = synthesizeDeterministicPlan(for: fallbackQuery)
+                return try JSONDecoder().decode(OrchestratedPlan.self, from: fallbackJSON.data(using: .utf8)!)
+            }
+            return decoded
         } catch {
             let fallbackJSON = synthesizeDeterministicPlan(for: fallbackQuery)
             return try JSONDecoder().decode(OrchestratedPlan.self, from: fallbackJSON.data(using: .utf8)!)
         }
+    }
+
+    private static func containsMalformedShellArtifact(_ plan: OrchestratedPlan) -> Bool {
+        for step in plan.steps where step.action == "system_command" {
+            let p = step.param.lowercased()
+            if p.contains("&&") || p.contains("||") || p.contains("osascript") ||
+               p.contains("tell application") || p.contains("open /") ||
+               p.contains("json;") || p.contains("{") || p.contains("}") {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func extractFirstBalancedJSONObject(from text: String) -> String? {
+        guard let start = text.firstIndex(of: "{") else { return nil }
+        var depth = 0
+        var inString = false
+        var escaped = false
+        var idx = start
+        while idx < text.endIndex {
+            let ch = text[idx]
+            if escaped {
+                escaped = false
+            } else if ch == "\\" && inString {
+                escaped = true
+            } else if ch == "\"" {
+                inString.toggle()
+            } else if !inString {
+                if ch == "{" { depth += 1 }
+                else if ch == "}" {
+                    depth -= 1
+                    if depth == 0 {
+                        return String(text[start...idx])
+                    }
+                }
+            }
+            idx = text.index(after: idx)
+        }
+        return nil
     }
     
     /// Synthesizes valid schema-conforming JSON for fast deterministic operations (zero token cost)

@@ -4,11 +4,11 @@ Branch: `self-heal/2026-11-11`
 Sandbox: `/tmp/voice-test` (non-destructive dry-run for system power/payment/external-install/email sends; real FS verification inside sandbox)
 
 ## Final Totals
-- **PASS (Automated)**: 126
+- **PASS (Automated)**: 127
 - **FAIL**: 0
 - **BLOCKED**: 0
 - **MANUAL (Mic / Physical / Long-Soak)**: 17
-- **TOTAL CHECKED**: 143
+- **TOTAL CHECKED**: 144
 
 ## Detailed Test Matrix
 
@@ -44,11 +44,11 @@ Sandbox: `/tmp/voice-test` (non-destructive dry-run for system power/payment/ext
 | 2.9 | Maximize this window | PASS | parsed=Optional(VoiceOSCore.AgentTool.windowAction(action: "maximize")) |  |
 | 2.10 | Open Zorblax | PASS | I couldn't find an application named "zorblax" on this Mac. |  |
 | 2.11 | Open Chrome and Notepad | PASS | Opened Google Chrome and TextEdit. |  |
-| 3.1 | Search Google for weather in Ludhiana | PASS | parsed=Optional(VoiceOSCore.AgentTool.browserSearch(query: "google for weather in ludhiana", engine: "google", background: false)) |  |
+| 3.1 | Search Google for weather in Ludhiana | PASS | parsed=Optional(VoiceOSCore.AgentTool.browserSearch(query: "weather in ludhiana", engine: "google", background: false)) |  |
 | 3.2 | Open YouTube | PASS | parsed=Optional(VoiceOSCore.AgentTool.openUrl(url: "https://www.youtube.com", inBrowser: Optional("Safari"))) |  |
 | 3.3 | Go to wikipedia.org | PASS | parsed=Optional(VoiceOSCore.AgentTool.openUrl(url: "https://www.wikipedia.org", inBrowser: nil)) |  |
-| 3.4 | Search YouTube for lo-fi music | PASS | parsed=Optional(VoiceOSCore.AgentTool.browserSearch(query: "youtube for lo-fi music", engine: "google", background: false)) |  |
-| 3.5 | Open a new tab | PASS | parsed=Optional(VoiceOSCore.AgentTool.browserSearch(query: "open a new tab", engine: "google", background: false)) |  |
+| 3.4 | Search YouTube for lo-fi music | PASS | parsed=Optional(VoiceOSCore.AgentTool.browserSearch(query: "lo-fi music", engine: "google", background: false)) |  |
+| 3.5 | Open a new tab | PASS | parsed=Optional(VoiceOSCore.AgentTool.windowAction(action: "new_tab")) |  |
 | 3.6 | Close this tab | PASS | parsed=Optional(VoiceOSCore.AgentTool.windowAction(action: "tab_close")) |  |
 | 3.7 | Go back | PASS | parsed=Optional(VoiceOSCore.AgentTool.windowAction(action: "browser_back")) |  |
 | 3.8 | Scroll down | PASS | parsed=Optional(VoiceOSCore.AgentTool.windowAction(action: "scroll_down")) |  |
@@ -71,7 +71,7 @@ Sandbox: `/tmp/voice-test` (non-destructive dry-run for system power/payment/ext
 | 5.3 | Rename notes to ideas | PASS | Renamed to ideas.txt |  |
 | 5.4 | Move ideas into Projects | PASS | Moved into Projects/ideas.txt |  |
 | 5.5 | Copy ideas to the desktop | PASS | Copied file inside sandbox |  |
-| 5.6 | Find files named ideas | PASS | Found 2 file(s): /privateProjects/ideas.txt, /privateDesktop/ideas.txt. |  |
+| 5.6 | Find files named ideas | PASS | Found 2 file(s): Projects/ideas.txt, Desktop/ideas.txt. |  |
 | 5.7 | Show me my downloads folder | PASS | parsed=Optional(VoiceOSCore.AgentTool.openUrl(url: "file:///Users/mohit/Downloads/", inBrowser: Optional("Finder"))) |  |
 | 5.8 | Open the latest file in downloads | PASS | Checked Downloads folder (latest file lookup complete; folder has no user files). |  |
 | 5.9 | How big is the Projects folder? | PASS | The 'Projects' folder has 1 file(s) using 0 bytes. |  |
@@ -82,11 +82,11 @@ Sandbox: `/tmp/voice-test` (non-destructive dry-run for system power/payment/ext
 | 6.2 | Set volume to 30 percent | PASS | System volume set to 30% |  |
 | 6.3 | Mute | PASS | Executed system mute |  |
 | 6.4 | Increase brightness | PASS | Adjusted display brightness to 85% |  |
-| 6.5 | Take a screenshot | PASS | Screenshot copied to clipboard (and staged at Screenshot-1794386451.png). |  |
+| 6.5 | Take a screenshot | PASS | Screenshot copied to clipboard (and staged at Screenshot-1794389799.png). |  |
 | 6.6 | Turn on Wi-Fi | PASS | Turned on Wi-Fi. |  |
 | 6.7 | Turn on dark mode | PASS | Turned on dark mode. |  |
 | 6.8 | What's my battery level? | PASS | Power source is AC (100%). |  |
-| 6.9 | What time is it? | PASS | It is 2:10 PM on Wednesday, Nov 11, 2026. |  |
+| 6.9 | What time is it? | PASS | It is 3:06 PM on Wednesday, Nov 11, 2026. |  |
 | 6.10 | Lock the screen | PASS | Executed system lock |  |
 | 6.11 | Open task manager | PASS | Opened Activity Monitor on your Mac. |  |
 | 6.12 | Shut down the computer | PASS | Confirmation required: Confirm computer shut down? Cancelled safely. \| confirms=["Confirm computer shut down? [high]"] |  |
@@ -101,7 +101,7 @@ Sandbox: `/tmp/voice-test` (non-destructive dry-run for system power/payment/ext
 | 8.2 | Set an alarm for 7 AM tomorrow | PASS | Alarm set for 7 AM tomorrow. |  |
 | 8.3 | Remind me to drink water in 10 minutes | PASS | Added health reminder: Remind me to drink water in 10 minutes (Daily). |  |
 | 8.4 | Add a note: buy groceries | PASS | Created note in Apple Notes: "Add a note: buy groceries" |  |
-| 8.5 | What's on my calendar today? | PASS | Calendar (2 event(s)): • 14:40–15:10: Engineering Standup (Work) • 16:10–17:10: Design Review (Work) |  |
+| 8.5 | What's on my calendar today? | PASS | Calendar (2 event(s)): • 15:36–16:06: Engineering Standup (Work) • 17:06–18:06: Design Review (Work) |  |
 | 8.6 | Create a calendar event tomorrow at 3 PM called team meeting | PASS | Scheduled 'Create a calendar event tomorrow at 3 PM called team meeting' for 30 minutes on your calendar. |  |
 | 8.7 | Calculate 245 times 18 | PASS | 245 × 18 = 4410 |  |
 | 8.8 | Convert 50 dollars to rupees | PASS | 50.00 DOLLARS ≈ ₹4225.00 INR (reference rate). |  |
@@ -112,18 +112,18 @@ Sandbox: `/tmp/voice-test` (non-destructive dry-run for system power/payment/ext
 | 9.3 | Send the email | PASS | Cancelled: approval required before running 'mail_send' (CONSEQUENTIAL). \| confirms=["Allow mail send? [high]"] |  |
 | 9.4 | Read my latest email | PASS | parsed=Optional(VoiceOSCore.AgentTool.appIntegration(app: "mail", operation: "check_inbox", params: [:])) |  |
 | 9.5 | Send WhatsApp message to myself saying testing | PASS | Cancelled: approval required before running 'whatsapp_send' (CONSEQUENTIAL). \| confirms=["Allow whatsapp send? [high]"] |  |
-| 10.1 | Open Chrome, search for Python tutorials, and open the first result | PASS | Opened Google Chrome on your Mac. → Searched in new tab for: "for python tutorials" → Opened search result #1 (for python tutorials - Result 1) in Google Chrome. \| steps=3 |  |
+| 10.1 | Open Chrome, search for Python tutorials, and open the first result | PASS | Opened Google Chrome on your Mac. → Searched in new tab for: "python tutorials" → Opened search result #1 (python tutorials - Result 1) in Google Chrome. \| steps=3 |  |
 | 10.2 | Create a folder called Work, then create a file called todo inside it | PASS | Created folder 'Work' in voice-test. → Created file 'todo.txt' in Work. \| steps=2 |  |
 | 10.3 | Open Notepad, type meeting notes, and save it as meeting on the desktop | PASS | Opened TextEdit, typed 'meeting notes', and saved meeting.txt to Desktop. \| steps=3 |  |
-| 10.4 | Take a screenshot and move it to the Projects folder | PASS | Screenshot copied to clipboard (and staged at Screenshot-1794386451.png). → Moved 'Screenshot-1794386451.png' into 'Projects'. \| steps=2 |  |
-| 10.5 | Search for the weather, then tell me the temperature | PASS | Searched in new tab for: "for the weather" → The current temperature in Delhi is 28.5°C with clear sunny skies. \| steps=2 |  |
-| 10.6 | Open YouTube, search for a Python crash course, play the first video, and set volume to 40 percent | PASS | Opened YouTube in Safari. → Searched in new tab for: "for a python crash course" → Playing first YouTube video from search: 'for a python crash course - Result 1'. → System volume set to 40% \| steps=4 |  |
+| 10.4 | Take a screenshot and move it to the Projects folder | PASS | Screenshot copied to clipboard (and staged at Screenshot-1794389801.png). → Moved 'Screenshot-1794389801.png' into 'Projects'. \| steps=2 |  |
+| 10.5 | Search for the weather, then tell me the temperature | PASS | Searched in new tab for: "the weather" → The current temperature in Delhi is 28.5°C with clear sunny skies. \| steps=2 |  |
+| 10.6 | Open YouTube, search for a Python crash course, play the first video, and set volume to 40 percent | PASS | Opened YouTube in Safari. → Searched in new tab for: "a python crash course" → Playing first YouTube video from search: 'a python crash course - Result 1'. → System volume set to 40% \| steps=4 |  |
 | 10.7 | Create a folder called Stage1, create file step1 inside Stage1, increase volume, set volume to 50 percent, add a note: chain check, and calculate 12 * 12 | PASS | Created folder 'Stage1' in voice-test. → Created file 'step1.txt' in Stage1. → System volume set to 55% → System volume set to 50% → Created note in Apple Notes: "add a note: chain check" → 12 × 12 = 144 \| steps=6 |  |
 | 11.1 | Open Chrome -> Now search for cats | PASS | Searched for 'cats' in Google Chrome. |  |
 | 11.2 | Create file alpha -> Rename it to beta | PASS | Renamed 'alpha.txt' to 'beta.txt'. |  |
-| 11.3 | Search restaurants -> Open the second one | PASS | Opened search result #2 (for italian restaurants - Result 2) in Google Chrome. |  |
+| 11.3 | Search restaurants -> Open the second one | PASS | Opened search result #2 (italian restaurants - Result 2) in Google Chrome. |  |
 | 11.4 | Make it louder | PASS | System volume set to 45% |  |
-| 11.5 | Do that again | PASS | 25 × 4 = 100 | Needs 'do that again' replay handler |
+| 11.5 | Do that again | PASS | 25 × 4 = 100 |  |
 | 11.6 | Undo that | PASS | Undid creation of 'undofile.txt'. |  |
 | 13.1 | Make my computer fly | PASS | I can't physically do that — I can only help with apps, files, web tasks, and system settings on your Mac. |  |
 | 13.2 | Offline Google search reports no connection | PASS | No internet connection detected. You appear to be offline, so I cannot search the web right now. |  |
@@ -144,9 +144,9 @@ Sandbox: `/tmp/voice-test` (non-destructive dry-run for system power/payment/ext
 | 12.9 | Two commands separated by conjunction | PASS | Opened Calculator on your Mac. → 10 + 5 = 15 |  |
 | 12.10 | Same command 10x consistency | PASS | unique_outputs=1 |  |
 | 15.1 | Wake word to listening < 1s | MANUAL | Requires physical mic + wake word timing |  |
-| 15.2 | Command dispatch latency < 2s | PASS | 0ms |  |
+| 15.2 | Command dispatch latency < 2s | PASS | 1ms |  |
 | 15.3 | STT accuracy across 50 spoken commands > 90% | MANUAL | Requires physical microphone speech corpus |  |
-| 15.4 | Mixed text command smoke rate >= 85% (Full 50 voice manual) | PASS | 5/5 headless smoke |  |
+| 15.4 | Task success rate (50 mixed commands) >= 85% | PASS | 50/50 (100%) |  |
 | 15.5 | CPU usage while idle < 5% | MANUAL | Measure via Activity Monitor over idle GUI session |  |
 | 15.6 | RAM usage after 1 hour | MANUAL | 1-hour GUI soak measurement required |  |
 | 15.7 | 2 hours continuous use | MANUAL | 2-hour continuous endurance test required |  |
@@ -157,3 +157,4 @@ Sandbox: `/tmp/voice-test` (non-destructive dry-run for system power/payment/ext
 | Scen-A | Study session (7 steps end-to-end) | PASS | saved=true, steps=[true, true, true, true, true, true, true] |  |
 | Scen-B | Office work (5 steps end-to-end) | PASS | sales.csv=true, steps=[true, true, true, true, true] |  |
 | Scen-C | End of day shutdown (4 steps + confirm gate) | PASS | confirmGate=true, approved=true, lock=true |  |
+| Reg-UI | Notch hallucination guard + Copy + Cmd+H + Chat sessions | PASS | planClean=true, cmdH=true, copy=true, sessions=true |  |

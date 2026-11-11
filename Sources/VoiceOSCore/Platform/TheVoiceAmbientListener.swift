@@ -181,6 +181,15 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
     /// Checks live stream for configured wake-word + instruction and triggers barge-in immediately.
     private func evaluateWakeWord(in transcript: String) {
         if let afterWake = Self.extractCommand(from: transcript, wakePhrase: wakePhrase) {
+            // While TTS is speaking, require an explicit greeting prefix ("hey/ok voice" or "hey/ok jarvis")
+            // so speaker audio containing the assistant's name does not trigger false self-barge-in.
+            if SpeechPipelineEngine.shared.currentState == .speaking {
+                let lower = transcript.lowercased()
+                let phrase = wakePhrase.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let explicitCall = lower.contains("hey \(phrase)") || lower.contains("ok \(phrase)") || lower.contains("okay \(phrase)") ||
+                                   lower.contains("hey voice") || lower.contains("ok voice")
+                if !explicitCall { return }
+            }
             // Cooldown check (prevent multiple firings within 1.5 seconds)
             guard Date().timeIntervalSince(lastTriggerTime) > 1.5 else { return }
             lastTriggerTime = Date()

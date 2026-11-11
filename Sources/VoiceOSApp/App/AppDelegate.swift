@@ -8,6 +8,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     private var mainWindow: NSWindow?
     private var notchHUDController: NotchHUDWindowController?
     private var floatingOrbController: FloatingOrbWindowController?
+    private var historySidebarController: HistorySidebarWindowController?
     private var screenSelectionController: ScreenSelectionOverlayController?
     private var statusItem: NSStatusItem?
     private var cancellables = Set<AnyCancellable>()
@@ -50,6 +51,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         }
         if floatingOrbController == nil {
             setupFloatingOrb()
+        }
+        if historySidebarController == nil {
+            historySidebarController = HistorySidebarWindowController(appState: appState)
         }
         if screenSelectionController == nil {
             screenSelectionController = ScreenSelectionOverlayController(appState: appState)
@@ -167,6 +171,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             }
         }
 
+        hk.onHistorySidebarTriggered = { [weak self] in
+            DispatchQueue.main.async {
+                self?.appState.toggleHistorySidebar()
+            }
+        }
+
         hk.onEscapeStopTriggered = { [weak self] in
             DispatchQueue.main.async {
                 ComputerUseOperator.shared.stopActiveRun()
@@ -212,6 +222,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         let clipboardDictItem = NSMenuItem(title: "Clipboard Dictation (Fn+D)", action: #selector(triggerClipboardDictationFromMenu), keyEquivalent: "")
         clipboardDictItem.target = self
         menu.addItem(clipboardDictItem)
+
+        let historySidebarItem = NSMenuItem(title: "History Sidebar (⌘H)", action: #selector(toggleHistorySidebarFromMenu), keyEquivalent: "")
+        historySidebarItem.target = self
+        menu.addItem(historySidebarItem)
         
         menu.addItem(NSMenuItem.separator())
         
@@ -283,6 +297,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         appState.toggleClipboardDictation()
         notchHUDController?.positionUnderNotch()
         notchHUDController?.window?.orderFrontRegardless()
+    }
+
+    @objc private func toggleHistorySidebarFromMenu() {
+        appState.toggleHistorySidebar()
     }
     
     @objc public func toggleMainWindow() {

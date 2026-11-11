@@ -493,6 +493,20 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                    isPlanGroundedInUserQuery(plan, query: trimmed) {
                     if plan.intent == "software_automation" || plan.intent == "system_control" {
                         let execution = await executeOrchestratedPlan(plan, onProgress: onProgress)
+                        if !execution.success,
+                           let last = execution.executedSteps.last,
+                           last.hasPrefix("Unsupported system action") {
+                            let dispatched = await AgentActionDispatcher.shared.dispatch(transcript: trimmed)
+                            if dispatched.success {
+                                return AutonomousExecutionResult(
+                                    success: true,
+                                    summary: dispatched.summary,
+                                    targetAppName: dispatched.appName,
+                                    targetURL: dispatched.deepLinkURL,
+                                    executedSteps: ["Recovered via deterministic action dispatcher"]
+                                )
+                            }
+                        }
                         LocalMemoryManager.shared.remember(
                             content: "\(trimmed) -> \(execution.summary)",
                             category: "task",
@@ -800,9 +814,22 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 } else if cmd.contains("sleep") {
                     _ = AccessibilityControlEngine.shared.performSystemControl("sleep")
                     executed.append("Put Mac to sleep")
+                } else if cmd == "copy" || cmd == "paste" || cmd == "undo" || cmd == "redo" || cmd == "select_all" ||
+                          cmd == "refresh" || cmd == "back" || cmd == "forward" || cmd == "new_tab" || cmd == "close_tab" {
+                    let actionMap: [String: String] = [
+                        "refresh": "browser_refresh",
+                        "back": "browser_back",
+                        "forward": "browser_forward",
+                        "close_tab": "tab_close"
+                    ]
+                    let windowOp = actionMap[cmd] ?? cmd
+                    let ok = AccessibilityControlEngine.shared.performWindowAction(windowOp)
+                    overallSuccess = ok
+                    executed.append("Executed \(windowOp.replacingOccurrences(of: "_", with: " "))")
                 } else {
                     overallSuccess = false
-                    executed.append("Unsupported system action: \(step.param)")
+                    let looksCorrupted = cmd.contains("&&") || cmd.contains("osascript") || cmd.contains("json") || cmd.contains("{") || cmd.contains("}")
+                    executed.append(looksCorrupted ? "Unsupported system action (ignored malformed model output)" : "Unsupported system action: \(step.param)")
                 }
                 
             case "web_search":

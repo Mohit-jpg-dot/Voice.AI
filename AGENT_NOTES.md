@@ -21,3 +21,4 @@ Short reference summary recorded in Step 0 before running the real-world test pl
 
 ## Storage & Diagnostics
 - Account-scoped encrypted storage (`Memory/EncryptedChatHistoryManager.swift`, `Memory/MemoryStore.swift`), Keychain secrets (`Brain/KeychainService.swift`), and `Security/SecretRedactor.swift`.
+

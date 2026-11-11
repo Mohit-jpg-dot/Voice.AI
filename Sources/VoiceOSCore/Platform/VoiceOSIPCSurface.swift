@@ -162,21 +162,18 @@ public final class VoiceOSIPCSurface: @unchecked Sendable, VoiceOSIPCProtocol {
     }
     
     public func getNativeAudioDevicesWithInfo() async -> [[String: Any]] {
-        // Enumerate native CoreAudio audio input devices
-        var devices: [[String: Any]] = []
-        let defaultMic = await getDefaultMicrophoneName()
-        devices.append([
-            "id": "builtin_mic",
-            "name": defaultMic,
-            "isDefault": true,
-            "sampleRate": 16000,
-            "channels": 1
-        ])
-        return devices
+        let devices = AudioDeviceManager.shared.getNativeAudioDevicesWithInfo()
+        return devices.map { [
+            "id": $0.uid,
+            "name": $0.name,
+            "isDefault": $0.isDefault,
+            "sampleRate": $0.sampleRate,
+            "channels": $0.channels
+        ] }
     }
     
     public func getDefaultMicrophoneName() async -> String {
-        return "MacBook Pro Microphone (Built-in)"
+        return AudioDeviceManager.shared.getDefaultMicrophoneName()
     }
     
     // MARK: - 2. Keyboard & Shortcuts

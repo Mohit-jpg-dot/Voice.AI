@@ -61,8 +61,10 @@ public final class LocalModelDownloadManager: ObservableObject, @unchecked Senda
     public var onAllTasksCompleted: (() -> Void)?
     
     private init() {
+        Self.cleanupCorruptModelFiles()
         let coreItems = HardwareProfileDetector.shared.getCoreThreeModels()
         let hasVoice = Self.checkRealKokoroOnDisk()
+        UserDefaults.standard.set(hasVoice, forKey: "voiceos.model.kokoro.installed")
         
         for item in coreItems {
             let total = Int64(item.downloadSizeMB) * 1024 * 1024
@@ -74,11 +76,39 @@ public final class LocalModelDownloadManager: ObservableObject, @unchecked Senda
         self.tasksList = Array(tasks.values).sorted { $0.catalogItem.ramRequiredGB < $1.catalogItem.ramRequiredGB }
     }
     
+    public static func cleanupCorruptModelFiles() {
+        let modelsDir = NSHomeDirectory() + "/.voiceos/models"
+        let kokoroPath = modelsDir + "/kokoro.onnx"
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: kokoroPath),
+           let size = attrs[.size] as? Int64, size <= 1_000_000 {
+            try? FileManager.default.removeItem(atPath: kokoroPath)
+        }
+        let tmpPath = modelsDir + "/kokoro.onnx.tmp"
+        if FileManager.default.fileExists(atPath: tmpPath) {
+            try? FileManager.default.removeItem(atPath: tmpPath)
+        }
+    }
+    
     public static func checkRealKokoroOnDisk() -> Bool {
         let path = NSHomeDirectory() + "/.voiceos/models/kokoro.onnx"
         if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
            let size = attrs[.size] as? Int64 {
             return size > 1_000_000 // Real ONNX file must be > 1MB (real weights are ~86MB)
+        }
+        return false
+    }
+    
+    public static func checkRealWhisperOnDisk() -> Bool {
+        let candidates = [
+            NSHomeDirectory() + "/.voiceos/models/ggml-base.bin",
+            NSHomeDirectory() + "/.voiceos/models/ggml-base.en.bin",
+            NSHomeDirectory() + "/.voiceos/models/ggml-small.bin"
+        ]
+        for path in candidates {
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+               let size = attrs[.size] as? Int64, size > 10_000_000 {
+                return true
+            }
         }
         return false
     }
@@ -116,58 +146,85 @@ public final class LocalModelDownloadManager: ObservableObject, @unchecked Senda
     }
     
     public func refreshInstalledStatuses() async {
-        do {
-            let localOllamaModels = try await OllamaProvider.shared.listLocalModels()
-            let installedNames = Set(localOllamaModels.map { $0.name.lowercased() })
-            let hasLocalVoice = UserDefaults.standard.bool(forKey: "voiceos.model.kokoro.installed") ||
-                                FileManager.default.fileExists(atPath: NSHomeDirectory() + "/.voiceos/models/kokoro.onnx") ||
-                                FileManager.default.fileExists(atPath: "/usr/local/share/kokoro")
-            
-            lock.lock()
-            for (id, var task) in tasks {
-                if task.catalogItem.category == "brain" {
-                    if installedNames.contains(where: { $0.contains("llama3.2:3b") || $0.contains("llama3.2") }) {
-                        task.status = .ready
-                        task.downloadedBytes = task.totalBytes
-                    } else if !task.status.isDownloading {
-                        task.status = .queued
-                        task.downloadedBytes = 0
-                    }
-                    tasks[id] = task
-                } else if task.catalogItem.category == "vision" {
-                    if installedNames.contains(where: { $0.contains("llava") || $0.contains("llama3.2-vision") || $0.contains("qwen2-vl") }) {
-                        task.status = .ready
-                        task.downloadedBytes = task.totalBytes
-                    } else if !task.status.isDownloading {
-                        task.status = .queued
-                        task.downloadedBytes = 0
-                    }
-                    tasks[id] = task
-                } else if task.catalogItem.category == "voice" {
-                    let hasLocalVoice = Self.checkRealKokoroOnDisk()
-                    if hasLocalVoice {
-                        task.status = .ready
-                        task.downloadedBytes = task.totalBytes
-                    } else if !task.status.isDownloading {
-                        task.status = .queued
-                        task.downloadedBytes = 0
-                    }
-                    tasks[id] = task
-                }
+        let localOllamaModels = (try? await OllamaProvider.shared.listLocalModels()) ?? []
+        let installedNames = Set(localOllamaModels.map { $0.name.lowercased() })
+        let hasRealKokoro = Self.checkRealKokoroOnDisk()
+        let hasRealWhisper = Self.checkRealWhisperOnDisk()
+        let hasOllamaBin = OllamaProvider.shared.isOllamaInstalledOnSystem
+        UserDefaults.standard.set(hasRealKokoro, forKey: "voiceos.model.kokoro.installed")
+        
+        let list = applyRefreshedStatuses(
+            installedNames: installedNames,
+            hasRealKokoro: hasRealKokoro,
+            hasRealWhisper: hasRealWhisper,
+            hasOllamaBin: hasOllamaBin
+        )
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.tasksList = list
+            for task in list {
+                self.onTaskUpdated?(task)
             }
-            let list = Array(tasks.values).sorted { $0.catalogItem.ramRequiredGB < $1.catalogItem.ramRequiredGB }
-            lock.unlock()
-            
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                self.tasksList = list
-                for task in list {
-                    self.onTaskUpdated?(task)
-                }
-            }
-        } catch {
-            // Ollama might not be running or no models yet
         }
+    }
+    
+    private func applyRefreshedStatuses(
+        installedNames: Set<String>,
+        hasRealKokoro: Bool,
+        hasRealWhisper: Bool,
+        hasOllamaBin: Bool
+    ) -> [ActiveDownloadTask] {
+        lock.lock()
+        defer { lock.unlock() }
+        for (id, var task) in tasks {
+            switch task.catalogItem.category {
+            case "brain", "chat":
+                if installedNames.contains(where: { $0.contains("llama3.2") || $0.contains("qwen2.5") || $0.contains("mistral") }) {
+                    task.status = .ready
+                    task.downloadedBytes = task.totalBytes
+                } else if !task.status.isDownloading {
+                    task.status = .queued
+                    task.downloadedBytes = 0
+                }
+            case "vision":
+                if installedNames.contains(where: { $0.contains("llava") || $0.contains("llama3.2-vision") || $0.contains("qwen2-vl") || $0.contains("vision") }) {
+                    task.status = .ready
+                    task.downloadedBytes = task.totalBytes
+                } else if !task.status.isDownloading {
+                    task.status = .queued
+                    task.downloadedBytes = 0
+                }
+            case "voice":
+                if hasRealKokoro {
+                    task.status = .ready
+                    task.downloadedBytes = task.totalBytes
+                } else if !task.status.isDownloading {
+                    task.status = .queued
+                    task.downloadedBytes = 0
+                }
+            case "stt":
+                if hasRealWhisper {
+                    task.status = .ready
+                    task.downloadedBytes = task.totalBytes
+                } else if !task.status.isDownloading {
+                    task.status = .queued
+                    task.downloadedBytes = 0
+                }
+            case "runtime":
+                if hasOllamaBin || !installedNames.isEmpty {
+                    task.status = .ready
+                    task.downloadedBytes = task.totalBytes
+                } else if !task.status.isDownloading {
+                    task.status = .queued
+                    task.downloadedBytes = 0
+                }
+            default:
+                break
+            }
+            tasks[id] = task
+        }
+        return Array(tasks.values).sorted { $0.catalogItem.ramRequiredGB < $1.catalogItem.ramRequiredGB }
     }
     
     public func startDownload(for item: ModelCatalogItem) async {
@@ -251,16 +308,16 @@ public final class LocalModelDownloadManager: ObservableObject, @unchecked Senda
             return
         }
         
-        updateTaskStatus(id: item.id, status: .downloading(progress: 0.05, speedMBps: 18.5, etaSeconds: 60), downloaded: 0)
+        updateTaskStatus(id: item.id, status: .downloading(progress: 0.05, speedMBps: 0.0, etaSeconds: 0), downloaded: 0)
         
         let startTime = Date()
         let total = Double(item.downloadSizeMB)
         
-        // If Ollama is running, pull directly through Ollama streaming API
-        if item.category == "brain" || item.category == "vision" {
+        // 1. Ollama-managed models (brain, vision, chat)
+        if item.category == "brain" || item.category == "vision" || item.category == "chat" {
             let modelTag = item.command.replacingOccurrences(of: "ollama pull ", with: "").trimmingCharacters(in: .whitespaces)
             do {
-                try await OllamaProvider.shared.pullModel(name: modelTag) { [weak self] progress, statusDesc in
+                try await OllamaProvider.shared.pullModel(name: modelTag) { [weak self] progress, _ in
                     guard let self = self else { return }
                     let elapsed = max(0.5, Date().timeIntervalSince(startTime))
                     let safeProgress = max(0.02, min(1.0, progress))
@@ -280,106 +337,100 @@ public final class LocalModelDownloadManager: ObservableObject, @unchecked Senda
                 updateTaskStatus(id: item.id, status: .failed(reason: error.localizedDescription), downloaded: 0)
                 return
             }
+        } else if item.category == "runtime" {
+            if OllamaProvider.shared.isOllamaInstalledOnSystem {
+                updateTaskStatus(id: item.id, status: .ready, downloaded: Int64(total * 1024 * 1024))
+                return
+            }
+            let downloadsDir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".voiceos/downloads", isDirectory: true)
+            let ok = await downloadAsset(for: item, destinationURL: downloadsDir.appendingPathComponent("Ollama-darwin.zip"), minBytes: 5_000_000, totalMB: total)
+            if !ok { return }
+        } else if item.category == "voice" {
+            let modelsDir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".voiceos/models", isDirectory: true)
+            let ok = await downloadAsset(for: item, destinationURL: modelsDir.appendingPathComponent("kokoro.onnx"), minBytes: 1_000_000, totalMB: total)
+            if !ok {
+                UserDefaults.standard.set(false, forKey: "voiceos.model.kokoro.installed")
+                return
+            }
+            // Also fetch Kokoro v1.0 voice archive (voices-v1.0.bin) if missing
+            let voiceTarget = modelsDir.appendingPathComponent("voices-v1.0.bin")
+            if !FileManager.default.fileExists(atPath: voiceTarget.path),
+               let voiceURL = URL(string: "https://huggingface.co/fastrtc/kokoro-onnx/resolve/main/voices-v1.0.bin") {
+                _ = try? await Self.performFastDownload(from: voiceURL, to: voiceTarget, minBytes: 100_000, onProgress: { _, _ in })
+            }
+            UserDefaults.standard.set(true, forKey: "voiceos.model.kokoro.installed")
+        } else if item.category == "stt" {
+            let modelsDir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".voiceos/models", isDirectory: true)
+            let ok = await downloadAsset(for: item, destinationURL: modelsDir.appendingPathComponent("ggml-base.bin"), minBytes: 10_000_000, totalMB: total)
+            if !ok { return }
         } else {
-            // Real Kokoro ONNX model asset initialization & persistence
-            await downloadVoiceAssets(for: item, totalMB: total)
+            let modelsDir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".voiceos/models", isDirectory: true)
+            let safeName = item.id.replacingOccurrences(of: ".", with: "_") + ".onnx"
+            let ok = await downloadAsset(for: item, destinationURL: modelsDir.appendingPathComponent(safeName), minBytes: 1_000_000, totalMB: total)
+            if !ok { return }
         }
         
-        // Verifying SHA-256 Checksum
+        // Verifying & Installing
         updateTaskStatus(id: item.id, status: .verifying, downloaded: Int64(total * 1024 * 1024))
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        try? await Task.sleep(nanoseconds: 150_000_000)
         
-        // Installing and spinning up inference runtime
         updateTaskStatus(id: item.id, status: .installing, downloaded: Int64(total * 1024 * 1024))
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        try? await Task.sleep(nanoseconds: 150_000_000)
         
-        // Ready
         updateTaskStatus(id: item.id, status: .ready, downloaded: Int64(total * 1024 * 1024))
     }
     
-    private func downloadVoiceAssets(for item: ModelCatalogItem, totalMB: Double) async {
-        let modelsDir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".voiceos/models", isDirectory: true)
-        try? FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
-        let targetFile = modelsDir.appendingPathComponent("kokoro.onnx")
-        
+    @discardableResult
+    private func downloadAsset(for item: ModelCatalogItem, destinationURL: URL, minBytes: Int64, totalMB: Double) async -> Bool {
         guard let url = URL(string: item.downloadURL) else {
             updateTaskStatus(id: item.id, status: .failed(reason: "Invalid download URL"), downloaded: 0)
-            return
+            return false
         }
         
+        let startTime = Date()
         do {
-            let config = URLSessionConfiguration.default
-            config.timeoutIntervalForRequest = 600
-            config.timeoutIntervalForResource = 3600
-            let session = URLSession(configuration: config)
-            
-            let request = URLRequest(url: url)
-            let (bytes, response) = try await session.bytes(for: request)
-            
-            let expectedBytes: Int64
-            if let http = response as? HTTPURLResponse, http.expectedContentLength > 0 {
-                expectedBytes = http.expectedContentLength
-            } else {
-                expectedBytes = Int64(totalMB * 1024 * 1024)
-            }
-            
-            let tempFile = modelsDir.appendingPathComponent("kokoro.onnx.tmp")
-            try? FileManager.default.removeItem(at: tempFile)
-            FileManager.default.createFile(atPath: tempFile.path, contents: nil)
-            guard let fileHandle = try? FileHandle(forWritingTo: tempFile) else {
-                throw NSError(domain: "VoiceOS", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed to open local file for writing."])
-            }
-            
-            var receivedBytes: Int64 = 0
-            let startTime = Date()
-            var buffer = Data()
-            buffer.reserveCapacity(65536)
-            var lastUpdate = Date()
-            
-            for try await byte in bytes {
-                if isCancelled {
-                    try? fileHandle.close()
-                    try? FileManager.default.removeItem(at: tempFile)
-                    return
-                }
-                buffer.append(byte)
-                receivedBytes += 1
+            let receivedBytes = try await Self.performFastDownload(from: url, to: destinationURL, minBytes: minBytes) { [weak self] written, expected in
+                guard let self = self else { return }
+                let totalExpected = expected > 0 ? expected : Int64(totalMB * 1024 * 1024)
+                let elapsed = max(0.3, Date().timeIntervalSince(startTime))
+                let speed = (Double(written) / (1024 * 1024)) / elapsed
+                let progress = totalExpected > 0 ? Double(written) / Double(totalExpected) : 0.5
+                let remainingMB = max(0.0, (Double(totalExpected) - Double(written)) / (1024 * 1024))
+                let eta = speed > 0 ? Int(remainingMB / speed) : 0
                 
-                if buffer.count >= 65536 {
-                    fileHandle.write(buffer)
-                    buffer.removeAll(keepingCapacity: true)
-                }
-                
-                let now = Date()
-                if now.timeIntervalSince(lastUpdate) >= 0.25 {
-                    lastUpdate = now
-                    let elapsed = max(0.5, now.timeIntervalSince(startTime))
-                    let speed = (Double(receivedBytes) / (1024 * 1024)) / elapsed
-                    let progress = Double(receivedBytes) / Double(expectedBytes)
-                    let remainingMB = max(0.0, (Double(expectedBytes) - Double(receivedBytes)) / (1024 * 1024))
-                    let eta = speed > 0 ? Int(remainingMB / speed) : 0
-                    
-                    updateTaskStatus(
-                        id: item.id,
-                        status: .downloading(progress: min(0.99, max(0.01, progress)), speedMBps: (speed * 10).rounded() / 10, etaSeconds: eta),
-                        downloaded: receivedBytes
-                    )
-                }
+                self.updateTaskStatus(
+                    id: item.id,
+                    status: .downloading(progress: min(0.99, max(0.01, progress)), speedMBps: (speed * 10).rounded() / 10, etaSeconds: eta),
+                    downloaded: written
+                )
             }
-            
-            if !buffer.isEmpty {
-                fileHandle.write(buffer)
-            }
-            try? fileHandle.close()
-            
-            try? FileManager.default.removeItem(at: targetFile)
-            try FileManager.default.moveItem(at: tempFile, to: targetFile)
-            
             updateTaskStatus(id: item.id, status: .ready, downloaded: receivedBytes)
-            UserDefaults.standard.set(true, forKey: "voiceos.model.kokoro.installed")
+            return true
         } catch {
-            print("[LocalModelDownloadManager] Failed downloading Kokoro: \(error)")
+            print("[LocalModelDownloadManager] Failed downloading \(item.name): \(error)")
             updateTaskStatus(id: item.id, status: .failed(reason: error.localizedDescription), downloaded: 0)
+            return false
+        }
+    }
+    
+    private static func performFastDownload(
+        from url: URL,
+        to destinationURL: URL,
+        minBytes: Int64,
+        onProgress: @escaping @Sendable (Int64, Int64) -> Void
+    ) async throws -> Int64 {
+        let dir = destinationURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            let delegate = FastDownloadDelegate(destinationURL: destinationURL, minBytes: minBytes, onProgress: onProgress, continuation: continuation)
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 120
+            config.timeoutIntervalForResource = 3600
+            let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+            let task = session.downloadTask(with: URLRequest(url: url))
+            delegate.session = session
+            task.resume()
         }
     }
     
@@ -457,5 +508,76 @@ public final class LocalModelDownloadManager: ObservableObject, @unchecked Senda
         
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         center.add(request) { _ in }
+    }
+}
+
+private final class FastDownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let destinationURL: URL
+    private let minBytes: Int64
+    private let onProgress: @Sendable (Int64, Int64) -> Void
+    private var continuation: CheckedContinuation<Int64, Error>?
+    private let lock = NSLock()
+    var session: URLSession?
+    
+    init(
+        destinationURL: URL,
+        minBytes: Int64,
+        onProgress: @escaping @Sendable (Int64, Int64) -> Void,
+        continuation: CheckedContinuation<Int64, Error>
+    ) {
+        self.destinationURL = destinationURL
+        self.minBytes = minBytes
+        self.onProgress = onProgress
+        self.continuation = continuation
+    }
+    
+    private func finish(with result: Result<Int64, Error>) {
+        lock.lock()
+        let cont = continuation
+        continuation = nil
+        let sess = session
+        session = nil
+        lock.unlock()
+        
+        sess?.finishTasksAndInvalidate()
+        switch result {
+        case .success(let bytes):
+            cont?.resume(returning: bytes)
+        case .failure(let error):
+            cont?.resume(throwing: error)
+        }
+    }
+    
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        onProgress(totalBytesWritten, totalBytesExpectedToWrite)
+    }
+    
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        if let http = downloadTask.response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            finish(with: .failure(NSError(domain: "VoiceOS", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "Download failed with HTTP \(http.statusCode)"])))
+            return
+        }
+        
+        do {
+            let attrs = try FileManager.default.attributesOfItem(atPath: location.path)
+            let fileSize = (attrs[.size] as? Int64) ?? 0
+            if fileSize < minBytes {
+                finish(with: .failure(NSError(domain: "VoiceOS", code: 422, userInfo: [NSLocalizedDescriptionKey: "Downloaded file invalid or incomplete (\(fileSize) bytes, expected >= \(minBytes) bytes)."])))
+                return
+            }
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+            try FileManager.default.moveItem(at: location, to: destinationURL)
+            finish(with: .success(fileSize))
+        } catch {
+            finish(with: .failure(error))
+        }
+    }
+    
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error = error {
+            finish(with: .failure(error))
+        }
     }
 }

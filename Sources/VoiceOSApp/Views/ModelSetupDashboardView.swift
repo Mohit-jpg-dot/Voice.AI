@@ -13,6 +13,8 @@ public struct ModelSetupDashboardView: View {
     @State private var isCheckingOllama: Bool = false
     @State private var installedOllamaModels: [OllamaModelInfo] = []
     @State private var ollamaStatusMessage: String = "Probing http://localhost:11434..."
+    @State private var selectedChatModel: String = ModelRouter.shared.ollamaChatModel
+    @State private var selectedVisionModel: String = ModelRouter.shared.ollamaVisionModel
     
     public init() {}
     
@@ -96,6 +98,16 @@ public struct ModelSetupDashboardView: View {
                         Text("Cloud API Only (OpenAI / Claude / Gemini)").tag(RecommendedExecutionMode.cloudOnly)
                     }
                     .pickerStyle(.segmented)
+                    .onChange(of: selectedExecutionMode) { _, newMode in
+                        switch newMode {
+                        case .localOffline:
+                            ModelRouter.shared.currentMode = .local
+                        case .hybrid:
+                            ModelRouter.shared.currentMode = .hybrid
+                        case .cloudOnly:
+                            ModelRouter.shared.currentMode = .cloud
+                        }
+                    }
                 }
                 
                 // Ollama Daemon Status Card
@@ -189,6 +201,39 @@ public struct ModelSetupDashboardView: View {
                             }
                         }
                     }
+                    if !installedOllamaModels.isEmpty {
+                        HStack(spacing: 16) {
+                            HStack(spacing: 6) {
+                                Text("Active Brain:")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(Color(white: 0.7))
+                                Picker("", selection: $selectedChatModel) {
+                                    ForEach(installedOllamaModels, id: \.name) { m in
+                                        Text(m.name).tag(m.name)
+                                    }
+                                }
+                                .frame(width: 170)
+                                .onChange(of: selectedChatModel) { _, newVal in
+                                    ModelRouter.shared.ollamaChatModel = newVal
+                                }
+                            }
+                            
+                            HStack(spacing: 6) {
+                                Text("Active Vision:")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(Color(white: 0.7))
+                                Picker("", selection: $selectedVisionModel) {
+                                    ForEach(installedOllamaModels, id: \.name) { m in
+                                        Text(m.name).tag(m.name)
+                                    }
+                                }
+                                .frame(width: 170)
+                                .onChange(of: selectedVisionModel) { _, newVal in
+                                    ModelRouter.shared.ollamaVisionModel = newVal
+                                }
+                            }
+                        }
+                    }
                 }
                 .padding(14)
                 .background(Color.white.opacity(0.04))
@@ -260,6 +305,11 @@ public struct ModelSetupDashboardView: View {
         }
         .background(Color(red: 0.08, green: 0.08, blue: 0.09))
         .onAppear {
+            switch ModelRouter.shared.currentMode {
+            case .local: selectedExecutionMode = .localOffline
+            case .cloud: selectedExecutionMode = .cloudOnly
+            case .hybrid, .googleSearch: selectedExecutionMode = .hybrid
+            }
             Task {
                 await downloadManager.refreshInstalledStatuses()
                 await checkOllamaStatus()
@@ -271,19 +321,29 @@ public struct ModelSetupDashboardView: View {
         isCheckingOllama = true
         defer { isCheckingOllama = false }
         
-        do {
-            let running = await OllamaProvider.shared.isRunning()
-            if running {
-                let models = (try? await OllamaProvider.shared.listLocalModels()) ?? []
-                installedOllamaModels = models
-                isOllamaRunning = true
-                ollamaStatusMessage = "Ollama is running. \(models.count) local models discovered."
-                await downloadManager.refreshInstalledStatuses()
-            } else {
-                isOllamaRunning = false
-                installedOllamaModels = []
-                ollamaStatusMessage = "Ollama is not running. Launch the Ollama application or run 'ollama serve'."
+        let running = await OllamaProvider.shared.isRunning()
+        if running {
+            let models = (try? await OllamaProvider.shared.listLocalModels()) ?? []
+            installedOllamaModels = models
+            isOllamaRunning = true
+            ollamaStatusMessage = "Ollama is running. \(models.count) local models discovered."
+            if !models.isEmpty {
+                if !models.contains(where: { $0.name == selectedChatModel }),
+                   let bestChat = models.first(where: { !$0.name.lowercased().contains("llava") && !$0.name.lowercased().contains("vision") }) ?? models.first {
+                    selectedChatModel = bestChat.name
+                    ModelRouter.shared.ollamaChatModel = bestChat.name
+                }
+                if !models.contains(where: { $0.name == selectedVisionModel }),
+                   let bestVision = models.first(where: { $0.name.lowercased().contains("llava") || $0.name.lowercased().contains("vision") || $0.name.lowercased().contains("vl") }) {
+                    selectedVisionModel = bestVision.name
+                    ModelRouter.shared.ollamaVisionModel = bestVision.name
+                }
             }
+            await downloadManager.refreshInstalledStatuses()
+        } else {
+            isOllamaRunning = false
+            installedOllamaModels = []
+            ollamaStatusMessage = "Ollama is not running. Launch the Ollama application or run 'ollama serve'."
         }
     }
     
@@ -370,7 +430,9 @@ private struct ModelCardRow: View {
                 // Action Button / Status
                 HStack(spacing: 12) {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text("Size: ~\(String(format: "%.1f", Double(item.downloadSizeMB) / 1000.0)) GB")
+                        Text(item.downloadSizeMB >= 1000
+                             ? "Size: ~\(String(format: "%.1f", Double(item.downloadSizeMB) / 1000.0)) GB"
+                             : "Size: ~\(item.downloadSizeMB) MB")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(Color(white: 0.6))
                         Text("RAM: \(String(format: "%.1f", item.ramRequiredGB)) GB")

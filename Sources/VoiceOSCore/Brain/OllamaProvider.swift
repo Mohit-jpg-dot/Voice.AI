@@ -25,16 +25,51 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
     public var modelIdentifier: String
     public var hostURL: URL
     private let session: URLSession
+    private let healthLock = NSLock()
+    private var _cachedRunning: Bool = false
+    private var _lastHealthCheck: Date = .distantPast
+    private var _cachedModels: [OllamaModelInfo] = []
+    private static let autoWakeLock = NSLock()
+    private static var lastAutoWakeAttempt: Date = .distantPast
     
     public var isInstalledAndRunning: Bool {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-        proc.arguments = ["-s", "-m", "1.5", "\(hostURL.absoluteString)/api/tags"]
-        let pipe = Pipe()
-        proc.standardOutput = pipe
-        try? proc.run()
-        proc.waitUntilExit()
-        return proc.terminationStatus == 0
+        healthLock.lock()
+        let age = Date().timeIntervalSince(_lastHealthCheck)
+        let cached = _cachedRunning
+        healthLock.unlock()
+        
+        if age < 10.0 {
+            return cached
+        }
+        
+        if Thread.isMainThread {
+            // Never block UI main thread with synchronous Process/curl; refresh asynchronously
+            Task.detached(priority: .utility) { [weak self] in
+                _ = await self?.isRunning()
+            }
+            return cached
+        }
+        
+        // Off main thread: fast non-Process URLSession probe
+        let semaphore = DispatchSemaphore(value: 0)
+        var reachable = false
+        let endpoint = hostURL.appendingPathComponent("api/tags")
+        var req = URLRequest(url: endpoint)
+        req.timeoutInterval = 1.0
+        let task = session.dataTask(with: req) { _, response, _ in
+            if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
+                reachable = true
+            }
+            semaphore.signal()
+        }
+        task.resume()
+        _ = semaphore.wait(timeout: .now() + 1.2)
+        
+        healthLock.lock()
+        _cachedRunning = reachable
+        _lastHealthCheck = Date()
+        healthLock.unlock()
+        return reachable
     }
     
     public init(
@@ -45,8 +80,8 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
         self.hostURL = URL(string: configuredHost) ?? URL(string: "http://localhost:11434")!
         self.modelIdentifier = model
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 60.0
-        config.timeoutIntervalForResource = 120.0
+        config.timeoutIntervalForRequest = 120.0
+        config.timeoutIntervalForResource = 300.0
         self.session = URLSession(configuration: config)
     }
     
@@ -68,24 +103,25 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
         }
     }
     
-    /// Launches the Ollama application or background daemon process
+    /// Launches the Ollama application or background daemon process (never both simultaneously to avoid port 11434 races)
     public func launchOllamaDaemon() {
-        // A. If Ollama.app exists, launch via NSWorkspace
         if let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ollama.ollama") {
             NSWorkspace.shared.openApplication(at: appUrl, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
-        } else if FileManager.default.fileExists(atPath: "/Applications/Ollama.app") {
+            return
+        }
+        if FileManager.default.fileExists(atPath: "/Applications/Ollama.app") {
             NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/Ollama.app"))
+            return
         }
         
-        // B. Also attempt launching the CLI daemon process in the background
+        // Fallback: CLI daemon only when Ollama.app is absent
         DispatchQueue.global(qos: .userInitiated).async {
             let possiblePaths = [
                 "/usr/local/bin/ollama",
                 "/opt/homebrew/bin/ollama",
                 "/usr/bin/ollama"
             ]
-            let resolvedBin = possiblePaths.first { FileManager.default.isExecutableFile(atPath: $0) }
-            guard let bin = resolvedBin else { return }
+            guard let bin = possiblePaths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else { return }
             
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: bin)
@@ -123,23 +159,39 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
         return (false, "Could not connect to Ollama at \(hostURL.absoluteString). Please verify Ollama is installed.", [])
     }
     
+    public var cachedModels: [OllamaModelInfo] {
+        healthLock.lock()
+        defer { healthLock.unlock() }
+        return _cachedModels
+    }
+    
     public func listLocalModels() async throws -> [OllamaModelInfo] {
         let endpoint = hostURL.appendingPathComponent("api/tags")
         var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
+        request.timeoutInterval = 4.0
         
         do {
             let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+                healthLock.lock()
+                _cachedRunning = false
+                _lastHealthCheck = Date()
+                healthLock.unlock()
                 throw BrainError.ollamaNotRunning(url: hostURL.absoluteString)
             }
             
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let modelsArray = json["models"] as? [[String: Any]] else {
+                healthLock.lock()
+                _cachedRunning = true
+                _lastHealthCheck = Date()
+                _cachedModels = []
+                healthLock.unlock()
                 return []
             }
             
-            return modelsArray.compactMap { dict in
+            let parsed: [OllamaModelInfo] = modelsArray.compactMap { dict in
                 guard let name = dict["name"] as? String else { return nil }
                 let size = dict["size"] as? Int64
                 let details = dict["details"] as? [String: Any]
@@ -148,7 +200,19 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
                 let modAt = dict["modified_at"] as? String
                 return OllamaModelInfo(name: name, size: size, parameterSize: paramSize, quantizationLevel: quant, modifiedAt: modAt)
             }
+            
+            healthLock.lock()
+            _cachedRunning = true
+            _lastHealthCheck = Date()
+            _cachedModels = parsed
+            healthLock.unlock()
+            
+            return parsed
         } catch {
+            healthLock.lock()
+            _cachedRunning = false
+            _lastHealthCheck = Date()
+            healthLock.unlock()
             throw BrainError.ollamaNotRunning(url: hostURL.absoluteString)
         }
     }
@@ -221,7 +285,13 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
         var bodyDict: [String: Any] = [
             "model": modelIdentifier,
             "messages": formatMessages(messages),
-            "stream": false
+            "stream": false,
+            "keep_alive": "15m",
+            "options": [
+                "num_ctx": 2048,
+                "num_predict": jsonMode ? 280 : 300,
+                "temperature": jsonMode ? 0.1 : 0.6
+            ]
         ]
         
         if jsonMode {
@@ -247,40 +317,76 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
         
         request.httpBody = try JSONSerialization.data(withJSONObject: bodyDict)
         
+        var data: Data
+        var response: URLResponse
         do {
-            let (data, response) = try await session.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            // If Ollama daemon wasn't awake yet, start/wait once cleanly and retry
+            let nsErr = error as NSError
+            let isConnErr = nsErr.domain == NSURLErrorDomain &&
+                (nsErr.code == NSURLErrorCannotConnectToHost ||
+                 nsErr.code == NSURLErrorNetworkConnectionLost ||
+                 nsErr.code == NSURLErrorCannotFindHost)
+            if isConnErr && isOllamaInstalledOnSystem {
+                let shouldAutoWake: Bool = {
+                    Self.autoWakeLock.lock()
+                    defer { Self.autoWakeLock.unlock() }
+                    if Date().timeIntervalSince(Self.lastAutoWakeAttempt) > 20.0 {
+                        Self.lastAutoWakeAttempt = Date()
+                        return true
+                    }
+                    return false
+                }()
+                if shouldAutoWake, (await ensureRunningAndConnected(timeoutSeconds: 4.0)).success {
+                    do {
+                        (data, response) = try await session.data(for: request)
+                    } catch {
+                        throw BrainError.ollamaNotRunning(url: hostURL.absoluteString)
+                    }
+                } else {
+                    throw BrainError.ollamaNotRunning(url: hostURL.absoluteString)
+                }
+            } else {
                 throw BrainError.ollamaNotRunning(url: hostURL.absoluteString)
             }
-            
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let message = json["message"] as? [String: Any] else {
-                throw BrainError.decodingFailed(message: "Failed to parse Ollama message")
-            }
-            
-            let text = message["content"] as? String ?? ""
-            var toolCalls: [ToolCall] = []
-            if let rawCalls = message["tool_calls"] as? [[String: Any]] {
-                for (idx, call) in rawCalls.enumerated() {
-                    let fn = call["function"] as? [String: Any]
-                    let name = fn?["name"] as? String ?? "tool"
-                    let args = fn?["arguments"] as? [String: Any] ?? [:]
-                    let argsData = (try? JSONSerialization.data(withJSONObject: args)) ?? Data()
-                    let argsJSON = String(data: argsData, encoding: .utf8) ?? "{}"
-                    toolCalls.append(ToolCall(id: "call_\(idx)", name: name, argumentsJSON: argsJSON))
-                }
-            }
-            
-            let promptTokens = json["prompt_eval_count"] as? Int ?? 0
-            let evalTokens = json["eval_count"] as? Int ?? 0
-            let usage = TokenUsage(promptTokens: promptTokens, completionTokens: evalTokens, totalTokens: promptTokens + evalTokens)
-            
-            return ChatResponse(text: text, toolCalls: toolCalls, usage: usage)
-        } catch let err as BrainError {
-            throw err
-        } catch {
+        }
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
             throw BrainError.ollamaNotRunning(url: hostURL.absoluteString)
         }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let errJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let errMsg = (errJson?["error"] as? String) ?? (String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)")
+            if httpResponse.statusCode == 404 || errMsg.lowercased().contains("not found") {
+                throw BrainError.modelNotFound(name: modelIdentifier)
+            }
+            throw BrainError.requestFailed(statusCode: httpResponse.statusCode, message: errMsg)
+        }
+        
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let message = json["message"] as? [String: Any] else {
+            throw BrainError.decodingFailed(message: "Failed to parse Ollama message")
+        }
+        
+        let text = message["content"] as? String ?? ""
+        var toolCalls: [ToolCall] = []
+        if let rawCalls = message["tool_calls"] as? [[String: Any]] {
+            for (idx, call) in rawCalls.enumerated() {
+                let fn = call["function"] as? [String: Any]
+                let name = fn?["name"] as? String ?? "tool"
+                let args = fn?["arguments"] as? [String: Any] ?? [:]
+                let argsData = (try? JSONSerialization.data(withJSONObject: args)) ?? Data()
+                let argsJSON = String(data: argsData, encoding: .utf8) ?? "{}"
+                toolCalls.append(ToolCall(id: "call_\(idx)", name: name, argumentsJSON: argsJSON))
+            }
+        }
+        
+        let promptTokens = json["prompt_eval_count"] as? Int ?? 0
+        let evalTokens = json["eval_count"] as? Int ?? 0
+        let usage = TokenUsage(promptTokens: promptTokens, completionTokens: evalTokens, totalTokens: promptTokens + evalTokens)
+        
+        return ChatResponse(text: text, toolCalls: toolCalls, usage: usage)
     }
     
     public func streamMessage(
@@ -296,7 +402,13 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
         var bodyDict: [String: Any] = [
             "model": modelIdentifier,
             "messages": formatMessages(messages),
-            "stream": true
+            "stream": true,
+            "keep_alive": "15m",
+            "options": [
+                "num_ctx": 2048,
+                "num_predict": 320,
+                "temperature": 0.6
+            ]
         ]
         
         if let tools = tools, !tools.isEmpty {
@@ -320,8 +432,14 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
         
         do {
             let (bytes, response) = try await session.bytes(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            guard let httpResponse = response as? HTTPURLResponse else {
                 throw BrainError.ollamaNotRunning(url: hostURL.absoluteString)
+            }
+            guard (200...299).contains(httpResponse.statusCode) else {
+                if httpResponse.statusCode == 404 {
+                    throw BrainError.modelNotFound(name: modelIdentifier)
+                }
+                throw BrainError.requestFailed(statusCode: httpResponse.statusCode, message: "Ollama returned status \(httpResponse.statusCode)")
             }
             
             var fullText = ""

@@ -3,7 +3,7 @@
 // ADD-ON: Continuous Notch Glass Island + Circle to Ask Screen Context
 // ==========================================================================
 
-const Voice.AIState = {
+const VoiceAIState = {
   activeNavTab: 'dashboard',
   isIslandExpanded: false,
   isPinned: false,
@@ -284,18 +284,18 @@ let hoverTimeout = null;
 
 function expandIsland() {
   clearTimeout(hoverTimeout);
-  Voice.AIState.isIslandExpanded = true;
+  VoiceAIState.isIslandExpanded = true;
   notchIsland.classList.add('expanded');
 }
 
 function collapseIsland(force = false) {
-  if (Voice.AIState.isPinned && !force) return;
+  if (VoiceAIState.isPinned && !force) return;
   // Don't collapse if user is actively typing in the input
   if (document.activeElement === islandInput && !force) return;
 
   clearTimeout(hoverTimeout);
   hoverTimeout = setTimeout(() => {
-    Voice.AIState.isIslandExpanded = false;
+    VoiceAIState.isIslandExpanded = false;
     notchIsland.classList.remove('expanded');
   }, 220);
 }
@@ -311,7 +311,7 @@ notchIsland.addEventListener('mouseleave', () => {
 
 // Click to toggle when resting
 notchIsland.addEventListener('click', (e) => {
-  if (!Voice.AIState.isIslandExpanded) {
+  if (!VoiceAIState.isIslandExpanded) {
     expandIsland();
   }
 });
@@ -319,16 +319,16 @@ notchIsland.addEventListener('click', (e) => {
 // Pin toggle
 btnPinIsland.addEventListener('click', (e) => {
   e.stopPropagation();
-  Voice.AIState.isPinned = !Voice.AIState.isPinned;
-  btnPinIsland.classList.toggle('pinned', Voice.AIState.isPinned);
-  btnPinIsland.title = Voice.AIState.isPinned ? "Unpin Island" : "Pin Island Open";
-  showToast(Voice.AIState.isPinned ? "Notch Island Pinned Open" : "Notch Island Unpinned");
+  VoiceAIState.isPinned = !VoiceAIState.isPinned;
+  btnPinIsland.classList.toggle('pinned', VoiceAIState.isPinned);
+  btnPinIsland.title = VoiceAIState.isPinned ? "Unpin Island" : "Pin Island Open";
+  showToast(VoiceAIState.isPinned ? "Notch Island Pinned Open" : "Notch Island Unpinned");
 });
 
 // Manual Collapse button
 btnCollapseIsland.addEventListener('click', (e) => {
   e.stopPropagation();
-  Voice.AIState.isPinned = false;
+  VoiceAIState.isPinned = false;
   btnPinIsland.classList.remove('pinned');
   collapseIsland(true);
 });
@@ -425,18 +425,18 @@ function submitUserPrompt(promptText) {
       deepLinkCard.style.display = 'none';
     }
 
-    Voice.AIState.totalSessions += 1;
-    Voice.AIState.totalWords += promptText.split(' ').length;
-    Voice.AIState.timeSavedMinutes += 1;
+    VoiceAIState.totalSessions += 1;
+    VoiceAIState.totalWords += promptText.split(' ').length;
+    VoiceAIState.timeSavedMinutes += 1;
     
-    totalSessionsEl.textContent = Voice.AIState.totalSessions;
-    totalWordsEl.textContent = Voice.AIState.totalWords;
-    timeSavedEl.textContent = `${Voice.AIState.timeSavedMinutes}m`;
+    totalSessionsEl.textContent = VoiceAIState.totalSessions;
+    totalWordsEl.textContent = VoiceAIState.totalWords;
+    timeSavedEl.textContent = `${VoiceAIState.timeSavedMinutes}m`;
   }, 1300);
 }
 
 function setIslandState(state) {
-  Voice.AIState.voiceMode = state;
+  VoiceAIState.voiceMode = state;
   switch (state) {
     case 'listening':
       islandStateDot.style.background = '#38bdf8';
@@ -468,7 +468,7 @@ function setIslandState(state) {
 // Voice Toggle on Island Mic
 btnMicToggle.addEventListener('click', (e) => {
   e.stopPropagation();
-  if (Voice.AIState.voiceMode === 'listening') {
+  if (VoiceAIState.voiceMode === 'listening') {
     finishVoiceInput();
   } else {
     startVoiceInput('Agent Mode');
@@ -538,7 +538,7 @@ btnCircleTrigger.addEventListener('click', (e) => {
 });
 
 function triggerCircleToAsk() {
-  Voice.AIState.isScreenCaptureActive = true;
+  VoiceAIState.isScreenCaptureActive = true;
   screenOverlay.classList.add('active');
   captureIndicator.classList.add('active');
   collapseIsland(true);
@@ -547,7 +547,7 @@ function triggerCircleToAsk() {
 }
 
 function closeCircleToAsk() {
-  Voice.AIState.isScreenCaptureActive = false;
+  VoiceAIState.isScreenCaptureActive = false;
   screenOverlay.classList.remove('active');
   captureIndicator.classList.remove('active');
   isDrawing = false;
@@ -565,9 +565,9 @@ document.querySelectorAll('.selection-tool-btn').forEach(btn => {
     e.stopPropagation();
     document.querySelectorAll('.selection-tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    Voice.AIState.activeSelectionTool = btn.dataset.tool;
+    VoiceAIState.activeSelectionTool = btn.dataset.tool;
 
-    if (Voice.AIState.activeSelectionTool === 'window') {
+    if (VoiceAIState.activeSelectionTool === 'window') {
       completeCapture({ x: 100, y: 100, width: 800, height: 500 }, 'Whole Window');
     }
   });
@@ -589,7 +589,7 @@ selectionCanvas.addEventListener('mousemove', (e) => {
 
   ctx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
 
-  if (Voice.AIState.activeSelectionTool === 'lasso') {
+  if (VoiceAIState.activeSelectionTool === 'lasso') {
     // Draw glowing lasso path
     ctx.strokeStyle = '#38bdf8';
     ctx.lineWidth = 3;
@@ -603,7 +603,7 @@ selectionCanvas.addEventListener('mousemove', (e) => {
       ctx.lineTo(points[i].x, points[i].y);
     }
     ctx.stroke();
-  } else if (Voice.AIState.activeSelectionTool === 'rectangle' || Voice.AIState.activeSelectionTool === 'element') {
+  } else if (VoiceAIState.activeSelectionTool === 'rectangle' || VoiceAIState.activeSelectionTool === 'element') {
     // Draw glowing rectangle
     const w = curX - startX;
     const h = curY - startY;
@@ -622,7 +622,7 @@ selectionCanvas.addEventListener('mouseup', (e) => {
   isDrawing = false;
   
   let box = null;
-  if (Voice.AIState.activeSelectionTool === 'lasso') {
+  if (VoiceAIState.activeSelectionTool === 'lasso') {
     const xs = points.map(p => p.x);
     const ys = points.map(p => p.y);
     box = {
@@ -641,7 +641,7 @@ selectionCanvas.addEventListener('mouseup', (e) => {
   }
 
   if (box.width > 15 && box.height > 15) {
-    completeCapture(box, Voice.AIState.activeSelectionTool);
+    completeCapture(box, VoiceAIState.activeSelectionTool);
   } else {
     closeCircleToAsk();
   }
@@ -655,7 +655,7 @@ function completeCapture(box, toolName) {
   const redactedContext = rawContext.replace(/sk-[a-zA-Z0-9_]{15,}/g, '[REDACTED_API_KEY]');
   const redactionCount = 1;
 
-  Voice.AIState.activeCrop = {
+  VoiceAIState.activeCrop = {
     box: box,
     tool: toolName,
     ocr: redactedContext,
@@ -728,8 +728,8 @@ function showToast(message) {
 // History Drawer Toggle
 document.getElementById('drawerToggleBtn').addEventListener('click', (e) => {
   e.stopPropagation();
-  Voice.AIState.isDrawerOpen = !Voice.AIState.isDrawerOpen;
-  historyDrawer.classList.toggle('closed', !Voice.AIState.isDrawerOpen);
+  VoiceAIState.isDrawerOpen = !VoiceAIState.isDrawerOpen;
+  historyDrawer.classList.toggle('closed', !VoiceAIState.isDrawerOpen);
 });
 
 // Navigation Tabs Handling
@@ -739,7 +739,7 @@ document.querySelectorAll('.nav-item').forEach(item => {
     item.classList.add('active');
     
     const tab = item.dataset.tab;
-    Voice.AIState.activeNavTab = tab;
+    VoiceAIState.activeNavTab = tab;
     
     document.querySelectorAll('.view-panel').forEach(panel => {
       panel.classList.remove('active');
@@ -761,16 +761,16 @@ actionConfirmBtn.addEventListener('click', () => {
   actionCheckbox.classList.add('checked');
   
   // Update stats
-  Voice.AIState.totalSessions += 1;
-  Voice.AIState.totalWords += 14;
-  Voice.AIState.timeSavedMinutes += 1;
+  VoiceAIState.totalSessions += 1;
+  VoiceAIState.totalWords += 14;
+  VoiceAIState.timeSavedMinutes += 1;
 
-  totalSessionsEl.textContent = Voice.AIState.totalSessions;
-  totalWordsEl.textContent = Voice.AIState.totalWords;
-  timeSavedEl.textContent = `${Voice.AIState.timeSavedMinutes}m`;
+  totalSessionsEl.textContent = VoiceAIState.totalSessions;
+  totalWordsEl.textContent = VoiceAIState.totalWords;
+  timeSavedEl.textContent = `${VoiceAIState.timeSavedMinutes}m`;
 
   // Prepend to history
-  Voice.AIState.history.unshift({
+  VoiceAIState.history.unshift({
     id: `h_${Date.now()}`,
     app: "Things 3",
     icon: "✓",
@@ -790,7 +790,7 @@ actionCheckbox.addEventListener('click', () => {
 // Render History
 function renderHistoryDrawer(filter = '') {
   drawerThreadsList.innerHTML = '';
-  const filtered = Voice.AIState.history.filter(h => 
+  const filtered = VoiceAIState.history.filter(h => 
     h.prompt.toLowerCase().includes(filter.toLowerCase()) || 
     h.app.toLowerCase().includes(filter.toLowerCase())
   );
@@ -820,7 +820,7 @@ drawerSearchInput.addEventListener('input', (e) => {
 // Render Connected Apps Grid
 function renderAppsGrid() {
   appsGrid.innerHTML = '';
-  Voice.AIState.connectedApps.forEach(app => {
+  VoiceAIState.connectedApps.forEach(app => {
     const card = document.createElement('div');
     card.className = 'connected-app-card';
     card.innerHTML = `
@@ -864,7 +864,7 @@ document.getElementById('generateAppBtn').addEventListener('click', () => {
     btn.disabled = false;
     modalOverlay.classList.remove('open');
 
-    Voice.AIState.connectedApps.unshift({
+    VoiceAIState.connectedApps.unshift({
       id: `custom_${Date.now()}`,
       name: "Things 3 Custom MCP",
       desc: "Custom inbox task adder built via voice prompt.",
@@ -882,7 +882,7 @@ document.getElementById('generateAppBtn').addEventListener('click', () => {
 window.addEventListener('keydown', (e) => {
   // Cmd+Shift+C or 'c' alone when not in input: Trigger Circle to Ask
   if (((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'c') ||
-      (e.key.toLowerCase() === 'c' && document.activeElement !== islandInput && !Voice.AIState.isScreenCaptureActive)) {
+      (e.key.toLowerCase() === 'c' && document.activeElement !== islandInput && !VoiceAIState.isScreenCaptureActive)) {
     e.preventDefault();
     triggerCircleToAsk();
   }
@@ -898,7 +898,7 @@ window.addEventListener('keydown', (e) => {
   }
   // Escape cancels selection or collapses unpinned island
   if (e.key === 'Escape') {
-    if (Voice.AIState.isScreenCaptureActive) {
+    if (VoiceAIState.isScreenCaptureActive) {
       closeCircleToAsk();
     } else {
       modalOverlay.classList.remove('open');

@@ -102,7 +102,7 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
             guard let self = self else { return }
             self.refreshTimer?.invalidate()
             self.pollMediaState()
-            self.refreshTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+            self.refreshTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
                 self?.pollMediaState()
             }
         }

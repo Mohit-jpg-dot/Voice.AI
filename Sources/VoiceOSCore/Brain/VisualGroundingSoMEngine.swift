@@ -330,6 +330,19 @@ public final class VisualGroundingSoMEngine: @unchecked Sendable {
         }
         
         // Step 2: Contextual Region-of-Interest (RoI) Window Cropping
+        // If caller targeted a specific app (without a pre-cropped Circle screenshot) and that app has no visible window,
+        // refuse to fall back to the full display so we never click another app's UI by accident.
+        let genericApps: Set<String> = ["", "active application", "macos", "desktop", "screen", "system"]
+        if screenshot == nil,
+           let app = targetApp,
+           !genericApps.contains(app.lowercased()),
+           getTargetAppWindowBounds(appName: app) == nil {
+            throw NSError(
+                domain: "VisualGroundingSoMEngine",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "No visible window found for '\(app)'."]
+            )
+        }
         let (roiImage, roiOffset) = cropToTargetAppWindowRoI(screenshot: baseScreenshot, targetApp: targetApp)
         
         // Step 3: Dynamic Model Lifecycle Lease (Wakes Vision engine only when needed)
@@ -347,11 +360,14 @@ public final class VisualGroundingSoMEngine: @unchecked Sendable {
             return CGPoint(x: localPt.x + roiOffset.x, y: localPt.y + roiOffset.y)
         }
         
-        // 4a. Zero-latency exact semantic text match
-        let lowerTarget = targetDescription.lowercased()
+        // 4a. Zero-latency exact semantic text match (guard against single-char/tiny OCR tokens matching a long target)
+        let lowerTarget = targetDescription.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         for element in detectedElements {
-            if let text = element.detectedText?.lowercased(), !text.isEmpty {
-                if text.contains(lowerTarget) || lowerTarget.contains(text) {
+            if let rawText = element.detectedText?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !rawText.isEmpty {
+                let exactOrSuperstring = (lowerTarget.count >= 3 && rawText.contains(lowerTarget)) || rawText == lowerTarget
+                let substantialSubstring = rawText.count >= 4 && lowerTarget.contains(rawText) &&
+                    Double(rawText.count) / Double(max(1, lowerTarget.count)) >= 0.70
+                if exactOrSuperstring || substantialSubstring {
                     let globalPt = toGlobalCoordinate(element.centerPoint)
                     if let app = targetApp {
                         SemanticActionCache.shared.store(targetDescription: targetDescription, targetApp: app, coordinate: globalPt)
@@ -386,9 +402,9 @@ public final class VisualGroundingSoMEngine: @unchecked Sendable {
             )
         }
         
-        // 4c. Semantic keyword heuristic matching
-        let chosenBadge = resolveBadgeWithHeuristics(target: targetDescription, elements: detectedElements)
-        if let matched = badgeMap[chosenBadge] {
+        // 4c. Semantic keyword heuristic matching (only when a meaningful word matches)
+        if let chosenBadge = resolveBadgeWithHeuristics(target: targetDescription, elements: detectedElements),
+           let matched = badgeMap[chosenBadge] {
             let globalPt = toGlobalCoordinate(matched.centerPoint)
             if let app = targetApp {
                 SemanticActionCache.shared.store(targetDescription: targetDescription, targetApp: app, coordinate: globalPt)
@@ -478,36 +494,51 @@ public final class VisualGroundingSoMEngine: @unchecked Sendable {
         markedImage: CGImage,
         elements: [DetectedUIElement]
     ) async -> String? {
-        guard let base64Data = convertImageToBase64JPEG(image: markedImage) else { return nil }
-        
+        // Never ask the VLM to guess across synthetic fallback screen quadrants or blank edge blocks
+        let realElements = elements.filter { $0.sourceKind != "grid" && $0.sourceKind != "ci_edge" }
+        guard !realElements.isEmpty,
+              let base64Data = convertImageToBase64JPEG(image: markedImage) else {
+            return nil
+        }
+
+        let candidateList = realElements.prefix(30).map { el -> String in
+            if let text = el.detectedText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+                return "[\(el.id)] \"\(text.prefix(40))\""
+            }
+            return "[\(el.id)] (unlabelled visual icon)"
+        }.joined(separator: ", ")
+
         let prompt = """
-        You are an autonomous computer vision desktop agent using Microsoft's Set-of-Mark (SoM) prompting strategy.
-        Examine the provided screenshot with overlaid boundary contours and alphanumeric tags [A1, A2, B1, ...].
-        Target element to click: "\(targetDescription)"
-        Available badges: \(elements.prefix(30).map { "[\($0.id)]" }.joined(separator: ", "))
-        
-        Task: Respond with ONLY the exact badge identifier inside brackets, e.g. [A1] or [B2]. Do not include explanations.
+        You are a strict macOS UI grounding model using Set-of-Mark badges [A1, A2, ...].
+        Target UI element requested by user: "\(targetDescription)"
+        Detected UI candidates: \(candidateList)
+
+        Rules:
+        1. Look carefully at the screenshot and the detected UI candidates list.
+        2. Only choose a badge if the requested element "\(targetDescription)" is ACTUALLY visible at that exact badge.
+        3. Do NOT guess or pick an unrelated item. If "\(targetDescription)" does NOT clearly exist on screen, reply ONLY with: [NOT_FOUND]
+        4. Otherwise reply ONLY with the exact badge tag in brackets, e.g. [A1].
         """
-        
+
         // Query local Ollama vision endpoint if active
-        guard let url = URL(string: "http://localhost:11434/api/generate") else { return nil }
+        let url = OllamaProvider.shared.hostURL.appendingPathComponent("api/generate")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let visionModel = ModelRouter.shared.ollamaVisionModel
-        request.timeoutInterval = 15.0 // Allow local 7B VLM inference time
-        
+        request.timeoutInterval = 45.0 // Allow local 7B VLM cold-start + inference time
+
         let payload: [String: Any] = [
             "model": visionModel,
             "prompt": prompt,
             "images": [base64Data],
             "stream": false,
-            "options": ["temperature": 0.1]
+            "options": ["temperature": 0.0]
         ]
-        
+
         guard let httpBody = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
         request.httpBody = httpBody
-        
+
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard (response as? HTTPURLResponse)?.statusCode == 200,
@@ -515,23 +546,75 @@ public final class VisualGroundingSoMEngine: @unchecked Sendable {
                   let reply = json["response"] as? String else {
                 return nil
             }
-            
-            // Extract badge tag like "[B2]" or "B2"
-            return extractBadgeTag(from: reply)
+
+            let upper = reply.uppercased()
+            // Reject explicit NOT_FOUND or negative/uncertain explanations
+            if upper.contains("NOT_FOUND") || upper.contains("NOT FOUND") ||
+               upper.contains("NOT VISIBLE") || upper.contains("CANNOT") ||
+               upper.contains("UNABLE") || upper.contains("DOES NOT EXIST") ||
+               upper.contains("NO SUCH") {
+                return nil
+            }
+
+            guard let badge = extractBadgeTag(from: reply),
+                  let matched = realElements.first(where: { $0.id == badge }),
+                  isVLMGroundMatchPlausible(target: targetDescription, matched: matched) else {
+                return nil
+            }
+            return badge
         } catch {
             return nil
         }
     }
-    
+
     private func extractBadgeTag(from text: String) -> String? {
-        let pattern = "\\[?([A-Z][0-9])\\]?"
-        if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
-            let nsText = text as NSString
-            if let match = regex.firstMatch(in: text, options: [], range: NSRange(location: 0, length: nsText.length)) {
-                return nsText.substring(with: match.range(at: 1))
-            }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        // Prefer an explicit standalone [A1] / A1 token, or bracketed [A1] tag
+        if let exactRegex = try? NSRegularExpression(pattern: "^\\[?([A-Z][0-9])\\]?\\.?$", options: []),
+           let match = exactRegex.firstMatch(in: trimmed, range: NSRange(location: 0, length: (trimmed as NSString).length)) {
+            return (trimmed as NSString).substring(with: match.range(at: 1))
+        }
+        if let bracketRegex = try? NSRegularExpression(pattern: "\\[([A-Z][0-9])\\]", options: []),
+           let match = bracketRegex.firstMatch(in: trimmed, range: NSRange(location: 0, length: (trimmed as NSString).length)) {
+            return (trimmed as NSString).substring(with: match.range(at: 1))
         }
         return nil
+    }
+
+    private func isVLMGroundMatchPlausible(target: String, matched: DetectedUIElement) -> Bool {
+        let stopWords: Set<String> = [
+            "the", "a", "an", "on", "in", "to", "at", "of", "for", "with",
+            "button", "link", "icon", "tab", "menu", "field", "click", "press", "open"
+        ]
+        let words = target.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 3 && !stopWords.contains($0) }
+
+        if let detected = matched.detectedText?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           !detected.isEmpty {
+            // If OCR read concrete text inside this box, verify meaningful token overlap when target has descriptive words
+            if !words.isEmpty {
+                return words.contains(where: { detected.contains($0) }) ||
+                       detected.components(separatedBy: CharacterSet.alphanumerics.inverted)
+                           .contains(where: { $0.count >= 3 && target.lowercased().contains($0) })
+            }
+        } else {
+            // Unlabelled visual icon/contour: reject specific alphanumeric IDs or non-visual named targets
+            let iconHintWords: Set<String> = [
+                "close", "minimize", "maximize", "fullscreen", "play", "pause", "stop",
+                "mute", "unmute", "volume", "speaker", "search", "magnifying", "settings",
+                "gear", "menu", "hamburger", "more", "dots", "back", "forward", "refresh",
+                "reload", "home", "share", "heart", "like", "star", "bookmark", "add",
+                "plus", "minus", "delete", "trash", "avatar", "profile", "camera", "mic",
+                "microphone", "send", "download", "upload", "wifi", "battery", "red", "green", "yellow", "blue"
+            ]
+            let looksLikeVisualIcon = words.contains(where: { iconHintWords.contains($0) })
+            let hasDigitIdentifier = target.rangeOfCharacter(from: .decimalDigits) != nil
+            if hasDigitIdentifier || (!words.isEmpty && !looksLikeVisualIcon && words.joined().count > 12) {
+                return false
+            }
+        }
+        return true
     }
     
     private func convertImageToBase64JPEG(image: CGImage) -> String? {
@@ -542,18 +625,24 @@ public final class VisualGroundingSoMEngine: @unchecked Sendable {
         return jpegData.base64EncodedString()
     }
     
-    private func resolveBadgeWithHeuristics(target: String, elements: [DetectedUIElement]) -> String {
-        let targetLower = target.lowercased()
-        let words = targetLower.split(separator: " ").map { String($0) }
+    private func resolveBadgeWithHeuristics(target: String, elements: [DetectedUIElement]) -> String? {
+        let stopWords: Set<String> = ["the", "a", "an", "on", "in", "to", "at", "of", "for", "with", "button", "link", "icon", "click", "press", "open"]
+        let words = target.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 3 && !stopWords.contains($0) }
+        guard !words.isEmpty else { return nil }
         
-        for el in elements {
-            if let text = el.detectedText?.lowercased() {
-                if words.contains(where: { text.contains($0) }) {
+        for el in elements where el.sourceKind != "grid" && el.sourceKind != "ci_edge" {
+            if let text = el.detectedText?.lowercased(), !text.isEmpty {
+                let textWords = Set(text.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty })
+                if words.contains(where: { word in
+                    textWords.contains(word) || (word.count >= 4 && text.contains(word))
+                }) {
                     return el.id
                 }
             }
         }
-        return elements.first?.id ?? "A1"
+        return nil
     }
     
     private func generateGridFallbackElements(width: CGFloat, height: CGFloat) -> [DetectedUIElement] {

@@ -49,3 +49,4 @@ Semantic retrieval uses 128-dim L2-normalized local feature-hashed word + charac
 - **Windows**: `windows/VoiceAI.Core/Security/SecretRedactor.cs`
 
 Extended pattern redaction (OpenAI, Anthropic, Google, Notion, GitHub, Slack/Discord webhooks, Bearer tokens, generic key/secret assignments, and payment cards) is enforced across `EncryptedChatHistoryManager`, `VoiceOSTelemetry`, `EventBus`, and `MemoryStore`.
+

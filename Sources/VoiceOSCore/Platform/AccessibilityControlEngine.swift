@@ -436,6 +436,12 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
             script = "set volume without output muted"
         case "empty_trash":
             script = "tell application \"Finder\" to empty trash"
+        case "dark_mode_on":
+            script = "tell application \"System Events\" to tell appearance preferences to set dark mode to true"
+        case "dark_mode_off":
+            script = "tell application \"System Events\" to tell appearance preferences to set dark mode to false"
+        case "dark_mode_toggle":
+            script = "tell application \"System Events\" to tell appearance preferences to set dark mode to not dark mode"
         default:
             return false
         }
@@ -603,38 +609,45 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
 
     public func clickElement(matching description: String, frontmostAppName: String) async -> (success: Bool, summary: String) {
         let lowerDesc = description.lowercased()
-        let screen = NSScreen.main ?? NSScreen.screens.first
-        let screenFrame = screen?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
-        
         var effectiveAppName = frontmostAppName
-        var targetBounds = screenFrame
         var targetPID: pid_t = 0
         
-        // 1. Identify active frontmost window
-        if let targetWin = getFrontmostTargetWindow() {
-            if effectiveAppName.lowercased().contains("voice") || effectiveAppName == "Active Application" {
+        // 1. Identify target application window & PID without leaking into an unrelated frontmost app
+        let wantsFrontmost = effectiveAppName.lowercased().contains("voice") || effectiveAppName == "Active Application"
+        if wantsFrontmost {
+            if let targetWin = getFrontmostTargetWindow() {
                 effectiveAppName = targetWin.ownerName
-            }
-            targetBounds = targetWin.bounds
-            targetPID = targetWin.pid
-            
-            if let runningApp = NSRunningApplication(processIdentifier: targetPID) {
-                runningApp.activate(options: [.activateIgnoringOtherApps])
-                try? await Task.sleep(nanoseconds: 120_000_000)
-            }
-        } else if effectiveAppName.lowercased().contains("voice") || effectiveAppName == "Active Application" {
-            if let runningApp = NSWorkspace.shared.runningApplications.first(where: {
+                targetPID = targetWin.pid
+                if let runningApp = NSRunningApplication(processIdentifier: targetPID) {
+                    runningApp.activate(options: [.activateIgnoringOtherApps])
+                    try? await Task.sleep(nanoseconds: 120_000_000)
+                }
+            } else if let runningApp = NSWorkspace.shared.runningApplications.first(where: {
                 $0.activationPolicy == .regular &&
                 !($0.localizedName?.lowercased().contains("voice") ?? true)
             }) {
                 effectiveAppName = runningApp.localizedName ?? frontmostAppName
+                targetPID = runningApp.processIdentifier
                 runningApp.activate(options: [.activateIgnoringOtherApps])
                 try? await Task.sleep(nanoseconds: 120_000_000)
             }
+        } else {
+            let cleanTargetApp = effectiveAppName.lowercased()
+            if let matchingApp = NSWorkspace.shared.runningApplications.first(where: {
+                let name = ($0.localizedName ?? "").lowercased()
+                return !name.isEmpty && (name.contains(cleanTargetApp) || cleanTargetApp.contains(name))
+            }) {
+                targetPID = matchingApp.processIdentifier
+                matchingApp.activate(options: [.activateIgnoringOtherApps])
+                try? await Task.sleep(nanoseconds: 120_000_000)
+            } else {
+                return (false, "Could not locate '\(description)' in \(effectiveAppName) because \(effectiveAppName) is not running.")
+            }
         }
         
-        var targetPoint = CGPoint(x: targetBounds.midX, y: targetBounds.midY)
+        var targetPoint: CGPoint? = nil
         var clickSucceeded = false
+        var alreadyPressedInApp = false
         
         let appLower = effectiveAppName.lowercased()
         let isBrowser = appLower.contains("safari") ||
@@ -643,15 +656,11 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                         appLower.contains("edge") ||
                         appLower.contains("arc")
         
-        // 2. Browser-Specific DOM & Target Clicking
+        // 2. Browser-Specific DOM & Target Clicking (only verify when JS reports 'clicked')
         if isBrowser {
             let isSafari = appLower.contains("safari")
             
             if lowerDesc.contains("video") || lowerDesc.contains("first") || lowerDesc.contains("youtube") || lowerDesc.contains("pehli") {
-                targetPoint = CGPoint(
-                    x: targetBounds.minX + max(200, min(targetBounds.width * 0.35, 450)),
-                    y: targetBounds.minY + max(200, min(targetBounds.height * 0.38, 380))
-                )
                 
                 let jsClickScript: String
                 if isSafari {
@@ -728,11 +737,10 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                 }
                 
                 let scriptResult = executeAppleScript(jsClickScript)
-                if scriptResult.success {
+                if scriptResult.success && scriptResult.output?.contains("clicked") == true {
                     clickSucceeded = true
+                    alreadyPressedInApp = true
                 }
-            } else if lowerDesc.contains("search") {
-                targetPoint = CGPoint(x: targetBounds.midX, y: targetBounds.minY + 120)
             } else {
                 let safeDesc = lowerDesc.replacingOccurrences(of: "\"", with: "\\\"")
                 let genericDomScript = isSafari ? """
@@ -781,16 +789,14 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                 let domRes = executeAppleScript(genericDomScript)
                 if domRes.success && domRes.output?.contains("clicked") == true {
                     clickSucceeded = true
+                    alreadyPressedInApp = true
                 }
             }
-        } else if targetPID > 0 {
-            // 3. Desktop Application Element Clicking via Accessibility API
+        }
+        
+        // 3. Desktop Application Element Clicking via Accessibility API
+        if !alreadyPressedInApp && targetPID > 0 {
             if let foundElem = findElement(inAppPID: targetPID, role: nil, title: description, identifier: nil) {
-                if pressElement(foundElem) {
-                    clickSucceeded = true
-                }
-                
-                // Extract real on-screen element position and size
                 var posVal: AnyObject?
                 var sizeVal: AnyObject?
                 if AXUIElementCopyAttributeValue(foundElem, kAXPositionAttribute as CFString, &posVal) == .success,
@@ -807,27 +813,43 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                         targetPoint = CGPoint(x: elemPos.x + elemSize.width / 2.0, y: elemPos.y + elemSize.height / 2.0)
                     }
                 }
+                if pressElement(foundElem) {
+                    clickSucceeded = true
+                    alreadyPressedInApp = true
+                }
             }
         }
         
-        let isVideo = lowerDesc.contains("video") || lowerDesc.contains("first") || lowerDesc.contains("youtube") || lowerDesc.contains("song")
-        
-        // 4. Autonomous Visual Cursor Steering to Target Point
-        await VisualCursorGuideEngine.shared.moveCursorSmoothly(to: targetPoint, duration: 0.25)
-        
-        // 5. Post Physical Authentic Hardware Left Click
-        let eventClicked = postClick(at: targetPoint, doubleClick: isVideo)
-        if eventClicked {
-            clickSucceeded = true
+        // 4. Local VLM (LLaVA) + OCR Visual Grounding Fallback when DOM & AX couldn't locate target
+        if !alreadyPressedInApp && targetPoint == nil && ModelRouter.shared.currentMode != .googleSearch {
+            if let grounded = try? await VisualGroundingSoMEngine.shared.groundTargetElement(
+                targetDescription: description,
+                targetApp: effectiveAppName
+            ), grounded.confidence >= 0.80, grounded.resolutionMethod != "fallback_anchor" {
+                targetPoint = grounded.targetScreenCoordinate
+            }
         }
         
-        // 6. Visual click ripple feedback and auto-dismiss pointer
-        VisualCursorGuideEngine.shared.triggerClickFeedback(at: targetPoint)
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        if alreadyPressedInApp {
+            BoringSoundEngine.shared.playTap()
+            return (true, "Clicked '\(description)' in \(effectiveAppName).")
+        }
+        
+        // NEVER blindly click the center of the window if no target was verified
+        guard let verifiedPoint = targetPoint else {
+            return (false, "Could not locate '\(description)' in \(effectiveAppName). Try Circling it with ⌘⇧C or bringing the target window forward.")
+        }
+        
+        let isVideo = lowerDesc.contains("video") || lowerDesc.contains("first") || lowerDesc.contains("youtube") || lowerDesc.contains("song")
+        await VisualCursorGuideEngine.shared.moveCursorSmoothly(to: verifiedPoint, duration: 0.22)
+        let eventClicked = postClick(at: verifiedPoint, doubleClick: isVideo)
+        clickSucceeded = eventClicked
+        VisualCursorGuideEngine.shared.triggerClickFeedback(at: verifiedPoint)
+        try? await Task.sleep(nanoseconds: 180_000_000)
         VisualCursorGuideEngine.shared.dismissPointer()
         
         BoringSoundEngine.shared.playTap()
-        return (clickSucceeded, "Clicked on \(description) in \(effectiveAppName).")
+        return (clickSucceeded, clickSucceeded ? "Clicked '\(description)' in \(effectiveAppName)." : "Could not click '\(description)' in \(effectiveAppName).")
     }
     
     // MARK: - State Verification Loop

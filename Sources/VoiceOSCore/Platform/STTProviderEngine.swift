@@ -250,13 +250,106 @@ public final class AppleSpeechProvider: NSObject, SpeechRecognitionProvider, @un
 
 // MARK: - Local Whisper Provider (CoreML / Whisper.cpp / WhisperKit)
 
+public struct WhisperDiagnostics: Sendable {
+    public let binaryPath: String?
+    public let modelPath: String?
+    public let statusSummary: String
+    
+    public var isReady: Bool {
+        guard let bin = binaryPath else { return false }
+        let name = (bin as NSString).lastPathComponent.lowercased()
+        if name == "whisper" || name == "mlx_whisper" {
+            return true
+        }
+        return modelPath != nil
+    }
+}
+
 public final class LocalWhisperProvider: SpeechRecognitionProvider, @unchecked Sendable {
     public let kind: STTProviderKind = .localWhisper
     private var accumulatedBuffers: [AVAudioPCMBuffer] = []
     private let lock = NSLock()
     private var isRunning: Bool = false
+    private var activeConfig: STTConfiguration = STTConfiguration(providerKind: .localWhisper)
+    private var onFinalCallback: (@Sendable (String, Double) -> Void)?
+    private var onErrorCallback: (@Sendable (Error) -> Void)?
     
     public init() {}
+    
+    private static let diagCacheLock = NSLock()
+    private static var cachedDiag: WhisperDiagnostics?
+    private static var lastDiagCheck: Date = .distantPast
+
+    public static func diagnostics(forceRefresh: Bool = false) -> WhisperDiagnostics {
+        diagCacheLock.lock()
+        if !forceRefresh, let cached = cachedDiag, Date().timeIntervalSince(lastDiagCheck) < 30.0 {
+            diagCacheLock.unlock()
+            return cached
+        }
+        diagCacheLock.unlock()
+        
+        let binCandidates = [
+            "/opt/homebrew/bin/whisper-cli",
+            "/usr/local/bin/whisper-cli",
+            "/opt/homebrew/bin/whisper-cpp",
+            "/usr/local/bin/whisper-cpp",
+            "/opt/homebrew/bin/whisper",
+            "/usr/local/bin/whisper",
+            "/opt/homebrew/bin/mlx_whisper",
+            "/usr/local/bin/mlx_whisper",
+            NSHomeDirectory() + "/.local/bin/whisper-cli",
+            NSHomeDirectory() + "/.local/bin/whisper"
+        ]
+        var allBins = binCandidates
+        let condaEnvs = "/opt/homebrew/Caskroom/miniconda/base/envs"
+        if let envs = try? FileManager.default.contentsOfDirectory(atPath: condaEnvs) {
+            for env in envs {
+                allBins.append("\(condaEnvs)/\(env)/bin/whisper")
+                allBins.append("\(condaEnvs)/\(env)/bin/mlx_whisper")
+            }
+        }
+        let binaryPath = allBins.first { FileManager.default.isExecutableFile(atPath: $0) }
+        
+        let modelCandidates = [
+            NSHomeDirectory() + "/.voiceos/models/ggml-base.bin",
+            NSHomeDirectory() + "/.voiceos/models/ggml-base.en.bin",
+            NSHomeDirectory() + "/.voiceos/models/ggml-small.bin",
+            NSHomeDirectory() + "/.voiceos/models/ggml-medium.bin",
+            NSHomeDirectory() + "/.voiceos/models/ggml-large-v3.bin",
+            NSHomeDirectory() + "/.cache/whisper/base.pt",
+            NSHomeDirectory() + "/.cache/whisper/small.pt"
+        ]
+        let modelPath = modelCandidates.first { path in
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+               let size = attrs[.size] as? Int64 {
+                return size > 10_000_000
+            }
+            return false
+        }
+        
+        let summary: String
+        if let bin = binaryPath {
+            let binName = (bin as NSString).lastPathComponent
+            if let mod = modelPath {
+                summary = "Local Whisper active (\(binName) + \((mod as NSString).lastPathComponent))."
+            } else if binName == "whisper" || binName == "mlx_whisper" {
+                summary = "Local Whisper active via \(binName)."
+            } else {
+                summary = "\(binName) found, but GGML model weights are missing in ~/.voiceos/models/."
+            }
+        } else if let mod = modelPath {
+            summary = "Whisper weights found (\((mod as NSString).lastPathComponent)), but whisper-cli binary is not installed (`brew install whisper-cpp`)."
+        } else {
+            summary = "Local Whisper CLI & weights not installed; using Apple Speech (Contextual)."
+        }
+        
+        let result = WhisperDiagnostics(binaryPath: binaryPath, modelPath: modelPath, statusSummary: summary)
+        diagCacheLock.lock()
+        cachedDiag = result
+        lastDiagCheck = Date()
+        diagCacheLock.unlock()
+        return result
+    }
     
     public func start(
         configuration: STTConfiguration,
@@ -266,6 +359,9 @@ public final class LocalWhisperProvider: SpeechRecognitionProvider, @unchecked S
     ) {
         lock.lock()
         isRunning = true
+        activeConfig = configuration
+        onFinalCallback = onFinalResult
+        onErrorCallback = onError
         accumulatedBuffers.removeAll()
         lock.unlock()
     }
@@ -279,15 +375,119 @@ public final class LocalWhisperProvider: SpeechRecognitionProvider, @unchecked S
     
     public func stop() {
         lock.lock()
+        guard isRunning else {
+            lock.unlock()
+            return
+        }
         isRunning = false
+        let buffers = accumulatedBuffers
+        accumulatedBuffers.removeAll()
+        let config = activeConfig
+        let onFinal = onFinalCallback
+        let onError = onErrorCallback
+        onFinalCallback = nil
+        onErrorCallback = nil
         lock.unlock()
+        
+        guard !buffers.isEmpty else {
+            onFinal?("", 0.0)
+            return
+        }
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            let diag = Self.diagnostics()
+            guard diag.isReady, let binPath = diag.binaryPath else {
+                onError?(NSError(domain: "VoiceOS.Whisper", code: 404, userInfo: [NSLocalizedDescriptionKey: diag.statusSummary]))
+                return
+            }
+            
+            let wavURL = FileManager.default.temporaryDirectory.appendingPathComponent("voiceai_whisper_\(UUID().uuidString).wav")
+            defer { try? FileManager.default.removeItem(at: wavURL) }
+            
+            guard Self.writeResampled16kWAV(buffers: buffers, to: wavURL) else {
+                onError?(NSError(domain: "VoiceOS.Whisper", code: 500, userInfo: [NSLocalizedDescriptionKey: "Failed to encode 16kHz WAV for Whisper."]))
+                return
+            }
+            
+            let binName = (binPath as NSString).lastPathComponent.lowercased()
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: binPath)
+            let outPipe = Pipe()
+            let errPipe = Pipe()
+            proc.standardOutput = outPipe
+            proc.standardError = errPipe
+            
+            let lang = config.localeIdentifier == "auto" ? "auto" : String(config.localeIdentifier.prefix(2))
+            if binName.contains("whisper-cli") || binName.contains("whisper-cpp") || binName == "main" {
+                guard let modelPath = diag.modelPath else {
+                    onError?(NSError(domain: "VoiceOS.Whisper", code: 404, userInfo: [NSLocalizedDescriptionKey: "Missing Whisper GGML model file."]))
+                    return
+                }
+                proc.arguments = ["-m", modelPath, "-f", wavURL.path, "-l", lang, "-nt", "--no-prints"]
+            } else {
+                let tmpDir = FileManager.default.temporaryDirectory.path
+                proc.arguments = [wavURL.path, "--output_format", "txt", "--output_dir", tmpDir]
+            }
+            
+            do {
+                try proc.run()
+                proc.waitUntilExit()
+                let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+                let rawOut = String(data: data, encoding: .utf8) ?? ""
+                let cleaned = rawOut
+                    .components(separatedBy: .newlines)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty && !$0.hasPrefix("[") }
+                    .joined(separator: " ")
+                let normalized = HinglishTransliterator.normalize(cleaned)
+                onFinal?(normalized, normalized.isEmpty ? 0.0 : 0.94)
+            } catch {
+                onError?(error)
+            }
+        }
     }
     
     public func cancel() {
         lock.lock()
         isRunning = false
         accumulatedBuffers.removeAll()
+        onFinalCallback = nil
+        onErrorCallback = nil
         lock.unlock()
+    }
+    
+    private static func writeResampled16kWAV(buffers: [AVAudioPCMBuffer], to url: URL) -> Bool {
+        guard let firstFormat = buffers.first?.format,
+              let targetFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000.0, channels: 1, interleaved: true),
+              let converter = AVAudioConverter(from: firstFormat, to: targetFormat) else {
+            return false
+        }
+        
+        do {
+            let audioFile = try AVAudioFile(forWriting: url, settings: targetFormat.settings, commonFormat: .pcmFormatInt16, interleaved: true)
+            for buf in buffers {
+                converter.reset()
+                let cap = AVAudioFrameCount(Double(buf.frameLength) * (16000.0 / buf.format.sampleRate)) + 128
+                guard let outBuf = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: cap) else { continue }
+                var error: NSError?
+                var consumed = false
+                converter.convert(to: outBuf, error: &error) { _, outStatus in
+                    if !consumed {
+                        consumed = true
+                        outStatus.pointee = .haveData
+                        return buf
+                    }
+                    outStatus.pointee = .noDataNow
+                    return nil
+                }
+                if error == nil && outBuf.frameLength > 0 {
+                    try audioFile.write(from: outBuf)
+                }
+            }
+            return true
+        } catch {
+            return false
+        }
     }
 }
 
@@ -333,8 +533,23 @@ public final class STTEngineProvider: @unchecked Sendable {
     private var activeProvider: SpeechRecognitionProvider
     private let resampler = AudioFrontEndResampler(sampleRate: 16000.0, preRollSeconds: 0.3)
     
+    public var selectedKind: STTProviderKind {
+        get {
+            if let saved = UserDefaults.standard.string(forKey: "voiceos.stt.provider"),
+               let kind = STTProviderKind(rawValue: saved) {
+                return kind
+            }
+            return LocalWhisperProvider.diagnostics().isReady ? .localWhisper : .appleEnhanced
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: "voiceos.stt.provider")
+            selectProvider(newValue)
+        }
+    }
+    
     public init() {
         self.activeProvider = appleProvider
+        selectProvider(self.selectedKind)
     }
     
     public func selectProvider(_ kind: STTProviderKind) {

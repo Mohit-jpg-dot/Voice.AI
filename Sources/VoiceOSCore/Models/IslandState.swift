@@ -26,6 +26,8 @@ public struct ScreenCropResult: Identifiable, Sendable, Equatable {
     public let extractedOCRText: String
     public let accessibilityRole: String?
     public let redactedItemsCount: Int
+    public let capturedImagePNGData: Data?
+    public let sourceAppName: String?
     public let timestamp: Date
     
     public init(
@@ -36,6 +38,8 @@ public struct ScreenCropResult: Identifiable, Sendable, Equatable {
         extractedOCRText: String,
         accessibilityRole: String? = nil,
         redactedItemsCount: Int = 0,
+        capturedImagePNGData: Data? = nil,
+        sourceAppName: String? = nil,
         timestamp: Date = Date()
     ) {
         self.id = id
@@ -45,6 +49,8 @@ public struct ScreenCropResult: Identifiable, Sendable, Equatable {
         self.extractedOCRText = extractedOCRText
         self.accessibilityRole = accessibilityRole
         self.redactedItemsCount = redactedItemsCount
+        self.capturedImagePNGData = capturedImagePNGData
+        self.sourceAppName = sourceAppName
         self.timestamp = timestamp
     }
 }
@@ -77,6 +83,20 @@ public struct RedactionRule: Sendable {
         }
         
         return (result, count)
+    }
+}
+
+public struct BrainSuggestion: Identifiable, Sendable, Equatable {
+    public let id: UUID
+    public let title: String
+    public let prompt: String
+    public let isAction: Bool
+
+    public init(id: UUID = UUID(), title: String, prompt: String, isAction: Bool = false) {
+        self.id = id
+        self.title = title
+        self.prompt = prompt
+        self.isAction = isAction
     }
 }
 

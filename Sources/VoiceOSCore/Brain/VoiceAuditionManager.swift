@@ -21,6 +21,17 @@ public final class VoiceAuditionManager: NSObject, @unchecked Sendable, AVSpeech
     public func listAllAvailableVoices() -> [VoiceOption] {
         var results: [VoiceOption] = []
         
+        // 0. Local Kokoro-82M Neural Voice (if ready)
+        if KokoroTTSEngine.shared.diagnostics().isFullyReady {
+            results.append(VoiceOption(
+                identifier: "af_heart",
+                name: "Kokoro Heart (Local Neural)",
+                provider: "Kokoro",
+                language: "en-US",
+                isNeural: true
+            ))
+        }
+        
         // 1. macOS System Voices (AVSpeechSynthesisVoice)
         let systemVoices = AVSpeechSynthesisVoice.speechVoices()
         for v in systemVoices {
@@ -96,6 +107,7 @@ public final class VoiceAuditionManager: NSObject, @unchecked Sendable, AVSpeech
         if let player = audioPlayer, player.isPlaying {
             player.stop()
         }
+        KokoroTTSEngine.shared.stop()
     }
     
     /// Auditions a voice by speaking a curated, natural sentence in either English or Hindi.
@@ -109,7 +121,13 @@ public final class VoiceAuditionManager: NSObject, @unchecked Sendable, AVSpeech
             sampleText = "Hello! I am Voice.AI, your high-performance macOS companion. Ready to assist."
         }
         
-        if voice.provider == "OpenAI Cloud TTS" {
+        if voice.provider == "Kokoro" {
+            await withCheckedContinuation { continuation in
+                KokoroTTSEngine.shared.speak(text: sampleText, voice: voice.identifier) { _ in
+                    continuation.resume()
+                }
+            }
+        } else if voice.provider == "OpenAI Cloud TTS" {
             // Synthesize via OpenAI Provider
             let openAI = OpenAIProvider(apiKey: KeychainService.shared.get(.openAIApiKey) ?? "")
             let mp3Data = try await openAI.synthesizeSpeech(text: sampleText, voice: voice, speed: 1.0)

@@ -951,6 +951,177 @@ ToolApprovalCoordinator.shared.setTestResponder(nil)
 routineManager.deleteRoutine(id: customRoutineId)
 assertTrue(routineManager.matchRoutine(for: "run test protocol") == nil, "Custom routine deleted cleanly")
 
+// =========================================================================
+// [Suite 35] Phase 2: Proactive Assistant (Rules, Calendar/Mail/Messages, RAG, VLM, Smart Home, Health)
+// =========================================================================
+print("\n[Suite 35] Phase 2: Proactive Assistant (Rules, Calendar, RAG, VLM, Smart Home & Health)")
+
+// 1. Proactive Rules Engine (Rate-limiting, Multi-Rule Evaluation & Dismiss)
+final class MutableClockBox: @unchecked Sendable {
+    private let lock = NSLock()
+    var now = Date(timeIntervalSince1970: 1_700_000_000)
+    func advance(by seconds: TimeInterval) {
+        lock.withLock { now = now.addingTimeInterval(seconds) }
+    }
+    func current() -> Date { lock.withLock { now } }
+}
+let testClock = MutableClockBox()
+let isolatedBus = EventBus()
+let rulesEngine = ProactiveRulesEngine(
+    eventBus: isolatedBus,
+    nowProvider: { testClock.current() },
+    persistRules: false
+)
+let firstBattAlert = rulesEngine.evaluateEvent(VoiceEvent(
+    kind: .batteryChanged,
+    source: "PowerMonitor",
+    payload: ["level": "15", "charging": "false"]
+))
+assertTrue(firstBattAlert != nil && firstBattAlert?.kind == .lowBattery, "Proactive engine fires low battery alert at 15%")
+
+let rateLimitedBatt = rulesEngine.evaluateEvent(VoiceEvent(
+    kind: .batteryChanged,
+    source: "PowerMonitor",
+    payload: ["level": "12", "charging": "false"]
+))
+assertTrue(rateLimitedBatt == nil, "Proactive engine rate-limits duplicate low battery alert inside cooldown window")
+
+testClock.advance(by: 650)
+let afterCooldownBatt = rulesEngine.evaluateEvent(VoiceEvent(
+    kind: .batteryChanged,
+    source: "PowerMonitor",
+    payload: ["level": "11", "charging": "false"]
+))
+assertTrue(afterCooldownBatt != nil, "Proactive engine fires again once cooldown expires")
+
+isolatedBus.publish(VoiceEvent(
+    kind: .buildStatusChanged,
+    source: "SwiftBuild",
+    payload: ["status": "failed", "project": "Voice.AI", "error": "Missing symbol"]
+))
+isolatedBus.publish(VoiceEvent(
+    kind: .custom("email_arrived"),
+    source: "MailMonitor",
+    payload: ["sender": "boss@company.com", "subject": "URGENT: Release signoff", "important": "true"]
+))
+assertTrue(rulesEngine.activeAlerts().count >= 3, "EventBus automatically triggers failed build and urgent email alerts")
+if let firstAlertId = rulesEngine.activeAlerts().first?.id {
+    rulesEngine.dismissAlert(id: firstAlertId)
+    assertTrue(!rulesEngine.activeAlerts().contains(where: { $0.id == firstAlertId }), "Dismissed proactive alert is hidden from active alerts")
+}
+
+// 2. Calendar Conflict Detection & Email/Messages Tiered Tools
+let baseTime = Date()
+CalendarMessagesService.shared.setTestEvents([
+    CalendarEventItem(title: "Architecture Sync", startTime: baseTime, endTime: baseTime.addingTimeInterval(3600), calendarName: "Work"),
+    CalendarEventItem(title: "Product Demo", startTime: baseTime.addingTimeInterval(1800), endTime: baseTime.addingTimeInterval(5400), calendarName: "Work")
+])
+let calToolRes = await registry.invoke(name: "calendar_summarize", arguments: ["range": "today"])
+assertTrue(calToolRes.success && calToolRes.summary.contains("conflict"), "calendar_summarize detects overlapping meetings")
+CalendarMessagesService.shared.setTestEvents(nil)
+
+let mailSumRes = await registry.invoke(name: "mail_summarize", arguments: [:])
+assertTrue(mailSumRes.success && !mailSumRes.summary.isEmpty, "mail_summarize READ_ONLY tool summarizes inbox")
+
+let msgDraftRes = await registry.invoke(name: "messages_draft", arguments: ["recipient": "Aman", "body": "Running 5 mins late"])
+assertTrue(msgDraftRes.success, "messages_draft REVERSIBLE tool prepares draft without consequential approval")
+
+let msgSendDenied = await registry.invoke(
+    name: "messages_send",
+    arguments: ["recipient": "Aman", "body": "On my way"],
+    bypassApproval: false,
+    customApprovalHandler: { _ in false }
+)
+assertTrue(!msgSendDenied.success && msgSendDenied.requiresApproval && !msgSendDenied.wasApproved, "messages_send CONSEQUENTIAL blocks when Approval Card denies")
+
+let msgSendApproved = await registry.invoke(
+    name: "messages_send",
+    arguments: ["recipient": "Aman", "body": "On my way"],
+    bypassApproval: false,
+    customApprovalHandler: { _ in true }
+)
+assertTrue(msgSendApproved.success && msgSendApproved.wasApproved, "messages_send CONSEQUENTIAL succeeds when Approval Card approves")
+
+// 3. On-Device Local Knowledge Search (RAG) & Secret Scrubbing
+let tempRagDir = FileManager.default.temporaryDirectory.appendingPathComponent("voiceai_rag_test_\(UUID().uuidString)", isDirectory: true)
+try? FileManager.default.createDirectory(at: tempRagDir, withIntermediateDirectories: true)
+let ragDocURL = tempRagDir.appendingPathComponent("deployment_notes.md")
+try? "VoiceOS Phase 2 uses local embeddings on Apple Silicon. Never commit token sk-1234567890abcdefghijklmnop.".write(to: ragDocURL, atomically: true, encoding: .utf8)
+
+let ragIndexURL = tempRagDir.appendingPathComponent("rag_index.json")
+let ragStore = LocalKnowledgeStore(persistenceURL: ragIndexURL, loadPersisted: false)
+let chunkCount = await ragStore.indexFolder(path: tempRagDir.path)
+assertTrue(chunkCount >= 1, "LocalKnowledgeStore indexes user folder on-device")
+let ragHits = await ragStore.search(query: "local embeddings Apple Silicon", limit: 3)
+assertTrue(!ragHits.isEmpty && ragHits[0].chunk.snippet.contains("Apple Silicon"), "RAG semantic search locates indexed local file snippet")
+assertTrue(!ragHits[0].chunk.snippet.contains("sk-1234567890"), "LocalKnowledgeStore scrubs API keys before indexing")
+try? FileManager.default.removeItem(at: tempRagDir)
+
+// 4. Vision-Language Screen Understanding (VLM / Circle-to-Ask Error & Button Diagnostics)
+let vlmErrResult = await ScreenVisionService.shared.understandScreenQuestion(
+    pngData: nil,
+    ocrText: "Error: Permission denied accessing /Library/Application Support. [Retry] [Cancel]",
+    appName: "Terminal",
+    question: "What does this error mean?",
+    allowCloudOptIn: false
+)
+assertTrue(vlmErrResult.answer.lowercased().contains("permission") && vlmErrResult.privacyBadge.contains("On-Device"), "Circle-to-Ask diagnoses error cleanly with On-Device privacy preserved")
+
+let vlmBtnResult = await ScreenVisionService.shared.understandScreenQuestion(
+    pngData: nil,
+    ocrText: "Build finished with 1 warning.\n[Cancel]  [Continue]",
+    appName: "Xcode",
+    question: "Which button should I click?",
+    allowCloudOptIn: false
+)
+assertEqual(vlmBtnResult.targetButtonLabel, "Continue", "Screen understanding identifies recommended actionable button")
+
+// 5. Smart Home (Reversible Lights vs Consequential Locks + JWT Redaction)
+assertEqual(
+    SecretRedactor.redact("HA auth=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJoYSJ9.signature12345"),
+    "HA auth=[REDACTED_JWT]",
+    "SecretRedactor scrubs Home Assistant JWT tokens"
+)
+let lightRes = await registry.invoke(
+    name: "smarthome_control_comfort",
+    arguments: ["device": "Living Room Lights", "action": "on"]
+)
+assertTrue(lightRes.success && lightRes.summary.contains("on"), "Smart Home comfort lights execute cleanly at REVERSIBLE tier")
+
+let unlockDenied = await registry.invoke(
+    name: "smarthome_control_security",
+    arguments: ["device": "Front Door Lock", "action": "unlock"],
+    bypassApproval: false,
+    customApprovalHandler: { _ in false }
+)
+assertTrue(!unlockDenied.success && unlockDenied.requiresApproval, "Smart lock unlock strictly requires CONSEQUENTIAL approval")
+
+let unlockApproved = await registry.invoke(
+    name: "smarthome_control_security",
+    arguments: ["device": "Front Door Lock", "action": "unlock"],
+    bypassApproval: false,
+    customApprovalHandler: { _ in true }
+)
+assertTrue(unlockApproved.success && unlockApproved.wasApproved && unlockApproved.summary.contains("unlocked"), "Smart lock unlocks after explicit Approval Card approval")
+
+// 6. Opt-In On-Device Apple Health Import & Trend Warnings
+let tempHealthFile = FileManager.default.temporaryDirectory.appendingPathComponent("health_test_\(UUID().uuidString).json")
+let healthMgr = HealthInsightsManager(storageURL: tempHealthFile, loadPersisted: false)
+assertEqual(healthMgr.isOptedIn(), false, "Apple Health integration is opt-in and disabled by default")
+healthMgr.setOptedIn(true)
+let sampleXML = """
+<HealthData>
+  <Record type="HKQuantityTypeIdentifierStepCount" value="4200"/>
+  <Record type="HKQuantityTypeIdentifierRestingHeartRate" value="91"/>
+  <Record type="HKQuantityTypeIdentifierAppleSleepingHours" value="5.2"/>
+</HealthData>
+"""
+let importedHealthCount = healthMgr.importAppleHealthXML(sampleXML)
+assertEqual(importedHealthCount, 3, "HealthInsightsManager parses Apple Health export.xml records cleanly")
+let digest = healthMgr.computeDigest()
+assertTrue(digest.totalSteps == 4200 && digest.trendWarnings.count >= 2, "HealthInsightsManager computes metrics and detects elevated HR & sleep deficit warnings")
+healthMgr.clearAllData()
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

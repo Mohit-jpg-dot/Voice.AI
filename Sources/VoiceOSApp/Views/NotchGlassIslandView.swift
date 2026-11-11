@@ -1327,6 +1327,52 @@ public struct NotchGlassIslandView: View {
                             .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
                     )
                     
+                    // Proactive Alert Strip (Dismissable, Rate-Limited)
+                    if let topAlert = appState.proactiveAlerts.first {
+                        HStack(spacing: 8) {
+                            Image(systemName: topAlert.severity == .critical ? "exclamationmark.triangle.fill" : "bell.badge.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(topAlert.severity == .critical ? .red : .orange)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(topAlert.title)
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                                Text(topAlert.message)
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            if let suggested = topAlert.suggestedPrompt {
+                                Button("Check") {
+                                    appState.submitTypedPrompt(suggested)
+                                }
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Color.orange)
+                                .clipShape(Capsule())
+                                .buttonStyle(.plain)
+                            }
+                            Button(action: {
+                                appState.dismissProactiveAlert(id: topAlert.id)
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(7)
+                        .background(Color.orange.opacity(0.14))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(Color.orange.opacity(0.35), lineWidth: 0.6)
+                        )
+                    }
+
                     // Circle to Ask / Lasso Selection Preview Card
                     if let crop = appState.currentCropResult {
                         circleCropPreviewCard(crop)
@@ -1535,33 +1581,41 @@ public struct NotchGlassIslandView: View {
                 }
             }
             
-            HStack(spacing: 6) {
-                ForEach(["Explain this", "Summarize", "Fix / Answer"], id: \.self) { chipTitle in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    Text(ModelRouter.shared.currentMode == .cloud || (ModelRouter.shared.currentMode == .hybrid && ModelRouter.shared.hasUserConsentedToCloudUpload) ? "VLM OPT-IN" : "ON-DEVICE")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.green.opacity(0.16))
+                        .cornerRadius(4)
+
+                    ForEach(["What does this error mean?", "Which button should I click?", "Explain this", "Summarize"], id: \.self) { chipTitle in
+                        Button(action: {
+                            appState.submitTypedPrompt(chipTitle)
+                        }) {
+                            Text(chipTitle)
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.cyan.opacity(0.20))
+                                .clipShape(Capsule())
+                                .overlay(Capsule().stroke(Color.cyan.opacity(0.35), lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     Button(action: {
-                        appState.submitTypedPrompt(chipTitle)
+                        appState.triggerCircleToAsk()
                     }) {
-                        Text(chipTitle)
-                            .font(.system(size: 9.5, weight: .semibold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.cyan.opacity(0.20))
-                            .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color.cyan.opacity(0.35), lineWidth: 0.5))
+                        Text("Re-circle")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(Color.white.opacity(0.65))
                     }
                     .buttonStyle(.plain)
                 }
-                
-                Spacer()
-                
-                Button(action: {
-                    appState.triggerCircleToAsk()
-                }) {
-                    Text("Re-circle")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.65))
-                }
-                .buttonStyle(.plain)
             }
         }
         .padding(8)

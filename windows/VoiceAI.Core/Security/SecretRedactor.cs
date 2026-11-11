@@ -19,6 +19,7 @@ namespace VoiceAI.Core.Security
             (new Regex(@"https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+", RegexOptions.Compiled), "[REDACTED_WEBHOOK]"),
             (new Regex(@"https://discord(?:app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+", RegexOptions.Compiled), "[REDACTED_WEBHOOK]"),
             (new Regex(@"Bearer\s+[A-Za-z0-9._~+/-]{8,}", RegexOptions.Compiled), "Bearer [REDACTED_TOKEN]"),
+            (new Regex(@"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b", RegexOptions.Compiled), "[REDACTED_JWT]"),
             (new Regex(@"(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*[^\s,;""'&]{8,}", RegexOptions.Compiled), "$1=[REDACTED_API_KEY]"),
             (new Regex(@"\b(?:\d[ -]*?){13,16}\b", RegexOptions.Compiled), "[REDACTED_CARD]")
         };

@@ -4,10 +4,14 @@ using System.Threading.Tasks;
 using VoiceAI.Core.Brain;
 using VoiceAI.Core.Events;
 using VoiceAI.Core.Grammar;
+using VoiceAI.Core.Health;
+using VoiceAI.Core.Knowledge;
 using VoiceAI.Core.Math;
 using VoiceAI.Core.Memory;
+using VoiceAI.Core.Proactive;
 using VoiceAI.Core.Routines;
 using VoiceAI.Core.Security;
+using VoiceAI.Core.SmartHome;
 using VoiceAI.Core.Tools;
 
 namespace VoiceAI.Core.Tests
@@ -63,6 +67,7 @@ namespace VoiceAI.Core.Tests
             await TestResourceOptimizationAndCaching();
             await TestPhase0Foundations();
             await TestPhase1JarvisFeel();
+            await TestPhase2ProactiveAssistant();
 
             Console.WriteLine("\n=================================================================");
             Console.WriteLine($"Test Run Completed: {_passed} PASSED, {_failed} FAILED");
@@ -457,6 +462,65 @@ namespace VoiceAI.Core.Tests
 
             AssertTrue(RoutineEngine.Shared.DeleteCustomRoutine("win_test_routine"),
                 "RoutineEngine deletes custom routine while protecting built-ins");
+        }
+
+        // -------------------------------------------------------------
+        // Suite 12: Phase 2 Proactive Assistant (Rules, RAG, Smart Home, Health)
+        // -------------------------------------------------------------
+        private static async Task TestPhase2ProactiveAssistant()
+        {
+            Console.WriteLine("\n[Suite 12] Phase 2 Proactive Assistant (Rules, RAG, Smart Home & Health)");
+
+            // 1. ProactiveRulesEngine rate limiting & dismissal
+            var now = DateTimeOffset.UtcNow;
+            var bus = new EventBus();
+            var rules = new ProactiveRulesEngine(bus, () => now);
+            var a1 = rules.EvaluateEvent(VoiceEvent.Create(SystemEventKind.BatteryChanged, "Power",
+                new Dictionary<string, string> { ["level"] = "14", ["charging"] = "false" }));
+            var a2 = rules.EvaluateEvent(VoiceEvent.Create(SystemEventKind.BatteryChanged, "Power",
+                new Dictionary<string, string> { ["level"] = "12", ["charging"] = "false" }));
+            AssertTrue(a1 != null && a2 == null, "ProactiveRulesEngine fires battery alert and rate-limits within cooldown");
+
+            now = now.AddMinutes(11);
+            var a3 = rules.EvaluateEvent(VoiceEvent.Create(SystemEventKind.BuildStatusChanged, "MSBuild",
+                new Dictionary<string, string> { ["status"] = "failed", ["project"] = "VoiceAI.Core", ["error"] = "CS1002" }));
+            AssertTrue(a3 != null && rules.ActiveAlerts().Count == 2, "ProactiveRulesEngine raises failed build alert");
+            rules.DismissAlert(a3!.Id);
+            AssertEqual(rules.ActiveAlerts().Count, 1, "ProactiveRulesEngine dismisses alert cleanly");
+
+            // 2. LocalKnowledgeEngine (On-Device RAG & Secret Scrubbing)
+            string ragDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"win_rag_{Guid.NewGuid()}");
+            System.IO.Directory.CreateDirectory(ragDir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(ragDir, "arch.md"),
+                "Windows VoiceAI.Core uses local semantic embeddings and scrubs key sk-1234567890abcdefghijklmnop.");
+            var rag = new LocalKnowledgeEngine();
+            int indexed = rag.IndexFolder(ragDir);
+            var ragHits = rag.Search("Windows semantic embeddings", 3);
+            AssertTrue(indexed >= 1 && ragHits.Count > 0 && !ragHits[0].Chunk.Snippet.Contains("sk-123456"),
+                "LocalKnowledgeEngine indexes folder locally, searches semantically, and scrubs API keys");
+            System.IO.Directory.Delete(ragDir, true);
+
+            // 3. SmartHomeCoordinator (Reversible vs Consequential Security Gate)
+            var lightRes = await SmartHomeCoordinator.Shared.ExecuteAsync("Living Room Lights", "on");
+            AssertTrue(lightRes.Success && lightRes.Tier == PermissionTier.Reversible,
+                "SmartHomeCoordinator allows reversible lights without consequential approval");
+            var lockDenied = await SmartHomeCoordinator.Shared.ExecuteAsync("Front Door Lock", "unlock", null, (_, _) => Task.FromResult(false));
+            AssertTrue(!lockDenied.Success && lockDenied.Tier == PermissionTier.Consequential,
+                "SmartHomeCoordinator blocks smart lock unlock when approval is denied");
+            var lockApproved = await SmartHomeCoordinator.Shared.ExecuteAsync("Front Door Lock", "unlock", null, (_, _) => Task.FromResult(true));
+            AssertTrue(lockApproved.Success && lockApproved.Summary.Contains("unlocked"),
+                "SmartHomeCoordinator unlocks smart lock after explicit Consequential approval");
+
+            // 4. HealthInsightsEngine (Opt-In XML Import & Trend Warnings)
+            var health = new HealthInsightsEngine();
+            AssertTrue(!health.IsOptedIn, "HealthInsightsEngine is strictly opt-in by default");
+            health.SetOptedIn(true);
+            int parsed = health.ImportAppleHealthXml(
+                "<HealthData><Record type=\"HKQuantityTypeIdentifierStepCount\" value=\"3500\"/><Record type=\"HKQuantityTypeIdentifierRestingHeartRate\" value=\"90\"/><Record type=\"HKQuantityTypeIdentifierAppleSleepingHours\" value=\"5.0\"/></HealthData>");
+            var digest = health.ComputeDigest();
+            AssertTrue(parsed == 3 && digest.TotalSteps == 3500 && digest.Warnings.Count >= 2,
+                "HealthInsightsEngine parses Apple Health export XML and raises trend warnings");
+            health.ClearData();
         }
     }
 }

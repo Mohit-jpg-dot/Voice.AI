@@ -59,10 +59,15 @@ We believe in 100% honesty with no fake claims. Below is the exact breakdown of 
 │ JARVIS/FRIDAY Persona & Risk Warnings (Phase 1) │ ✅ WORKING NOW (macOS & .NET) │
 │ Long-Term Memory Recall & Viewer UI (Phase 1)   │ ✅ WORKING NOW (macOS & .NET) │
 │ Multi-Step Routines & Protocols (Phase 1)       │ ✅ WORKING NOW (macOS & .NET) │
+│ Proactive Alert Rules Engine & Event Bus (Ph. 2)│ ✅ WORKING NOW (macOS & .NET) │
+│ Calendar, Email & Messages Workflows (Phase 2)  │ ✅ WORKING NOW (macOS Native) │
+│ On-Device Local File Search & RAG (Phase 2)     │ ✅ WORKING NOW (macOS & .NET) │
+│ VLM Screen Understanding & "Circle to Ask"      │ ✅ WORKING NOW (macOS Native) │
+│ Smart Home (HA / HomeKit / MQTT) (Phase 2)      │ ✅ WORKING NOW (macOS & .NET) │
+│ Opt-In Apple Health Import & Warnings (Phase 2) │ ✅ WORKING NOW (macOS & .NET) │
 ├─────────────────────────────────────────────────┼───────────────────────────────┤
-│ Proactive Rules Engine, RAG & Home Automation   │ 🚧 PLANNED (Phase 2)          │
+│ Iron Legion Multi-Agent & CAD/3D (Phase 3)      │ 🚧 PLANNED (Phase 3)          │
 │ Windows 10/11 WinUI 3 Native GUI Shell          │ 🚧 UNDER ACTIVE DEVELOPMENT   │
-│ "Circle to Ask" Visual Beacon Cursor Tutor      │ 🚧 UNDER ACTIVE DEVELOPMENT   │
 │ In-App 1-Click Offline Model Downloader (Ollama)│ 🚧 UNDER ACTIVE DEVELOPMENT   │
 │ Deep In-Browser DOM Video Element Scraping      │ 🚧 UNDER ACTIVE DEVELOPMENT   │
 │ Phone Remote Companion & Approval Bridge        │ 🚧 UNDER ACTIVE DEVELOPMENT   │
@@ -242,6 +247,7 @@ cd Voice.AI
 
 - [Cross-Platform Architecture Specification](docs/architecture-cross-platform.md)
 - [Phase 1: JARVIS Feel Architecture](docs/phase-1-jarvis-feel.md)
+- [Phase 2: Proactive Assistant Architecture](docs/phase-2-proactive-assistant.md)
 - [Free & Offline Setup Guide (Windows)](docs/setup-free-offline-windows.md)
 - [Windows Platform Parity & Test Report](docs/test-report-windows.md)
 - [Windows Developer Toolchain Setup](docs/windows-dev-setup.md)

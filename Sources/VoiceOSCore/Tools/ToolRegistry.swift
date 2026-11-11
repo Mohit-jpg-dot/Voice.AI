@@ -269,10 +269,22 @@ public final class ToolRegistry: ToolRegistryProtocol, @unchecked Sendable {
         switch (app, op) {
         case ("mail", "check_inbox"), ("mail", "unread"), ("mail", "read"), ("mail", "read_latest"), ("mail", "search"):
             return "mail_check_inbox"
+        case ("mail", "summarize"):
+            return "mail_summarize"
         case ("mail", "send"), ("mail", "reply_and_send"):
             return "mail_send"
         case ("mail", _):
             return "mail_draft"
+        case ("calendar", "read"), ("calendar", "summarize"), ("calendar", "check"):
+            return "calendar_summarize"
+        case ("calendar", _):
+            return "calendar_create_event"
+        case ("messages", "read"), ("messages", "summarize"):
+            return "messages_read"
+        case ("messages", "send"):
+            return "messages_send"
+        case ("messages", _):
+            return "messages_draft"
         case ("whatsapp", "send"):
             return "whatsapp_send"
         case ("whatsapp", _):
@@ -482,6 +494,250 @@ public final class ToolRegistry: ToolRegistryProtocol, @unchecked Sendable {
             }
             let removed = await MemoryStore.shared.forget(matching: query)
             return ToolInvocationResult(success: removed > 0, summary: "Removed \(removed) matching memory item(s).")
+        })
+
+        // Phase 2 Tools: Proactive Alerts, Calendar, Email/Messages Summaries, RAG, VLM Screen, Smart Home & Health
+        register(RegisteredTool(
+            name: "proactive_alerts_status",
+            appName: "Proactive Engine",
+            description: "List active rate-limited proactive system alerts (battery, CPU/RAM, builds, calendar conflicts, important emails).",
+            inputSchema: RegisteredToolSchema(properties: [:]),
+            permissionTier: .readOnly
+        ) { _ in
+            let alerts = ProactiveRulesEngine.shared.activeAlerts()
+            let summary = alerts.isEmpty
+                ? "All systems nominal. Zero active proactive alerts."
+                : alerts.map { "• [\($0.severity.rawValue.uppercased())] \($0.title): \($0.message)" }.joined(separator: "\n")
+            return ToolInvocationResult(success: true, summary: summary, data: ["count": "\(alerts.count)"])
+        })
+
+        register(RegisteredTool(
+            name: "mail_summarize",
+            appName: "Apple Mail",
+            description: "Read and summarize recent or matching emails cleanly.",
+            inputSchema: RegisteredToolSchema(properties: ["query": ToolSchemaProperty(description: "Optional topic or sender filter")]),
+            permissionTier: .readOnly
+        ) { args in
+            let summary = await CalendarMessagesService.shared.summarizeRecentEmails(query: args["query"] ?? "")
+            return ToolInvocationResult(success: true, summary: summary)
+        })
+
+        register(RegisteredTool(
+            name: "calendar_summarize",
+            appName: "Apple Calendar",
+            description: "Read upcoming events, detect schedule conflicts, and summarize the calendar.",
+            inputSchema: RegisteredToolSchema(properties: ["range": ToolSchemaProperty(description: "today or week")]),
+            permissionTier: .readOnly
+        ) { args in
+            let summary = await CalendarMessagesService.shared.summarizeCalendar(range: args["range"] ?? "today")
+            return ToolInvocationResult(success: true, summary: summary)
+        })
+
+        register(RegisteredTool(
+            name: "calendar_create_event",
+            appName: "Apple Calendar",
+            description: "Create a new calendar event.",
+            inputSchema: RegisteredToolSchema(
+                properties: [
+                    "title": ToolSchemaProperty(description: "Event title"),
+                    "duration_minutes": ToolSchemaProperty(description: "Duration in minutes (default 30)")
+                ],
+                required: ["title"]
+            ),
+            permissionTier: .reversible
+        ) { args in
+            let duration = Int(args["duration_minutes"] ?? "30") ?? 30
+            let res = await CalendarMessagesService.shared.createCalendarEvent(
+                title: args["title"] ?? "",
+                startsInMinutes: 60,
+                durationMinutes: duration
+            )
+            return ToolInvocationResult(success: res.success, summary: res.summary)
+        })
+
+        register(RegisteredTool(
+            name: "messages_read",
+            appName: "Messages",
+            description: "Read and summarize recent Apple Messages threads.",
+            inputSchema: RegisteredToolSchema(properties: ["contact": ToolSchemaProperty(description: "Optional contact filter")]),
+            permissionTier: .readOnly
+        ) { args in
+            let res = await CalendarMessagesService.shared.readMessages(contactFilter: args["contact"] ?? "")
+            return ToolInvocationResult(success: true, summary: res.summary, data: ["count": "\(res.threads.count)"])
+        })
+
+        register(RegisteredTool(
+            name: "messages_draft",
+            appName: "Messages",
+            description: "Draft a message in Apple Messages without sending.",
+            inputSchema: RegisteredToolSchema(
+                properties: [
+                    "recipient": ToolSchemaProperty(description: "Recipient name or handle"),
+                    "body": ToolSchemaProperty(description: "Message body")
+                ],
+                required: ["recipient"]
+            ),
+            permissionTier: .reversible
+        ) { args in
+            let res = await CalendarMessagesService.shared.draftMessage(recipient: args["recipient"] ?? "", body: args["body"] ?? "")
+            return ToolInvocationResult(success: res.success, summary: res.summary)
+        })
+
+        register(RegisteredTool(
+            name: "messages_send",
+            appName: "Messages",
+            description: "Send an external message via Apple Messages. Requires Notch Approval Card confirmation.",
+            inputSchema: RegisteredToolSchema(
+                properties: [
+                    "recipient": ToolSchemaProperty(description: "Recipient handle or contact"),
+                    "body": ToolSchemaProperty(description: "Message body")
+                ],
+                required: ["recipient", "body"]
+            ),
+            permissionTier: .consequential
+        ) { args in
+            let res = await CalendarMessagesService.shared.sendMessage(recipient: args["recipient"] ?? "", body: args["body"] ?? "")
+            return ToolInvocationResult(success: res.success, summary: res.summary)
+        })
+
+        register(RegisteredTool(
+            name: "rag_search_files",
+            appName: "Local Knowledge",
+            description: "Search locally indexed folders and files using on-device semantic embeddings (RAG).",
+            inputSchema: RegisteredToolSchema(
+                properties: ["query": ToolSchemaProperty(description: "Search question or keywords")],
+                required: ["query"]
+            ),
+            permissionTier: .readOnly
+        ) { args in
+            let query = args["query"] ?? ""
+            let hits = await LocalKnowledgeStore.shared.search(query: query, limit: 4)
+            let summary = hits.isEmpty
+                ? "No matching passages found in indexed local folders."
+                : hits.map { "• [\($0.chunk.fileName)] \($0.chunk.snippet.prefix(180))" }.joined(separator: "\n")
+            return ToolInvocationResult(success: true, summary: summary, data: ["count": "\(hits.count)"])
+        })
+
+        register(RegisteredTool(
+            name: "rag_index_folder",
+            appName: "Local Knowledge",
+            description: "Index a user-chosen local folder on-device for semantic RAG search.",
+            inputSchema: RegisteredToolSchema(
+                properties: ["path": ToolSchemaProperty(description: "Absolute folder path")],
+                required: ["path"]
+            ),
+            permissionTier: .reversible
+        ) { args in
+            let path = args["path"] ?? ""
+            let count = await LocalKnowledgeStore.shared.indexFolder(path: path)
+            return ToolInvocationResult(success: count > 0, summary: "Indexed \(count) chunk(s) from \(path).", data: ["chunks": "\(count)"])
+        })
+
+        register(RegisteredTool(
+            name: "screen_understand_region",
+            appName: "Circle to Ask",
+            description: "Understand screen OCR/image context and answer UI/error questions.",
+            inputSchema: RegisteredToolSchema(
+                properties: [
+                    "question": ToolSchemaProperty(description: "User question about screen content"),
+                    "ocr_text": ToolSchemaProperty(description: "Extracted OCR text"),
+                    "app_name": ToolSchemaProperty(description: "Active application name")
+                ],
+                required: ["question"]
+            ),
+            permissionTier: .readOnly
+        ) { args in
+            let res = await ScreenVisionService.shared.understandScreenQuestion(
+                pngData: nil,
+                ocrText: args["ocr_text"] ?? "",
+                appName: args["app_name"] ?? "Screen",
+                question: args["question"] ?? "Explain this"
+            )
+            return ToolInvocationResult(success: true, summary: res.answer, data: ["provider": res.providerLabel, "privacy": res.privacyBadge])
+        })
+
+        register(RegisteredTool(
+            name: "smarthome_status",
+            appName: "Smart Home",
+            description: "Read status of Home Assistant / HomeKit / MQTT smart home devices.",
+            inputSchema: RegisteredToolSchema(properties: [:]),
+            permissionTier: .readOnly
+        ) { _ in
+            return ToolInvocationResult(success: true, summary: SmartHomeManager.shared.summarizeHomeStatus())
+        })
+
+        register(RegisteredTool(
+            name: "smarthome_control_comfort",
+            appName: "Smart Home",
+            description: "Control non-security smart home devices (lights, thermostat, scenes).",
+            inputSchema: RegisteredToolSchema(
+                properties: [
+                    "device": ToolSchemaProperty(description: "Device name or room"),
+                    "action": ToolSchemaProperty(description: "on, off, set_temperature, activate"),
+                    "value": ToolSchemaProperty(description: "Optional setpoint value")
+                ],
+                required: ["device", "action"]
+            ),
+            permissionTier: .reversible
+        ) { args in
+            let res = await SmartHomeManager.shared.executeDeviceAction(
+                deviceQuery: args["device"] ?? "",
+                action: args["action"] ?? "on",
+                value: args["value"]
+            )
+            return ToolInvocationResult(success: res.success, summary: res.summary)
+        })
+
+        register(RegisteredTool(
+            name: "smarthome_control_security",
+            appName: "Smart Home Security",
+            description: "Control locks, garage doors, or security alarms. Strictly requires Approval Card confirmation.",
+            inputSchema: RegisteredToolSchema(
+                properties: [
+                    "device": ToolSchemaProperty(description: "Lock or alarm device name"),
+                    "action": ToolSchemaProperty(description: "lock, unlock, arm, disarm")
+                ],
+                required: ["device", "action"]
+            ),
+            permissionTier: .consequential
+        ) { args in
+            let res = await SmartHomeManager.shared.executeDeviceAction(
+                deviceQuery: args["device"] ?? "",
+                action: args["action"] ?? "lock",
+                value: args["value"]
+            )
+            return ToolInvocationResult(success: res.success, summary: res.summary)
+        })
+
+        register(RegisteredTool(
+            name: "health_summary",
+            appName: "Apple Health (Opt-In)",
+            description: "Summarize opt-in on-device Apple Health metrics and trend warnings.",
+            inputSchema: RegisteredToolSchema(properties: [:]),
+            permissionTier: .readOnly
+        ) { _ in
+            let digest = HealthInsightsManager.shared.computeDigest()
+            return ToolInvocationResult(success: true, summary: digest.summaryText, data: ["opted_in": digest.isOptedIn ? "true" : "false"])
+        })
+
+        register(RegisteredTool(
+            name: "health_add_reminder",
+            appName: "Apple Health (Opt-In)",
+            description: "Add an on-device wellness, hydration, or medication reminder.",
+            inputSchema: RegisteredToolSchema(
+                properties: [
+                    "title": ToolSchemaProperty(description: "Reminder title"),
+                    "schedule": ToolSchemaProperty(description: "Schedule string, e.g. Daily 09:00")
+                ],
+                required: ["title"]
+            ),
+            permissionTier: .reversible
+        ) { args in
+            let reminder = HealthInsightsManager.shared.addReminder(
+                title: args["title"] ?? "Hydrate",
+                scheduleText: args["schedule"] ?? "Daily"
+            )
+            return ToolInvocationResult(success: true, summary: "Added health reminder: \(reminder.title) (\(reminder.scheduleText)).")
         })
     }
 

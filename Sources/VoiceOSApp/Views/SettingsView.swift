@@ -6,6 +6,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
     case general = "General"
     case voice = "Voice & Wake-Word"
     case jarvis = "JARVIS & Routines"
+    case proactive = "Proactive & Home"
     case brain = "AI Brain & Models"
     case permissions = "System Access"
     case account = "Account & Privacy"
@@ -17,6 +18,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: return "gearshape.fill"
         case .voice: return "waveform.badge.mic"
         case .jarvis: return "sparkles"
+        case .proactive: return "bolt.shield.fill"
         case .brain: return "brain.head.profile"
         case .permissions: return "hand.raised.fill"
         case .account: return "person.crop.circle.badge.checkmark"
@@ -51,6 +53,20 @@ public struct SettingsView: View {
     @State private var routineStatusBanner: String = ""
     @State private var newMemoryNote: String = ""
     @State private var newMemoryKind: MemoryFactKind = .fact
+
+    // Phase 2: Proactive, Local RAG, Smart Home & Health State
+    @State private var proactiveRules: [ProactiveRuleConfig] = ProactiveRulesEngine.shared.allRules()
+    @State private var ragFolderInput: String = ""
+    @State private var ragChunkCount: Int = LocalKnowledgeStore.shared.totalIndexedChunks()
+    @State private var haURLInput: String = SmartHomeManager.shared.configuration().homeAssistantURL
+    @State private var haTokenInput: String = KeychainService.shared.get(.homeAssistantToken) ?? ""
+    @State private var mqttHostInput: String = SmartHomeManager.shared.configuration().mqttHost
+    @State private var mqttPasswordInput: String = KeychainService.shared.get(.mqttPassword) ?? ""
+    @State private var smartHomeSavedBanner: String = ""
+    @State private var healthOptInToggle: Bool = HealthInsightsManager.shared.isOptedIn()
+    @State private var healthSummaryText: String = HealthInsightsManager.shared.computeDigest().summaryText
+    @State private var healthReminderTitle: String = ""
+    @State private var healthReminderSchedule: String = "Daily 09:00"
     
     // Account Authentication State
     @State private var authIsLoginMode: Bool = true
@@ -159,6 +175,8 @@ public struct SettingsView: View {
                         voiceSettingsTab
                     case .jarvis:
                         jarvisSettingsTab
+                    case .proactive:
+                        proactiveSettingsTab
                     case .brain:
                         aiBrainSettingsTab
                     case .permissions:
@@ -179,6 +197,11 @@ public struct SettingsView: View {
             selectedKokoroVoice = KokoroTTSEngine.shared.selectedVoiceId
             personaConfig = PersonaManager.shared.currentConfiguration()
             appState.refreshPhase1State()
+            appState.refreshPhase2State()
+            proactiveRules = ProactiveRulesEngine.shared.allRules()
+            ragChunkCount = LocalKnowledgeStore.shared.totalIndexedChunks()
+            healthOptInToggle = HealthInsightsManager.shared.isOptedIn()
+            healthSummaryText = HealthInsightsManager.shared.computeDigest().summaryText
         }
         .background(DesignTokens.Monochrome.windowBg)
         .sheet(isPresented: $showingModelSetupSheet) {
@@ -1651,6 +1674,268 @@ public struct SettingsView: View {
                             .padding(8)
                             .background(DesignTokens.Monochrome.surfaceElevated)
                             .cornerRadius(6)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var proactiveSettingsTab: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            settingsCard(title: "Proactive Alert Rules Engine (Event Bus)", icon: "bell.badge.fill") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Configure rate-limited proactive alerts triggered by EventBus telemetry (battery, CPU/RAM, failed builds, calendar conflicts, important emails).")
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textMuted)
+
+                    ForEach(proactiveRules) { rule in
+                        HStack {
+                            Toggle("", isOn: Binding(
+                                get: { rule.isEnabled },
+                                set: { enabled in
+                                    ProactiveRulesEngine.shared.setRuleEnabled(id: rule.id, enabled: enabled)
+                                    proactiveRules = ProactiveRulesEngine.shared.allRules()
+                                }
+                            ))
+                            .labelsHidden()
+                            .toggleStyle(SwitchToggleStyle(tint: Color.blue))
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(rule.title)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                Text("Threshold: \(Int(rule.threshold)) • Cooldown: \(Int(rule.cooldownSeconds))s")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+                            Spacer()
+                        }
+                        .padding(7)
+                        .background(DesignTokens.Monochrome.surfaceElevated)
+                        .cornerRadius(6)
+                    }
+
+                    HStack(spacing: 10) {
+                        Button("Run Live Health Check") {
+                            Task {
+                                await ProactiveRulesEngine.shared.pollSystemHealthOnce()
+                                await MainActor.run { appState.refreshPhase2State() }
+                            }
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.blue.opacity(0.16))
+                        .foregroundColor(.blue)
+                        .cornerRadius(6)
+                        .buttonStyle(.plain)
+
+                        if !appState.proactiveAlerts.isEmpty {
+                            Button("Dismiss All Alerts (\(appState.proactiveAlerts.count))") {
+                                ProactiveRulesEngine.shared.dismissAllAlerts()
+                                appState.refreshPhase2State()
+                            }
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.orange)
+                            .buttonStyle(.plain)
+                        }
+                        Spacer()
+                    }
+                }
+            }
+
+            settingsCard(title: "On-Device Local File & Knowledge Search (RAG)", icon: "doc.text.magnifyingglass") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Index user-chosen folders 100% locally with encrypted secret scrubbing and on-device embeddings (\(ragChunkCount) chunks indexed).")
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textMuted)
+
+                    HStack(spacing: 8) {
+                        TextField("Folder path (e.g. ~/Documents/Notes)", text: $ragFolderInput)
+                            .textFieldStyle(.roundedBorder)
+
+                        Button("Browse...") {
+                            let panel = NSOpenPanel()
+                            panel.canChooseDirectories = true
+                            panel.canChooseFiles = false
+                            panel.allowsMultipleSelection = false
+                            if panel.runModal() == .OK, let url = panel.url {
+                                ragFolderInput = url.path
+                            }
+                        }
+                        .font(.system(size: 11))
+
+                        Button("Add & Index") {
+                            appState.addAndIndexRAGFolder(path: ragFolderInput)
+                            ragFolderInput = ""
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                ragChunkCount = LocalKnowledgeStore.shared.totalIndexedChunks()
+                            }
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(6)
+                        .buttonStyle(.plain)
+                    }
+
+                    ForEach(appState.ragIndexedFolders, id: \.self) { folder in
+                        HStack {
+                            Image(systemName: "folder.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(.blue)
+                            Text(folder)
+                                .font(.system(size: 11, design: .monospaced))
+                                .lineLimit(1)
+                            Spacer()
+                            Button(action: {
+                                appState.removeRAGFolder(path: folder)
+                                ragChunkCount = LocalKnowledgeStore.shared.totalIndexedChunks()
+                            }) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.red.opacity(0.8))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(7)
+                        .background(DesignTokens.Monochrome.surfaceElevated)
+                        .cornerRadius(6)
+                    }
+                }
+            }
+
+            settingsCard(title: "Smart Home (Home Assistant / HomeKit / MQTT)", icon: "homekit") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Credentials are stored strictly in macOS Keychain. Locks & security alarms always require a Notch Approval Card (CONSEQUENTIAL tier).")
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textMuted)
+
+                    HStack(spacing: 8) {
+                        TextField("Home Assistant URL", text: $haURLInput)
+                            .textFieldStyle(.roundedBorder)
+                        SecureField("HA Long-Lived Token (Keychain)", text: $haTokenInput)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    HStack(spacing: 8) {
+                        TextField("MQTT Host", text: $mqttHostInput)
+                            .textFieldStyle(.roundedBorder)
+                        SecureField("MQTT Password (Keychain)", text: $mqttPasswordInput)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    HStack(spacing: 10) {
+                        Button("Save Bridges to Keychain") {
+                            SmartHomeManager.shared.updateConfiguration { cfg in
+                                cfg.homeAssistantURL = haURLInput
+                                cfg.mqttHost = mqttHostInput
+                            }
+                            SmartHomeManager.shared.setCredentials(
+                                homeAssistantToken: haTokenInput,
+                                mqttPassword: mqttPasswordInput
+                            )
+                            smartHomeSavedBanner = "Smart Home endpoints updated and credentials saved securely in Keychain."
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(6)
+                        .buttonStyle(.plain)
+
+                        if !smartHomeSavedBanner.isEmpty {
+                            Text(smartHomeSavedBanner)
+                                .font(.system(size: 10))
+                                .foregroundColor(.green)
+                        }
+                    }
+
+                    ForEach(appState.smartHomeDevices) { dev in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(dev.name)
+                                        .font(.system(size: 11.5, weight: .semibold))
+                                    Text(dev.kind.isSecurityCritical ? "CONSEQUENTIAL" : "REVERSIBLE")
+                                        .font(.system(size: 8.5, weight: .bold))
+                                        .foregroundColor(dev.kind.isSecurityCritical ? .orange : .green)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background((dev.kind.isSecurityCritical ? Color.orange : Color.green).opacity(0.14))
+                                        .cornerRadius(4)
+                                }
+                                Text("\(dev.room) • \(dev.bridge.rawValue) • State: \(dev.state)")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+                            Spacer()
+                            Button(dev.kind == .lock ? (dev.state == "locked" ? "Unlock" : "Lock") : (dev.state == "on" ? "Off" : "On")) {
+                                let act: String
+                                if dev.kind == .lock {
+                                    act = dev.state == "locked" ? "unlock" : "lock"
+                                } else if dev.kind == .securitySystem {
+                                    act = dev.state == "armed" ? "disarm" : "arm"
+                                } else {
+                                    act = dev.state == "on" ? "off" : "on"
+                                }
+                                appState.controlSmartHomeDeviceFromUI(dev, action: act)
+                            }
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(DesignTokens.Monochrome.surfaceElevated)
+                            .cornerRadius(5)
+                            .buttonStyle(.plain)
+                        }
+                        .padding(7)
+                        .background(DesignTokens.Monochrome.surfaceElevated)
+                        .cornerRadius(6)
+                    }
+                }
+            }
+
+            settingsCard(title: "Apple Health & Wearables (Opt-In, On-Device)", icon: "heart.text.square.fill") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("Enable Opt-In On-Device Health Import & Trend Warnings", isOn: $healthOptInToggle)
+                        .font(.system(size: 12, weight: .semibold))
+                        .onChange(of: healthOptInToggle) { _, enabled in
+                            HealthInsightsManager.shared.setOptedIn(enabled)
+                            healthSummaryText = HealthInsightsManager.shared.computeDigest().summaryText
+                        }
+
+                    Text(healthSummaryText)
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(DesignTokens.Monochrome.surfaceElevated)
+                        .cornerRadius(6)
+
+                    if healthOptInToggle {
+                        HStack(spacing: 8) {
+                            Button("Import Apple Health export.xml / JSON...") {
+                                let panel = NSOpenPanel()
+                                panel.canChooseFiles = true
+                                panel.canChooseDirectories = false
+                                if panel.runModal() == .OK, let url = panel.url {
+                                    let count = HealthInsightsManager.shared.importFromFileURL(url)
+                                    healthSummaryText = "Imported \(count) sample(s). " + HealthInsightsManager.shared.computeDigest().summaryText
+                                }
+                            }
+                            .font(.system(size: 11, weight: .semibold))
+
+                            TextField("Reminder (e.g. Hydrate)", text: $healthReminderTitle)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Add Reminder") {
+                                let title = healthReminderTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !title.isEmpty else { return }
+                                _ = HealthInsightsManager.shared.addReminder(title: title, scheduleText: healthReminderSchedule)
+                                healthReminderTitle = ""
+                            }
+                            .font(.system(size: 11, weight: .semibold))
                         }
                     }
                 }

@@ -125,6 +125,11 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     
     // Active Coding Subagents State
     @Published public var activeCodingAgents: [CodingAgentTask] = []
+
+    // Phase 2: Proactive Alerts, On-Device RAG Folders & Smart Home Devices
+    @Published public var proactiveAlerts: [ProactiveAlert] = []
+    @Published public var ragIndexedFolders: [String] = []
+    @Published public var smartHomeDevices: [SmartHomeDevice] = []
     
     public enum NavTab: String, CaseIterable, Identifiable, Sendable {
         case dashboard = "Dashboard"
@@ -254,6 +259,36 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
             }
         }
         ToolApprovalCoordinator.shared.setPresenter(self)
+
+        // 10. Phase 2 Proactive Rules, RAG folders, and Smart Home state bindings
+        self.proactiveAlerts = ProactiveRulesEngine.shared.activeAlerts()
+        self.ragIndexedFolders = LocalKnowledgeStore.shared.configuredFolders()
+        self.smartHomeDevices = SmartHomeManager.shared.allDevices()
+
+        EventBus.shared.subscribe(matching: .custom("proactive_alert_raised")) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.proactiveAlerts = ProactiveRulesEngine.shared.activeAlerts()
+            }
+        }
+        EventBus.shared.subscribe(matching: .custom("proactive_alerts_changed")) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.proactiveAlerts = ProactiveRulesEngine.shared.activeAlerts()
+            }
+        }
+        EventBus.shared.subscribe(matching: .custom("smarthome_updated")) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.smartHomeDevices = SmartHomeManager.shared.allDevices()
+            }
+        }
+        EventBus.shared.subscribe(matching: .custom("rag_folder_indexed")) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.ragIndexedFolders = LocalKnowledgeStore.shared.configuredFolders()
+            }
+        }
+        let env = ProcessInfo.processInfo.environment
+        if NSApp != nil && env["VOICE_AI_TEST_MODE"] != "1" {
+            ProactiveRulesEngine.shared.startMonitoring(intervalSeconds: 60)
+        }
     }
     
     private func setupNowPlayingAndAgentBindings() {
@@ -565,6 +600,48 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
             _ = await MemoryStore.shared.forget(id: id)
             await MainActor.run {
                 self.structuredMemories = MemoryStore.shared.allItems(scope: nil)
+            }
+        }
+    }
+
+    public func refreshPhase2State() {
+        self.proactiveAlerts = ProactiveRulesEngine.shared.activeAlerts()
+        self.ragIndexedFolders = LocalKnowledgeStore.shared.configuredFolders()
+        self.smartHomeDevices = SmartHomeManager.shared.allDevices()
+    }
+
+    public func dismissProactiveAlert(id: String) {
+        ProactiveRulesEngine.shared.dismissAlert(id: id)
+        self.proactiveAlerts = ProactiveRulesEngine.shared.activeAlerts()
+    }
+
+    public func addAndIndexRAGFolder(path: String) {
+        let clean = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        LocalKnowledgeStore.shared.addFolder(path: clean)
+        self.ragIndexedFolders = LocalKnowledgeStore.shared.configuredFolders()
+        Task {
+            _ = await LocalKnowledgeStore.shared.indexFolder(path: clean)
+            await MainActor.run {
+                self.ragIndexedFolders = LocalKnowledgeStore.shared.configuredFolders()
+            }
+        }
+    }
+
+    public func removeRAGFolder(path: String) {
+        LocalKnowledgeStore.shared.removeFolder(path: path)
+        self.ragIndexedFolders = LocalKnowledgeStore.shared.configuredFolders()
+    }
+
+    public func controlSmartHomeDeviceFromUI(_ device: SmartHomeDevice, action: String) {
+        Task {
+            let toolName = device.kind.isSecurityCritical ? "smarthome_control_security" : "smarthome_control_comfort"
+            _ = await ToolRegistry.shared.invoke(
+                name: toolName,
+                arguments: ["device": device.name, "action": action]
+            )
+            await MainActor.run {
+                self.smartHomeDevices = SmartHomeManager.shared.allDevices()
             }
         }
     }

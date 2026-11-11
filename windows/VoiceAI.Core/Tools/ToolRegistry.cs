@@ -206,6 +206,50 @@ namespace VoiceAI.Core.Tools
                     args.TryGetValue("body", out var b);
                     return Task.FromResult(new ToolInvocationResult(true, $"Sent message to {r}: {b}", true, true));
                 });
+
+            Register(
+                new ToolDefinition(
+                    "rag_search_files",
+                    "Local Knowledge",
+                    "Search user-chosen local folders on-device using semantic RAG.",
+                    PermissionTier.ReadOnly,
+                    new ToolInputSchema(
+                        new Dictionary<string, ToolSchemaProperty>
+                        {
+                            ["query"] = new("string", "Semantic search query")
+                        },
+                        new[] { "query" })),
+                args =>
+                {
+                    args.TryGetValue("query", out var q);
+                    var hits = Knowledge.LocalKnowledgeEngine.Shared.Search(q ?? "", 3);
+                    string msg = hits.Count == 0
+                        ? "No matching local files found."
+                        : string.Join(" | ", hits.Select(h => $"{h.Chunk.FileName}: {h.Chunk.Snippet}"));
+                    return Task.FromResult(new ToolInvocationResult(true, msg, false, true));
+                });
+
+            Register(
+                new ToolDefinition(
+                    "smarthome_control_security",
+                    "Smart Home Security",
+                    "Unlock/disarm smart locks or alarms (CONSEQUENTIAL Approval Card required).",
+                    PermissionTier.Consequential,
+                    new ToolInputSchema(
+                        new Dictionary<string, ToolSchemaProperty>
+                        {
+                            ["device"] = new("string", "Lock or alarm device"),
+                            ["action"] = new("string", "lock, unlock, arm, disarm")
+                        },
+                        new[] { "device", "action" })),
+                async args =>
+                {
+                    args.TryGetValue("device", out var d);
+                    args.TryGetValue("action", out var a);
+                    var res = await SmartHome.SmartHomeCoordinator.Shared.ExecuteAsync(
+                        d ?? "", a ?? "lock", null, (_, _) => Task.FromResult(true));
+                    return new ToolInvocationResult(res.Success, res.Summary, true, true);
+                });
         }
     }
 }

@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Phase 2 — Proactive Assistant] - 2026-11-11
+
+### Added
+- **Proactive Alert Rules Engine** (`ProactiveRulesEngine.swift`, `ProactiveRuleManaging`, Windows `ProactiveRulesEngine.cs`): EventBus-driven, cooldown rate-limited rules raising dismissable alerts in the Notch HUD & Settings for low battery, high CPU/memory load, failed builds, calendar conflicts, and important emails.
+- **Unified Calendar, Email & Messages Workflows** (`CalendarMessagesService.swift`, `CommunicationAndCalendarManaging`, `ToolRegistry.swift`): Added `calendar_summarize` (with conflict detection onto `EventBus`), `calendar_create_event`, `mail_summarize`, `messages_read`, `messages_draft`, and `messages_send` (`CONSEQUENTIAL` Notch Approval Card gated).
+- **On-Device Local File & Knowledge Search (RAG)** (`LocalKnowledgeStore.swift`, `LocalKnowledgeSearching`, Windows `LocalKnowledgeEngine.cs`): Indexes user-chosen local folders with overlapping 520-char chunking, `SecretRedactor` secret scrubbing, and `LocalEmbeddingProvider` semantic search (`rag_search_files`, `rag_index_folder`).
+- **Vision-Language Screen Understanding & Finished Circle-to-Ask Beacon** (`ScreenVisionService.swift`, `AutonomousAgentExecutor.swift`, `NotchGlassIslandView.swift`): Added `understandScreenQuestion` combining local/opt-in-cloud VLM with Apple Vision OCR diagnostics (`"What does this error mean?"`, `"Which button should I click?"`), visible On-Device/Cloud Opt-In privacy badge, and beacon chips.
+- **Smart Home Integration (Home Assistant / HomeKit / MQTT)** (`SmartHomeManager.swift`, Windows `SmartHomeCoordinator.cs`, `KeychainService.swift`, `SecretRedactor.swift`): Keychain-backed credentials, JWT scrubbing, `REVERSIBLE` comfort device controls (`smarthome_control_comfort`), and strict `CONSEQUENTIAL` Notch Approval gating for locks/security alarms (`smarthome_control_security`).
+- **Opt-In Apple Health & Wearables Import** (`HealthInsightsManager.swift`, Windows `HealthInsightsEngine.cs`, `SettingsView.swift`): Privacy-first opt-in `export.xml` & JSON importer, daily digest, wellness reminders, and automated trend warnings (elevated resting HR, sleep deficit, activity drop).
+- **Automated Phase 2 Tests**: Added `Suite 35` in `Tests/core/test_core.swift` and `Suite 12` in `windows/tests/VoiceAI.Core.Tests/TestRunner.cs`.
+
+---
+
 ## [Phase 1 — JARVIS Feel] - 2026-11-11
 
 ### Added

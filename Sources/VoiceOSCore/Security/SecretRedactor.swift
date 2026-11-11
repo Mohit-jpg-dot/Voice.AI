@@ -20,6 +20,7 @@ public enum SecretRedactor {
         (#"https://discord(?:app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]+"#, "[REDACTED_WEBHOOK]"),
         // Bearer tokens & generic key=value / secret=value assignments
         (#"Bearer\s+[A-Za-z0-9._~+/-]{8,}"#, "Bearer [REDACTED_TOKEN]"),
+        (#"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"#, "[REDACTED_JWT]"),
         (#"(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*[^\s,;\"'&]{8,}"#, "$1=[REDACTED_API_KEY]"),
         // Payment card numbers
         (#"\b(?:\d[ -]*?){13,16}\b"#, "[REDACTED_CARD]")

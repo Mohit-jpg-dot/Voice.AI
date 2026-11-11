@@ -215,26 +215,38 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         }
         
         // -------------------------------------------------------------
-        // Step 0: Circle-to-Ask Visual + OCR Region Analysis
+        // Step -0.25: Phase 2 Voice Commands (Proactive, Calendar/Mail/Messages, RAG, Smart Home, Health)
+        // -------------------------------------------------------------
+        if let phase2Result = await handlePhase2VoiceCommandIfPresent(trimmed) {
+            await MemoryStore.shared.remember(content: "Q: \(trimmed) | A: \(phase2Result.summary.prefix(160))", scope: .shortTerm, kind: .turn, tags: [phase2Result.targetAppName])
+            return phase2Result
+        }
+
+        // -------------------------------------------------------------
+        // Step 0: Circle-to-Ask Visual (VLM + OCR) Region Analysis
         // -------------------------------------------------------------
         if let crop = screenCrop, ModelRouter.shared.currentMode != .googleSearch {
             onProgress?("Analyzing selected screen region...")
-            if let analysis = await analyzeScreenWithActiveModel(
+            let visionResult = await ScreenVisionService.shared.understandScreenQuestion(
                 pngData: crop.capturedImagePNGData,
                 ocrText: crop.extractedOCRText,
                 appName: crop.sourceAppName ?? "Screen",
-                sourceLabel: crop.toolUsed.rawValue,
                 question: trimmed
-            ) {
-                LocalMemoryManager.shared.remember(content: "[Circle to Ask] \(trimmed) -> \(analysis.summary)", category: "task", tags: ["Circle to Ask"])
-                return AutonomousExecutionResult(
-                    success: true,
-                    summary: analysis.summary,
-                    targetAppName: crop.sourceAppName ?? "Circle to Ask",
-                    targetURL: nil,
-                    executedSteps: ["Captured \(crop.toolUsed.rawValue) region", "Analyzed via \(analysis.usedProvider)"]
-                )
+            )
+            let formattedSummary: String
+            if let btn = visionResult.targetButtonLabel, !visionResult.answer.localizedCaseInsensitiveContains(btn) {
+                formattedSummary = "\(visionResult.answer) (Suggested control: \(btn)) [\(visionResult.privacyBadge)]"
+            } else {
+                formattedSummary = "\(visionResult.answer) [\(visionResult.privacyBadge)]"
             }
+            LocalMemoryManager.shared.remember(content: "[Circle to Ask] \(trimmed) -> \(formattedSummary)", category: "task", tags: ["Circle to Ask"])
+            return AutonomousExecutionResult(
+                success: true,
+                summary: PersonaManager.shared.formatResponse(baseResponse: formattedSummary),
+                targetAppName: crop.sourceAppName ?? "Circle to Ask",
+                targetURL: nil,
+                executedSteps: ["Captured \(crop.toolUsed.rawValue) region", "Analyzed via \(visionResult.providerLabel)"]
+            )
         }
         
         // -------------------------------------------------------------
@@ -952,5 +964,184 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             parts.append("Relevant recalled user memory:\n\(bullets)")
         }
         return parts.joined(separator: "\n\n")
+    }
+
+    // MARK: - Phase 2 Proactive, Calendar, RAG, Smart Home & Health Routing
+
+    private func handlePhase2VoiceCommandIfPresent(_ trimmed: String) async -> AutonomousExecutionResult? {
+        let lower = HinglishTransliterator.normalize(trimmed)
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let lang = PersonaManager.shared.detectedLanguageCode(for: trimmed)
+
+        // 1. Proactive Alerts Status
+        if lower.contains("proactive alert") || lower.contains("system alert") || lower.contains("any alert") || lower.contains("kya alert") {
+            let res = await ToolRegistry.shared.invoke(name: "proactive_alerts_status", arguments: [:])
+            return AutonomousExecutionResult(
+                success: res.success,
+                summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                targetAppName: "Proactive Engine",
+                targetURL: nil,
+                executedSteps: ["Checked EventBus proactive alerts"]
+            )
+        }
+
+        // 2. Smart Home (Locks/Security -> CONSEQUENTIAL, Lights/Thermostat/Scenes -> REVERSIBLE)
+        if lower.contains("smart home") || lower.contains("home status") ||
+           lower.contains("door lock") || lower.contains("front door") || lower.contains("security alarm") ||
+           lower.contains("darwaza") || lower.contains("thermostat") ||
+           lower.contains("living room light") || lower.contains("bedroom light") ||
+           lower.contains("movie night scene") || lower.contains("kamre ki light") {
+            if lower.contains("status") || lower.contains("check") || lower.contains("dikhao") {
+                let res = await ToolRegistry.shared.invoke(name: "smarthome_status", arguments: [:])
+                return AutonomousExecutionResult(
+                    success: res.success,
+                    summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                    targetAppName: "Smart Home",
+                    targetURL: nil,
+                    executedSteps: ["Queried smart home device status"]
+                )
+            }
+
+            let isSecurity = lower.contains("lock") || lower.contains("door") || lower.contains("darwaza") || lower.contains("alarm") || lower.contains("security")
+            let deviceQuery: String
+            if lower.contains("front") || lower.contains("door") || lower.contains("lock") || lower.contains("darwaza") {
+                deviceQuery = "Front Door Lock"
+            } else if lower.contains("alarm") || lower.contains("security") {
+                deviceQuery = "Home Security Alarm"
+            } else if lower.contains("thermostat") {
+                deviceQuery = "Main Thermostat"
+            } else if lower.contains("bedroom") {
+                deviceQuery = "Bedroom Lights"
+            } else if lower.contains("movie") || lower.contains("scene") {
+                deviceQuery = "Movie Night Scene"
+            } else {
+                deviceQuery = "Living Room Lights"
+            }
+
+            var action = "on"
+            var value = ""
+            if lower.contains("unlock") || (isSecurity && lower.contains("kholo")) {
+                action = "unlock"
+            } else if isSecurity && (lower.contains("disarm") || lower.contains("band") || lower.contains("off")) {
+                action = "disarm"
+            } else if isSecurity && lower.contains("arm") {
+                action = "arm"
+            } else if isSecurity {
+                action = "lock"
+            } else if lower.contains("thermostat") {
+                action = "set_temperature"
+                let digits = lower.components(separatedBy: CharacterSet.decimalDigits.inverted).filter { !$0.isEmpty }
+                value = digits.first ?? "22"
+            } else if lower.contains("scene") {
+                action = "activate"
+            } else if lower.contains("off") || lower.contains("band") || lower.contains("bujhao") {
+                action = "off"
+            }
+
+            let toolName = isSecurity ? "smarthome_control_security" : "smarthome_control_comfort"
+            var args: [String: String] = ["device": deviceQuery, "action": action]
+            if !value.isEmpty { args["value"] = value }
+            let res = await ToolRegistry.shared.invoke(name: toolName, arguments: args)
+            return AutonomousExecutionResult(
+                success: res.success,
+                summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                targetAppName: isSecurity ? "Smart Home Security" : "Smart Home",
+                targetURL: nil,
+                executedSteps: ["Smart Home [\(isSecurity ? "CONSEQUENTIAL" : "REVERSIBLE")]: \(deviceQuery) -> \(action)"]
+            )
+        }
+
+        // 3. Calendar Summarize / Create Event
+        if lower.contains("calendar") || lower.contains("meeting schedule") || lower.contains("aaj ki meeting") {
+            if lower.contains("schedule ") || lower.contains("create ") || lower.contains("add ") {
+                let title = trimmed
+                    .replacingOccurrences(of: "schedule calendar event", with: "", options: .caseInsensitive)
+                    .replacingOccurrences(of: "create calendar event", with: "", options: .caseInsensitive)
+                    .replacingOccurrences(of: "add to calendar", with: "", options: .caseInsensitive)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let res = await ToolRegistry.shared.invoke(name: "calendar_create_event", arguments: ["title": title.isEmpty ? "New Event" : title])
+                return AutonomousExecutionResult(
+                    success: res.success,
+                    summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                    targetAppName: "Apple Calendar",
+                    targetURL: nil,
+                    executedSteps: ["Calendar [REVERSIBLE]: created event"]
+                )
+            }
+            let range = lower.contains("week") || lower.contains("hafte") ? "week" : "today"
+            let res = await ToolRegistry.shared.invoke(name: "calendar_summarize", arguments: ["range": range])
+            return AutonomousExecutionResult(
+                success: res.success,
+                summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                targetAppName: "Apple Calendar",
+                targetURL: nil,
+                executedSteps: ["Calendar [READ_ONLY]: summarized \(range) events"]
+            )
+        }
+
+        // 4. Email Summary & Messages Read/Draft/Send
+        if lower.contains("summarize") && (lower.contains("mail") || lower.contains("email") || lower.contains("inbox")) {
+            let res = await ToolRegistry.shared.invoke(name: "mail_summarize", arguments: [:])
+            return AutonomousExecutionResult(
+                success: res.success,
+                summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                targetAppName: "Apple Mail",
+                targetURL: nil,
+                executedSteps: ["Mail [READ_ONLY]: summarized recent inbox"]
+            )
+        }
+
+        if lower.contains("read messages") || lower.contains("summarize messages") || lower.contains("messages padho") || lower.contains("check imessage") {
+            let res = await ToolRegistry.shared.invoke(name: "messages_read", arguments: [:])
+            return AutonomousExecutionResult(
+                success: res.success,
+                summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                targetAppName: "Messages",
+                targetURL: nil,
+                executedSteps: ["Messages [READ_ONLY]: read threads"]
+            )
+        }
+
+        // 5. Local File & Knowledge Search (On-Device RAG)
+        let ragPrefixes = ["search local files for ", "search files for ", "local search ", "search knowledge ", "rag search ", "file dhoondo "]
+        for prefix in ragPrefixes {
+            if lower.hasPrefix(prefix) {
+                let query = String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                let res = await ToolRegistry.shared.invoke(name: "rag_search_files", arguments: ["query": query])
+                return AutonomousExecutionResult(
+                    success: res.success,
+                    summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                    targetAppName: "Local Knowledge",
+                    targetURL: nil,
+                    executedSteps: ["RAG [READ_ONLY]: searched on-device indexed folders"]
+                )
+            }
+        }
+
+        // 6. Opt-In Apple Health Summary & Wellness Reminders
+        if lower.contains("health summary") || lower.contains("check my health") || lower.contains("meri health") || lower.contains("fitness summary") || lower.contains("resting heart rate") {
+            let res = await ToolRegistry.shared.invoke(name: "health_summary", arguments: [:])
+            return AutonomousExecutionResult(
+                success: res.success,
+                summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                targetAppName: "Apple Health",
+                targetURL: nil,
+                executedSteps: ["Apple Health [READ_ONLY]: computed opt-in on-device digest"]
+            )
+        }
+        if lower.hasPrefix("add health reminder ") || lower.hasPrefix("remind me to ") && (lower.contains("water") || lower.contains("medicine") || lower.contains("stretch") || lower.contains("walk")) {
+            let title = trimmed.replacingOccurrences(of: "add health reminder", with: "", options: .caseInsensitive).trimmingCharacters(in: .whitespacesAndNewlines)
+            let res = await ToolRegistry.shared.invoke(name: "health_add_reminder", arguments: ["title": title, "schedule": "Daily"])
+            return AutonomousExecutionResult(
+                success: res.success,
+                summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                targetAppName: "Apple Health",
+                targetURL: nil,
+                executedSteps: ["Apple Health [REVERSIBLE]: added reminder"]
+            )
+        }
+
+        return nil
     }
 }

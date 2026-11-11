@@ -186,6 +186,33 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         onProgress: (@Sendable (String) -> Void)? = nil
     ) async -> AutonomousExecutionResult {
         let trimmed = taskDescription.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+
+        if PersonaManager.shared.evaluateSafetyGuardrail(userInput: trimmed) {
+            return AutonomousExecutionResult(
+                success: true,
+                summary: "Understood — switching to calm assistant mode.",
+                targetAppName: "Persona",
+                targetURL: nil,
+                executedSteps: ["Adjusted tone via persona safety guardrail"]
+            )
+        }
+
+        // -------------------------------------------------------------
+        // Step -1: Remember / Forget / Recall Long-Term Memory Voice Commands
+        // -------------------------------------------------------------
+        if let memoryResult = await handleMemoryVoiceCommandIfPresent(trimmed) {
+            return memoryResult
+        }
+
+        // -------------------------------------------------------------
+        // Step -0.5: User & Built-in Routines / Macros ("good morning", "focus mode", "house party protocol")
+        // -------------------------------------------------------------
+        if let matchedRoutine = RoutineManager.shared.matchRoutine(for: trimmed) {
+            onProgress?("Running routine: \(matchedRoutine.name)...")
+            let routineRes = await RoutineManager.shared.runRoutine(matchedRoutine, onProgress: onProgress)
+            await MemoryStore.shared.remember(content: "Ran routine '\(matchedRoutine.name)'", scope: .shortTerm, kind: .turn, tags: ["routine"])
+            return routineRes
+        }
         
         // -------------------------------------------------------------
         // Step 0: Circle-to-Ask Visual + OCR Region Analysis
@@ -234,22 +261,28 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         if triggerMode == .dictation && ModelRouter.shared.currentMode != .googleSearch {
             onProgress?("Thinking...")
             let chatModel = ModelRouter.shared.resolveChatModel()
+            let fnSystem = await buildPersonaAndMemorySystemPrompt(
+                basePrompt: "You are Voice.AI in Conversation Mode (triggered by Fn key). Be helpful, natural, and concise.",
+                forQuery: trimmed
+            )
             do {
                 let text = try await generateChatResponse(
                     model: chatModel,
-                    systemPrompt: "You are Voice.AI in Conversation Mode (triggered by Fn key). Provide helpful, natural, friendly, concise answers. Be direct and avoid fluff.",
+                    systemPrompt: fnSystem,
                     userPrompt: trimmed,
                     onPartialReply: onPartialReply
                 )
                 if !text.isEmpty {
+                    let styled = PersonaManager.shared.formatResponse(text, language: PersonaManager.shared.detectedLanguageCode(for: trimmed))
+                    await MemoryStore.shared.remember(content: "Q: \(trimmed) | A: \(styled.prefix(180))", scope: .shortTerm, kind: .turn, tags: ["fn_conversation"])
                     LocalMemoryManager.shared.remember(
-                        content: "\(trimmed) -> \(text)",
+                        content: "\(trimmed) -> \(styled)",
                         category: "task",
                         tags: ["Conversation (Fn)"]
                     )
                     return AutonomousExecutionResult(
                         success: true,
-                        summary: text,
+                        summary: styled,
                         targetAppName: "Voice.AI Conversation",
                         targetURL: nil,
                         executedSteps: ["Conversation Mode (Fn Key)", "Synthesized response via \(chatModel.providerName) (\(chatModel.modelIdentifier))"]
@@ -364,28 +397,34 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 }
             }
             
-            // 3. Direct General AI Reasoning with live token streaming
+            // 3. Direct General AI Reasoning with live token streaming + Persona & Long-Term Memory Recall
             onProgress?("Thinking...")
             let chatModel = ModelRouter.shared.resolveChatModel()
+            let chatSystem = await buildPersonaAndMemorySystemPrompt(
+                basePrompt: "You are Voice.AI, a fast, capable personal assistant for macOS.",
+                forQuery: trimmed
+            )
             do {
                 let text = try await generateChatResponse(
                     model: chatModel,
-                    systemPrompt: "You are Voice.AI, a fast, helpful voice assistant for macOS. Provide clear, accurate, concise answers.",
+                    systemPrompt: chatSystem,
                     userPrompt: trimmed,
                     onPartialReply: onPartialReply
                 )
                 if !text.isEmpty {
+                    let styled = PersonaManager.shared.formatResponse(text, language: PersonaManager.shared.detectedLanguageCode(for: trimmed))
+                    await MemoryStore.shared.remember(content: "Q: \(trimmed) | A: \(styled.prefix(180))", scope: .shortTerm, kind: .turn, tags: ["brain"])
                     LocalMemoryManager.shared.remember(
-                        content: "\(trimmed) -> \(text)",
+                        content: "\(trimmed) -> \(styled)",
                         category: "task",
                         tags: ["Brain"]
                     )
                     return AutonomousExecutionResult(
                         success: true,
-                        summary: text,
+                        summary: styled,
                         targetAppName: "Voice.AI Brain",
                         targetURL: nil,
-                        executedSteps: ["Consulted \(chatModel.providerName) (\(chatModel.modelIdentifier))", "Synthesized response"]
+                        executedSteps: ["Consulted \(chatModel.providerName) (\(chatModel.modelIdentifier))", "Recalled memory & applied persona"]
                     )
                 }
             } catch {
@@ -798,5 +837,120 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             let isAction = item["is_action"] as? Bool ?? false
             return BrainSuggestion(title: title, prompt: prompt, isAction: isAction)
         }
+    }
+
+    // MARK: - Phase 1 Long-Term Memory Voice Commands & Persona Prompt Context
+
+    private func handleMemoryVoiceCommandIfPresent(_ trimmed: String) async -> AutonomousExecutionResult? {
+        let lower = trimmed.lowercased()
+
+        // 1. "Remember this ..." / "Remember that ..." / "Yaad rakhna ..."
+        let rememberPrefixes = [
+            "remember this:", "remember this ", "remember that ", "remember ",
+            "yaad rakhna ki ", "yaad rakhna ", "ise yaad rakho ", "yaad rakho "
+        ]
+        for prefix in rememberPrefixes {
+            if lower.hasPrefix(prefix) {
+                let fact = String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !fact.isEmpty else { break }
+                let kind: MemoryFactKind
+                let fLower = fact.lowercased()
+                if fLower.contains("prefer") || fLower.contains("favorite") || fLower.contains("pasand") {
+                    kind = .preference
+                } else if fLower.contains("project") || fLower.contains("working on") || fLower.contains("repo") {
+                    kind = .project
+                } else if fLower.contains("friend") || fLower.contains("boss") || fLower.contains("manager") || fLower.contains("email") {
+                    kind = .person
+                } else {
+                    kind = .fact
+                }
+                let saved = await MemoryStore.shared.remember(content: fact, scope: .longTerm, kind: kind, tags: ["voice"])
+                let reply = PersonaManager.shared.formatResponse(
+                    "Remembered: \"\(saved.content)\"",
+                    language: PersonaManager.shared.detectedLanguageCode(for: trimmed)
+                )
+                return AutonomousExecutionResult(
+                    success: true,
+                    summary: reply,
+                    targetAppName: "Memory",
+                    targetURL: nil,
+                    executedSteps: ["Stored encrypted \(kind.rawValue) in MemoryStore"]
+                )
+            }
+        }
+
+        // 2. "Forget this ..." / "Forget about ..." / "Bhool jao ..."
+        let forgetPrefixes = [
+            "forget about ", "forget that ", "forget this ", "forget ",
+            "bhool jao ", "ise bhool jao ", "yaad mat rakhna "
+        ]
+        for prefix in forgetPrefixes {
+            if lower.hasPrefix(prefix) {
+                let target = String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                let removed: Int
+                if target.isEmpty || target.lowercased() == "it" || target.lowercased() == "this" || target.lowercased() == "that" {
+                    if let latest = MemoryStore.shared.allItems(scope: .longTerm).first {
+                        let ok = await MemoryStore.shared.forget(id: latest.id)
+                        removed = ok ? 1 : 0
+                    } else {
+                        removed = 0
+                    }
+                } else {
+                    removed = await MemoryStore.shared.forget(matching: target)
+                }
+                let msg = removed > 0
+                    ? "Removed \(removed) matching item(s) from your memory."
+                    : "No saved memory matched '\(target)'."
+                return AutonomousExecutionResult(
+                    success: true,
+                    summary: PersonaManager.shared.formatResponse(msg, language: PersonaManager.shared.detectedLanguageCode(for: trimmed)),
+                    targetAppName: "Memory",
+                    targetURL: nil,
+                    executedSteps: ["Updated encrypted MemoryStore (removed \(removed))"]
+                )
+            }
+        }
+
+        // 3. "What do you remember about ..." / "Show my memories ..."
+        if lower.hasPrefix("what do you remember") || lower.contains("kya yaad hai") || lower == "my memories" || lower == "list my memories" {
+            let query = trimmed
+                .replacingOccurrences(of: "what do you remember about", with: "", options: .caseInsensitive)
+                .replacingOccurrences(of: "what do you remember", with: "", options: .caseInsensitive)
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            let items: [StructuredMemoryItem]
+            if query.isEmpty {
+                items = Array(MemoryStore.shared.allItems(scope: .longTerm).prefix(5))
+            } else {
+                items = await MemoryStore.shared.searchSemantic(query: query, scope: .longTerm, limit: 5).map { $0.item }
+            }
+            let summary = items.isEmpty
+                ? "I don't have any saved long-term memories matching that yet."
+                : "Here is what I remember:\n" + items.map { "• [\($0.kind.rawValue)] \($0.content)" }.joined(separator: "\n")
+            return AutonomousExecutionResult(
+                success: true,
+                summary: summary,
+                targetAppName: "Memory",
+                targetURL: nil,
+                executedSteps: ["Queried encrypted MemoryStore (\(items.count) result(s))"]
+            )
+        }
+
+        return nil
+    }
+
+    private func buildPersonaAndMemorySystemPrompt(basePrompt: String, forQuery query: String) async -> String {
+        let personaDirectives = PersonaManager.shared.systemPromptDirectives(forUserQuery: query)
+        let profile = MemoryStore.shared.userProfile()
+        let hits = await MemoryStore.shared.searchSemantic(query: query, scope: .longTerm, limit: 3)
+
+        var parts = [basePrompt, personaDirectives]
+        if !profile.displayName.isEmpty && profile.displayName != "User" {
+            parts.append("User display name: \(profile.displayName).")
+        }
+        if !hits.isEmpty {
+            let bullets = hits.map { "- \($0.item.content)" }.joined(separator: "\n")
+            parts.append("Relevant recalled user memory:\n\(bullets)")
+        }
+        return parts.joined(separator: "\n\n")
     }
 }

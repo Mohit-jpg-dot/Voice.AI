@@ -837,6 +837,120 @@ assertEqual(forgotCount, 1, "MemoryStore.forget removes matching entry cleanly")
 memStore.clearAccountMemory(accountId: acctA)
 memStoreB.clearAccountMemory(accountId: acctB)
 
+// =========================================================================
+// [Suite 34] Phase 1: JARVIS Feel (Wake Word, Streaming TTS Barge-In, Persona, Routines)
+// =========================================================================
+print("\n[Suite 34] Phase 1: JARVIS Feel (Wake Word, Streaming TTS, Persona & Routines)")
+
+// 1. Configurable Wake-Word Extraction (English & Hinglish)
+assertEqual(
+    TheVoiceAmbientListener.extractCommand(from: "Jarvis, open Terminal", wakePhrase: "jarvis"),
+    "open Terminal",
+    "Configurable wake phrase 'jarvis' extracts trailing command cleanly"
+)
+assertEqual(
+    TheVoiceAmbientListener.extractCommand(from: "hey friday check battery", wakePhrase: "friday"),
+    "check battery",
+    "Custom wake phrase 'friday' extracts trailing command cleanly"
+)
+assertEqual(
+    TheVoiceAmbientListener.extractCommand(from: "jarvis gana bajao", wakePhrase: "jarvis"),
+    "gana bajao",
+    "Wake phrase supports Hinglish commands"
+)
+
+// 2. Streaming TTS Chunking, Barge-In Generation & Selectable Kokoro Voice
+let chunks = SpeechPipelineEngine.splitIntoSpeakableChunks(
+    "Systems nominal, sir. CPU load is 14 percent! Ready for instructions?"
+)
+assertEqual(chunks.count, 3, "Streaming TTS splits multi-sentence text into 3 speakable chunks")
+let genBeforeBargeIn = SpeechPipelineEngine.shared.currentTTSGeneration()
+SpeechPipelineEngine.shared.bargeIn()
+let genAfterBargeIn = SpeechPipelineEngine.shared.currentTTSGeneration()
+assertTrue(genAfterBargeIn > genBeforeBargeIn, "SpeechPipelineEngine.bargeIn increments generation to cancel queued chunks")
+
+let previousVoice = KokoroTTSEngine.shared.selectedVoiceId
+KokoroTTSEngine.shared.selectedVoiceId = "bm_george"
+assertEqual(KokoroTTSEngine.shared.selectedVoiceId, "bm_george", "KokoroTTSEngine persists selectable voice preset")
+KokoroTTSEngine.shared.selectedVoiceId = previousVoice
+
+// 3. JARVIS Persona Directives, Probability Warnings & Hindi/Hinglish Support
+let origPersonaConfig = PersonaManager.shared.currentConfiguration()
+PersonaManager.shared.updateConfiguration { cfg in
+    cfg.activePersona = .jarvis
+    cfg.humorLevel = 0.6
+    cfg.honestProbabilityEstimates = true
+    cfg.politeWarningsEnabled = true
+    cfg.languageStyle = "auto"
+}
+let enDirective = PersonaManager.shared.systemPromptDirectives(forUserQuery: "check my battery")
+assertTrue(enDirective.contains("JARVIS") && enDirective.contains("likelihood estimate"), "JARVIS directives include persona tone and probability guidance")
+
+let hiDirective = PersonaManager.shared.systemPromptDirectives(forUserQuery: "मेरा सिस्टम चेक करो")
+assertTrue(hiDirective.contains("Hindi"), "PersonaManager adapts prompt directives for Devanagari Hindi")
+
+let hinglishDirective = PersonaManager.shared.systemPromptDirectives(forUserQuery: "bhai mera volume badhao")
+assertTrue(hinglishDirective.contains("Hinglish"), "PersonaManager adapts prompt directives for Roman Hinglish")
+
+let terminalRisk = PersonaManager.shared.assessActionConfidenceAndWarning(
+    toolName: "terminal_run",
+    tier: .consequential,
+    target: "rm -rf build",
+    languageHint: "en"
+)
+assertTrue(terminalRisk.probabilityPercent < 90 && (terminalRisk.warning?.contains("~") ?? false), "Consequential action returns honest probability estimate and polite caution")
+
+let safeRead = PersonaManager.shared.assessActionConfidenceAndWarning(
+    toolName: "math_evaluate",
+    tier: .readOnly,
+    target: "",
+    languageHint: "en"
+)
+assertTrue(safeRead.probabilityPercent >= 90 && safeRead.warning == nil, "Read-only action needs no warning")
+PersonaManager.shared.updateConfiguration { cfg in cfg = origPersonaConfig }
+
+// 4. Routines & Protocols (English + Hinglish matching, custom CRUD & approval gate)
+let routineManager = RoutineManager.shared
+assertTrue(routineManager.allRoutines().count >= 3, "RoutineManager initializes built-in Good Morning, Focus Mode, and House Party protocols")
+assertEqual(routineManager.matchRoutine(for: "Good morning")?.id, "builtin_good_morning", "Matches Good Morning briefing routine")
+assertEqual(routineManager.matchRoutine(for: "kaam khatam")?.id, "builtin_house_party", "Matches Hinglish House Party trigger phrase")
+
+let customRoutineId = "test_routine_\(UUID().uuidString)"
+let customRoutine = VoiceRoutine(
+    id: customRoutineId,
+    name: "Test Protocol",
+    triggerPhrases: ["run test protocol"],
+    summary: "Unit test routine",
+    isEnabled: true,
+    isBuiltIn: false,
+    steps: [
+        VoiceRoutineStep(title: "Risky Terminal Step", actionPrompt: "echo hello", permissionTier: .consequential)
+    ]
+)
+routineManager.saveRoutine(customRoutine)
+assertEqual(routineManager.matchRoutine(for: "run test protocol")?.id, customRoutineId, "Custom routine saved and matched by trigger phrase")
+
+final class ApprovalProbabilityRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    var sawProbability: Bool = false
+    func record(_ val: Bool) {
+        lock.withLock { sawProbability = sawProbability || val }
+    }
+}
+let probRecorder = ApprovalProbabilityRecorder()
+ToolApprovalCoordinator.shared.setTestResponder { action in
+    let hasProb = (action.subtitle?.contains("~") ?? false) && action.payload["estimated_confidence"] != nil
+    probRecorder.record(hasProb)
+    return false
+}
+let blockedRoutineResult = await routineManager.runRoutine(customRoutine, onProgress: nil)
+assertTrue(probRecorder.sawProbability, "Notch Approval Card receives honest probability estimate and caution subtitle")
+assertTrue(!blockedRoutineResult.success && blockedRoutineResult.summary.contains("Cancelled pending approval"), "Routine blocks consequential step when Notch Approval is denied")
+ToolApprovalCoordinator.shared.setTestResponder(nil)
+
+routineManager.deleteRoutine(id: customRoutineId)
+assertTrue(routineManager.matchRoutine(for: "run test protocol") == nil, "Custom routine deleted cleanly")
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

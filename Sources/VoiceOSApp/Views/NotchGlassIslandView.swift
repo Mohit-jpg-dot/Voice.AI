@@ -13,6 +13,10 @@ public struct NotchGlassIslandView: View {
     @State private var dragOffset: CGFloat = 0.0
     @State private var expandedMessage: ChatMessage? = nil
     @State private var isCompactMode: Bool = true
+    @State private var memorySearchText: String = ""
+    @State private var newMemoryText: String = ""
+    @State private var memoryTabFilter: String = "Long-Term"
+    @State private var semanticMemoryMatches: [StructuredMemoryItem] = []
     
     public init(appState: AppState) {
         self.appState = appState
@@ -2164,33 +2168,173 @@ public struct NotchGlassIslandView: View {
     
     // MARK: - Memory Tab View
     private var memoryTabView: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Recent Voice Sessions & Shortcuts")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(Color.white.opacity(0.6))
-            
+        let filteredItems: [StructuredMemoryItem] = {
+            if !memorySearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !semanticMemoryMatches.isEmpty {
+                let targetScope: MemoryScope? = memoryTabFilter == "Long-Term" ? .longTerm : (memoryTabFilter == "Short-Term" ? .shortTerm : nil)
+                return semanticMemoryMatches.filter { targetScope == nil || $0.scope == targetScope }
+            }
+            let targetScope: MemoryScope = memoryTabFilter == "Short-Term" ? .shortTerm : .longTerm
+            let query = memorySearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return appState.structuredMemories.filter { item in
+                guard item.scope == targetScope else { return false }
+                if query.isEmpty { return true }
+                return item.content.lowercased().contains(query) || item.kind.rawValue.lowercased().contains(query)
+            }
+        }()
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                ForEach(["Long-Term", "Short-Term", "Sessions"], id: \.self) { tab in
+                    Button(action: {
+                        memoryTabFilter = tab
+                        appState.refreshPhase1State()
+                    }) {
+                        Text(tab)
+                            .font(.system(size: 9.5, weight: memoryTabFilter == tab ? .bold : .medium))
+                            .foregroundColor(memoryTabFilter == tab ? .black : .white.opacity(0.75))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(memoryTabFilter == tab ? Color.cyan : Color.white.opacity(0.08))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer()
+
+                if memoryTabFilter != "Sessions" {
+                    HStack(spacing: 4) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 9))
+                            .foregroundColor(.white.opacity(0.45))
+                        TextField("Recall...", text: $memorySearchText)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 10))
+                            .foregroundColor(.white)
+                            .frame(width: 90)
+                            .onChange(of: memorySearchText) { _, newValue in
+                                let q = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if q.isEmpty {
+                                    semanticMemoryMatches = []
+                                } else {
+                                    Task {
+                                        let hits = await MemoryStore.shared.searchSemantic(query: q, scope: nil, limit: 8)
+                                        await MainActor.run {
+                                            if memorySearchText.trimmingCharacters(in: .whitespacesAndNewlines) == q {
+                                                semanticMemoryMatches = hits.map { $0.item }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(6)
+                }
+            }
+
+            if memoryTabFilter != "Sessions" {
+                HStack(spacing: 6) {
+                    TextField("Remember a fact or preference...", text: $newMemoryText)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 10))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(6)
+                        .onSubmit {
+                            let clean = newMemoryText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !clean.isEmpty else { return }
+                            appState.rememberNoteFromUI(clean, kind: .fact)
+                            newMemoryText = ""
+                        }
+
+                    Button(action: {
+                        let clean = newMemoryText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !clean.isEmpty else { return }
+                        appState.rememberNoteFromUI(clean, kind: .fact)
+                        newMemoryText = ""
+                    }) {
+                        Text("Remember")
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.cyan)
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 4) {
-                    ForEach(appState.recentHistory.prefix(4)) { session in
-                        HStack {
-                            Image(systemName: session.appIcon)
-                                .font(.system(size: 9))
-                                .foregroundColor(Color.cyan)
-                            Text(session.prompt)
-                                .font(.system(size: 10))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                            Spacer()
-                            Text(session.appName)
-                                .font(.system(size: 9))
-                                .foregroundColor(Color.white.opacity(0.45))
+                    if memoryTabFilter == "Sessions" {
+                        ForEach(appState.recentHistory.prefix(6)) { session in
+                            HStack {
+                                Image(systemName: session.appIcon)
+                                    .font(.system(size: 9))
+                                    .foregroundColor(Color.cyan)
+                                Text(session.prompt)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text(session.appName)
+                                    .font(.system(size: 9))
+                                    .foregroundColor(Color.white.opacity(0.45))
+                            }
+                            .padding(6)
+                            .background(Color.white.opacity(0.04))
+                            .cornerRadius(6)
                         }
-                        .padding(6)
-                        .background(Color.white.opacity(0.04))
-                        .cornerRadius(6)
+                    } else if filteredItems.isEmpty {
+                        Text(memorySearchText.isEmpty ? "No memories saved in this scope yet. Say \"Remember that...\" or add one above." : "No matching memories found.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.white.opacity(0.5))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 8)
+                    } else {
+                        ForEach(filteredItems.prefix(8)) { item in
+                            HStack(spacing: 6) {
+                                Text(item.kind.rawValue.uppercased())
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(.cyan)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .background(Color.cyan.opacity(0.14))
+                                    .cornerRadius(4)
+
+                                Text(item.content)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.white)
+                                    .lineLimit(2)
+
+                                Spacer()
+
+                                Button(action: {
+                                    appState.forgetMemoryFromUI(id: item.id)
+                                }) {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.white.opacity(0.45))
+                                }
+                                .buttonStyle(.plain)
+                                .help("Forget this memory")
+                            }
+                            .padding(6)
+                            .background(Color.white.opacity(0.04))
+                            .cornerRadius(6)
+                        }
                     }
                 }
             }
+        }
+        .onAppear {
+            appState.refreshPhase1State()
         }
     }
     

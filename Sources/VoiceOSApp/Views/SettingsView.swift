@@ -5,6 +5,7 @@ import AppKit
 public enum SettingsTab: String, CaseIterable, Identifiable {
     case general = "General"
     case voice = "Voice & Wake-Word"
+    case jarvis = "JARVIS & Routines"
     case brain = "AI Brain & Models"
     case permissions = "System Access"
     case account = "Account & Privacy"
@@ -15,6 +16,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general: return "gearshape.fill"
         case .voice: return "waveform.badge.mic"
+        case .jarvis: return "sparkles"
         case .brain: return "brain.head.profile"
         case .permissions: return "hand.raised.fill"
         case .account: return "person.crop.circle.badge.checkmark"
@@ -36,6 +38,19 @@ public struct SettingsView: View {
     @State private var availableVoices: [VoiceOption] = []
     @State private var selectedVoiceIdentifier: String = UserDefaults.standard.string(forKey: "voiceos.selected_voice_id") ?? ""
     @State private var isAuditioningVoice: Bool = false
+    @State private var selectedSTTKind: STTProviderKind = STTEngineProvider.shared.selectedKind
+    @State private var isKokoroEnabled: Bool = KokoroTTSEngine.shared.isPreferredForTTS
+    @State private var wakePhraseInput: String = TheVoiceAmbientListener.shared.wakePhrase
+    @State private var selectedKokoroVoice: String = KokoroTTSEngine.shared.selectedVoiceId
+
+    // Phase 1: Persona, Routines & Memory State
+    @State private var personaConfig: PersonaConfiguration = PersonaManager.shared.currentConfiguration()
+    @State private var newRoutineName: String = ""
+    @State private var newRoutineTrigger: String = ""
+    @State private var newRoutineStepsText: String = ""
+    @State private var routineStatusBanner: String = ""
+    @State private var newMemoryNote: String = ""
+    @State private var newMemoryKind: MemoryFactKind = .fact
     
     // Account Authentication State
     @State private var authIsLoginMode: Bool = true
@@ -142,6 +157,8 @@ public struct SettingsView: View {
                         generalSettingsTab
                     case .voice:
                         voiceSettingsTab
+                    case .jarvis:
+                        jarvisSettingsTab
                     case .brain:
                         aiBrainSettingsTab
                     case .permissions:
@@ -158,6 +175,10 @@ public struct SettingsView: View {
             if selectedVoiceIdentifier.isEmpty, let first = availableVoices.first {
                 selectedVoiceIdentifier = first.identifier
             }
+            wakePhraseInput = TheVoiceAmbientListener.shared.wakePhrase
+            selectedKokoroVoice = KokoroTTSEngine.shared.selectedVoiceId
+            personaConfig = PersonaManager.shared.currentConfiguration()
+            appState.refreshPhase1State()
         }
         .background(DesignTokens.Monochrome.windowBg)
         .sheet(isPresented: $showingModelSetupSheet) {
@@ -180,7 +201,7 @@ public struct SettingsView: View {
             self.profileEmail = appState.userEmail
             self.isSoundEnabled = BoringSoundEngine.shared.isSoundEnabled
             self.currentAccount = AccountAuthService.shared.currentAccount
-            if activeMode == .local {
+            if activeMode == .local || activeMode == .hybrid {
                 connectLocalAIModels()
             }
         }
@@ -213,12 +234,42 @@ public struct SettingsView: View {
                             .toggleStyle(SwitchToggleStyle(tint: Color.blue))
                     }
                     
+                    HStack(spacing: 10) {
+                        Text("Wake Phrase:")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                        TextField("jarvis", text: $wakePhraseInput)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(width: 140)
+                            .onChange(of: wakePhraseInput) { _, newValue in
+                                let clean = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !clean.isEmpty {
+                                    TheVoiceAmbientListener.shared.wakePhrase = clean
+                                }
+                            }
+                        ForEach(["jarvis", "friday", "voice"], id: \.self) { preset in
+                            Button(preset.capitalized) {
+                                wakePhraseInput = preset
+                                TheVoiceAmbientListener.shared.wakePhrase = preset
+                            }
+                            .font(.system(size: 10, weight: .medium))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(wakePhraseInput.lowercased() == preset ? Color.blue.opacity(0.22) : DesignTokens.Monochrome.surfaceElevated)
+                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            .cornerRadius(5)
+                            .buttonStyle(.plain)
+                        }
+                        Spacer()
+                    }
+
                     if appState.isTheVoiceModeEnabled {
                         HStack(spacing: 8) {
                             Image(systemName: "info.circle.fill")
                                 .foregroundColor(.blue)
                                 .font(.system(size: 11))
-                            Text("Active: Say \"Voice, set volume to full\" or \"Voice, open Spotify\" anytime hands-free.")
+                            Text("Active: Say \"\(wakePhraseInput.isEmpty ? "Jarvis" : wakePhraseInput.capitalized), open Spotify\" anytime hands-free (on-device).")
                                 .font(.system(size: 11))
                                 .foregroundColor(Color.blue.opacity(0.9))
                         }
@@ -232,40 +283,64 @@ public struct SettingsView: View {
             
             // 2. Offline Neural Voice Card (Kokoro-82M)
             settingsCard(title: "Offline Neural Voice (Kokoro-82M)", icon: "speaker.wave.3.fill") {
+                let kokoroDiag = KokoroTTSEngine.shared.diagnostics()
                 VStack(spacing: 12) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Kokoro-82M Local TTS Engine")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                            Text("Runs on-device quantized neural audio synthesis in ~/.voiceos/models/ with sub-100ms conversational response.")
+                            Text(kokoroDiag.statusSummary)
                                 .font(.system(size: 11))
                                 .foregroundColor(DesignTokens.Monochrome.textMuted)
                         }
                         Spacer()
                         
-                        let hasKokoro = LocalModelDownloadManager.checkRealKokoroOnDisk()
+                        Toggle("", isOn: $isKokoroEnabled)
+                            .labelsHidden()
+                            .toggleStyle(SwitchToggleStyle(tint: Color.blue))
+                            .onChange(of: isKokoroEnabled) { _, enabled in
+                                KokoroTTSEngine.shared.isPreferredForTTS = enabled
+                            }
+                        
                         HStack(spacing: 6) {
                             Circle()
-                                .fill(hasKokoro ? Color.green : Color.orange)
+                                .fill(kokoroDiag.isFullyReady ? Color.green : (kokoroDiag.hasWeights ? Color.yellow : Color.orange))
                                 .frame(width: 8, height: 8)
-                            Text(hasKokoro ? "Ready (86 MB)" : "Local Engine")
+                            Text(kokoroDiag.isFullyReady ? "Active (86 MB)" : (kokoroDiag.hasWeights ? "Weights Only" : "Missing Weights"))
                                 .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundColor(hasKokoro ? Color.green : Color.orange)
+                                .foregroundColor(kokoroDiag.isFullyReady ? Color.green : (kokoroDiag.hasWeights ? Color.yellow : Color.orange))
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(DesignTokens.Monochrome.surfaceElevated)
                         .cornerRadius(6)
                     }
+
+                    HStack(spacing: 10) {
+                        Text("Neural Voice:")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                        Picker("Neural Voice", selection: $selectedKokoroVoice) {
+                            ForEach(KokoroVoicePreset.presets) { preset in
+                                Text("\(preset.label) — \(preset.style)").tag(preset.id)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 280)
+                        .onChange(of: selectedKokoroVoice) { _, voiceId in
+                            KokoroTTSEngine.shared.selectedVoiceId = voiceId
+                        }
+                        Spacer()
+                    }
                     
-                    HStack {
+                    HStack(spacing: 10) {
                         Button(action: {
-                            SpeechPipelineEngine.shared.speakResponse("Hello sir! Voice.AI offline neural voice synthesis is online and ready to control your computer.")
+                            SpeechPipelineEngine.shared.speakResponse("At your service. Voice AI streaming synthesis and barge-in interruption are online.")
                         }) {
                             HStack(spacing: 5) {
                                 Image(systemName: "speaker.wave.2")
-                                Text("Test Spoken Output")
+                                Text("Test Streaming Voice")
                             }
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(DesignTokens.Monochrome.textPrimary)
@@ -276,8 +351,94 @@ public struct SettingsView: View {
                             .overlay(RoundedRectangle(cornerRadius: 6).stroke(DesignTokens.Monochrome.border, lineWidth: 1))
                         }
                         .buttonStyle(.plain)
+
+                        Button(action: {
+                            SpeechPipelineEngine.shared.bargeIn()
+                        }) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "stop.circle")
+                                Text("Stop (Barge-In)")
+                            }
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.orange.opacity(0.1))
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        
+                        if !kokoroDiag.hasWeights {
+                            Button(action: {
+                                showingModelSetupSheet = true
+                            }) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "arrow.down.circle.fill")
+                                    Text("Download / Repair Kokoro")
+                                }
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.blue)
+                                .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                        }
                         
                         Spacer()
+                    }
+                }
+            }
+            
+            // 2b. Speech-to-Text Engine (Apple Speech / Local Whisper)
+            settingsCard(title: "Speech Recognition Engine (Whisper & Apple Speech)", icon: "waveform") {
+                let whisperDiag = LocalWhisperProvider.diagnostics()
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Active STT Provider")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text(whisperDiag.statusSummary)
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                        Spacer()
+                        Picker("", selection: $selectedSTTKind) {
+                            Text("Apple Speech").tag(STTProviderKind.appleEnhanced)
+                            Text("Local Whisper").tag(STTProviderKind.localWhisper)
+                        }
+                        .frame(width: 170)
+                        .onChange(of: selectedSTTKind) { _, newKind in
+                            STTEngineProvider.shared.selectedKind = newKind
+                        }
+                    }
+                    
+                    if whisperDiag.modelPath == nil {
+                        HStack {
+                            Button(action: {
+                                if let item = HardwareProfileDetector.shared.getCatalogItems(for: .lite).first(where: { $0.id == "speech.whisper.base" }) {
+                                    LocalModelDownloadManager.shared.queueDownloads(items: [item])
+                                    Task {
+                                        await LocalModelDownloadManager.shared.startDownload(for: item)
+                                    }
+                                }
+                            }) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "arrow.down.circle")
+                                    Text("Download Whisper Base Model (142 MB)")
+                                }
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.blue)
+                                .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                            Spacer()
+                        }
                     }
                 }
             }
@@ -544,15 +705,21 @@ public struct SettingsView: View {
                             }
                         }
                         .frame(width: 240)
-                        .onChange(of: activeMode) { newMode in
+                        .onChange(of: activeMode) { _, newMode in
                             ModelRouter.shared.currentMode = newMode
-                            if newMode == .local {
+                            if newMode == .local || newMode == .hybrid {
                                 connectLocalAIModels()
+                            } else {
+                                isLocalModelConnected = false
+                                localModelStatusMessage = "Local Ollama paused (\(newMode.rawValue) active)."
+                                Task.detached {
+                                    await ModelLifecycleManager.shared.offloadAllModelsImmediately()
+                                }
                             }
                         }
                     }
                     
-                    if activeMode == .local {
+                    if activeMode == .local || activeMode == .hybrid {
                         Divider().overlay(DesignTokens.Monochrome.border)
                         localModelStatusBanner
                     }
@@ -567,7 +734,7 @@ public struct SettingsView: View {
                             Text("Core 3 Architecture (100% Offline)")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                            Text("The Brain (Llama 3.2 3B), The Eyes (Qwen2-VL 7B), and The Voice (Kokoro 82M).")
+                            Text("The Brain (Llama 3.2 3B), The Eyes (LLaVA 7B), and The Voice (Kokoro 82M).")
                                 .font(.system(size: 11))
                                 .foregroundColor(DesignTokens.Monochrome.textMuted)
                         }
@@ -1144,6 +1311,24 @@ public struct SettingsView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(Color.green)
                 Spacer()
+                Button(action: {
+                    Task.detached {
+                        await ModelLifecycleManager.shared.offloadAllModelsImmediately()
+                        await MainActor.run {
+                            self.isLocalModelConnected = false
+                            self.localModelStatusMessage = "Ollama models offloaded from RAM."
+                        }
+                    }
+                }) {
+                    Text("Unload RAM")
+                        .font(.system(size: 10, weight: .semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.12))
+                        .foregroundColor(.white)
+                        .cornerRadius(5)
+                }
+                .buttonStyle(.plain)
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(Color.green)
             } else {
@@ -1183,6 +1368,296 @@ public struct SettingsView: View {
         )
     }
     
+    private var jarvisSettingsTab: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            settingsCard(title: "JARVIS Persona & Wit Layer", icon: "sparkles") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Configure assistant voice personality, dry wit, polite warnings, and candid probability estimates (works across English, Hindi, and Hinglish).")
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textMuted)
+
+                    Picker("Active Persona", selection: Binding(
+                        get: { personaConfig.activePersona },
+                        set: { newPersona in
+                            personaConfig.activePersona = newPersona
+                            PersonaManager.shared.updateConfiguration { $0.activePersona = newPersona }
+                        }
+                    )) {
+                        ForEach(PersonaType.allCases) { persona in
+                            Text(persona.rawValue).tag(persona)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(personaConfig.activePersona.description)
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textSecondary)
+
+                    HStack {
+                        Text("Dry Wit Level: \(Int(personaConfig.humorLevel * 100))%")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            .frame(width: 140, alignment: .leading)
+                        Slider(value: Binding(
+                            get: { personaConfig.humorLevel },
+                            set: { val in
+                                personaConfig.humorLevel = val
+                                PersonaManager.shared.updateConfiguration { $0.humorLevel = val }
+                            }
+                        ), in: 0.0...1.0, step: 0.05)
+                    }
+
+                    Toggle("Honest Probability Estimates before Risky Actions", isOn: Binding(
+                        get: { personaConfig.honestProbabilityEstimates },
+                        set: { val in
+                            personaConfig.honestProbabilityEstimates = val
+                            PersonaManager.shared.updateConfiguration { $0.honestProbabilityEstimates = val }
+                        }
+                    ))
+                    .font(.system(size: 12))
+
+                    Toggle("Polite Safety Warnings & Risk Cautions", isOn: Binding(
+                        get: { personaConfig.politeWarningsEnabled },
+                        set: { val in
+                            personaConfig.politeWarningsEnabled = val
+                            PersonaManager.shared.updateConfiguration { $0.politeWarningsEnabled = val }
+                        }
+                    ))
+                    .font(.system(size: 12))
+
+                    HStack(spacing: 10) {
+                        Text("Language Style:")
+                            .font(.system(size: 11, weight: .semibold))
+                        Picker("Language Style", selection: Binding(
+                            get: { personaConfig.languageStyle },
+                            set: { style in
+                                personaConfig.languageStyle = style
+                                PersonaManager.shared.updateConfiguration { $0.languageStyle = style }
+                            }
+                        )) {
+                            Text("Auto-Detect").tag("auto")
+                            Text("English").tag("en")
+                            Text("Hindi").tag("hi")
+                            Text("Hinglish").tag("hinglish")
+                        }
+                        .labelsHidden()
+                        .frame(width: 180)
+                        Spacer()
+                    }
+                }
+            }
+
+            settingsCard(title: "Routines & Protocols", icon: "flowchart.fill") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Trigger multi-step workflows with one phrase (e.g. \"Good morning\", \"Focus mode\", \"House party protocol\"). Consequential steps still require Notch Approval.")
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textMuted)
+
+                    if !routineStatusBanner.isEmpty {
+                        Text(routineStatusBanner)
+                            .font(.system(size: 11))
+                            .foregroundColor(.blue)
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.blue.opacity(0.08))
+                            .cornerRadius(6)
+                    }
+
+                    ForEach(appState.configuredRoutines) { routine in
+                        HStack(alignment: .top, spacing: 10) {
+                            Toggle("", isOn: Binding(
+                                get: { routine.isEnabled },
+                                set: { enabled in
+                                    RoutineManager.shared.setRoutineEnabled(id: routine.id, enabled: enabled)
+                                    appState.refreshPhase1State()
+                                }
+                            ))
+                            .labelsHidden()
+                            .toggleStyle(SwitchToggleStyle(tint: Color.blue))
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(routine.name)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                    if routine.isBuiltIn {
+                                        Text("BUILT-IN")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(.blue)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(Color.blue.opacity(0.12))
+                                            .cornerRadius(4)
+                                    }
+                                    Text("\(routine.steps.count) steps")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(DesignTokens.Monochrome.textMuted)
+                                }
+                                Text("Triggers: \(routine.triggerPhrases.joined(separator: ", "))")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+
+                            Spacer()
+
+                            Button("Run") {
+                                routineStatusBanner = "Running \"\(routine.name)\"..."
+                                Task {
+                                    let res = await RoutineManager.shared.runRoutine(routine, onProgress: nil)
+                                    await MainActor.run {
+                                        routineStatusBanner = "\(routine.name): \(res.summary)"
+                                    }
+                                }
+                            }
+                            .font(.system(size: 11, weight: .semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.blue.opacity(0.15))
+                            .foregroundColor(.blue)
+                            .cornerRadius(5)
+                            .buttonStyle(.plain)
+
+                            if !routine.isBuiltIn {
+                                Button(action: {
+                                    RoutineManager.shared.deleteRoutine(id: routine.id)
+                                    appState.refreshPhase1State()
+                                }) {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.red.opacity(0.8))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(8)
+                        .background(DesignTokens.Monochrome.surfaceElevated)
+                        .cornerRadius(6)
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Create Custom Routine")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                        HStack(spacing: 8) {
+                            TextField("Name (e.g. Coding Setup)", text: $newRoutineName)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("Trigger phrase (e.g. start coding)", text: $newRoutineTrigger)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        TextField("Steps (comma or newline separated prompts)", text: $newRoutineStepsText)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Save Custom Routine") {
+                            let name = newRoutineName.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let trigger = newRoutineTrigger.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let rawSteps = newRoutineStepsText
+                                .components(separatedBy: CharacterSet(charactersIn: "\n,"))
+                                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                                .filter { !$0.isEmpty }
+                            guard !name.isEmpty, !trigger.isEmpty, !rawSteps.isEmpty else { return }
+                            let steps = rawSteps.map { stepPrompt in
+                                VoiceRoutineStep(title: stepPrompt, actionPrompt: stepPrompt, permissionTier: .reversible)
+                            }
+                            let routine = VoiceRoutine(
+                                name: name,
+                                triggerPhrases: [trigger.lowercased()],
+                                summary: "Custom user workflow (\(steps.count) steps)",
+                                isEnabled: true,
+                                isBuiltIn: false,
+                                steps: steps
+                            )
+                            RoutineManager.shared.saveRoutine(routine)
+                            appState.refreshPhase1State()
+                            newRoutineName = ""
+                            newRoutineTrigger = ""
+                            newRoutineStepsText = ""
+                            routineStatusBanner = "Saved custom routine \"\(name)\"."
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(6)
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            settingsCard(title: "Long-Term Memory Viewer", icon: "brain") {
+                let longTermItems = appState.structuredMemories.filter { $0.scope == .longTerm }
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Semantic long-term facts, preferences, projects, and people stored in encrypted per-account memory.")
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textMuted)
+
+                    HStack(spacing: 8) {
+                        Picker("Kind", selection: $newMemoryKind) {
+                            Text("Fact").tag(MemoryFactKind.fact)
+                            Text("Preference").tag(MemoryFactKind.preference)
+                            Text("Project").tag(MemoryFactKind.project)
+                            Text("Person").tag(MemoryFactKind.person)
+                        }
+                        .labelsHidden()
+                        .frame(width: 110)
+
+                        TextField("Say \"Remember this...\" or add a fact here", text: $newMemoryNote)
+                            .textFieldStyle(.roundedBorder)
+
+                        Button("Remember") {
+                            let clean = newMemoryNote.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !clean.isEmpty else { return }
+                            appState.rememberNoteFromUI(clean, kind: newMemoryKind)
+                            newMemoryNote = ""
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(6)
+                        .buttonStyle(.plain)
+                    }
+
+                    if longTermItems.isEmpty {
+                        Text("No long-term memories stored yet.")
+                            .font(.system(size: 11))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            .padding(.vertical, 6)
+                    } else {
+                        ForEach(longTermItems) { item in
+                            HStack(spacing: 8) {
+                                Text(item.kind.rawValue.uppercased())
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(.cyan)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(Color.cyan.opacity(0.14))
+                                    .cornerRadius(4)
+                                Text(item.content)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                Spacer()
+                                Button(action: {
+                                    appState.forgetMemoryFromUI(id: item.id)
+                                }) {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.red.opacity(0.8))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(8)
+                            .background(DesignTokens.Monochrome.surfaceElevated)
+                            .cornerRadius(6)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private func connectLocalAIModels() {
         isConnectingLocalModels = true
         localModelStatusMessage = "Turning on Ollama daemon & starting local AI models..."

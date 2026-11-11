@@ -71,6 +71,8 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     @Published public var lastPromptOrQuestion: String = ""
     @Published public var llmSuggestions: [BrainSuggestion] = []
     @Published public var isThinkingSuggestions: Bool = false
+    @Published public var structuredMemories: [StructuredMemoryItem] = []
+    @Published public var configuredRoutines: [VoiceRoutine] = []
     private var recordingWatchdogWorkItem: DispatchWorkItem?
     
     // "THE VOICE" Hands-free ambient wake-word mode & one-time search permission
@@ -244,6 +246,13 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         // 9. Initialize per-account encrypted MemoryStore & bind interactive ToolApprovalCoordinator UI
         let accountScope = AccountAuthService.shared.currentSession?.accountId ?? resolvedEmail
         MemoryStore.shared.load(accountId: accountScope)
+        self.structuredMemories = MemoryStore.shared.allItems(scope: nil)
+        self.configuredRoutines = RoutineManager.shared.allRoutines()
+        EventBus.shared.subscribe(matching: .memoryUpdated) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.structuredMemories = MemoryStore.shared.allItems(scope: nil)
+            }
+        }
         ToolApprovalCoordinator.shared.setPresenter(self)
     }
     
@@ -527,10 +536,36 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         if !trimmedName.isEmpty {
             self.userName = trimmedName
             UserDefaults.standard.set(trimmedName, forKey: "VoiceOS_UserName")
+            MemoryStore.shared.updateUserProfile { $0.displayName = trimmedName }
         }
         if !trimmedEmail.isEmpty {
             self.userEmail = trimmedEmail
             UserDefaults.standard.set(trimmedEmail, forKey: "VoiceOS_UserEmail")
+        }
+    }
+
+    public func refreshPhase1State() {
+        self.structuredMemories = MemoryStore.shared.allItems(scope: nil)
+        self.configuredRoutines = RoutineManager.shared.allRoutines()
+    }
+
+    public func rememberNoteFromUI(_ text: String, kind: MemoryFactKind = .fact) {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        Task {
+            _ = await MemoryStore.shared.remember(content: clean, scope: .longTerm, kind: kind, tags: ["manual"])
+            await MainActor.run {
+                self.structuredMemories = MemoryStore.shared.allItems(scope: nil)
+            }
+        }
+    }
+
+    public func forgetMemoryFromUI(id: String) {
+        Task {
+            _ = await MemoryStore.shared.forget(id: id)
+            await MainActor.run {
+                self.structuredMemories = MemoryStore.shared.allItems(scope: nil)
+            }
         }
     }
 
@@ -791,6 +826,8 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     public func submitTypedPrompt(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // Support instant barge-in when user sends a typed follow-up while speaking
+        SpeechPipelineEngine.shared.bargeIn()
         if Self.isBrainSuggestionPrompt(trimmed.lowercased()) {
             promptInputText = ""
             triggerBrainThinkAndSuggest()
@@ -997,29 +1034,24 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         currentExecutionTask?.cancel()
         currentExecutionTask = nil
         
-        // 2. Stop any current speech playback immediately
-        SpeechPipelineEngine.shared.stopSpeaking()
+        // 2. Stop any current speech playback immediately (barge-in)
+        SpeechPipelineEngine.shared.bargeIn()
         
         // 3. Play queued chime
         BoringSoundEngine.shared.playQueued()
         
         let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = trimmed.lowercased()
+        let activeWake = TheVoiceAmbientListener.shared.wakePhrase
         
-        // If the wake word was spoken without an immediate instruction ("voice", "the voice", "hey voice")
-        if trimmed.isEmpty || lower == "voice" || lower == "the voice" || lower == "hey voice" || lower == "ok voice" {
+        // If the wake word was spoken without an immediate instruction ("jarvis", "hey jarvis", "voice", "hey voice")
+        if trimmed.isEmpty || lower == activeWake || lower == "hey \(activeWake)" || lower == "ok \(activeWake)" ||
+           lower == "voice" || lower == "the voice" || lower == "hey voice" || lower == "ok voice" {
             // Switch to active listening state with the chosen trigger mode
             triggerVoice(mode: mode)
         } else {
-            // User provided an immediate command: "voice open safari and search ..."
-            var cleanedPrompt = trimmed
-            for prefix in ["the voice ", "hey voice ", "ok voice ", "voice "] {
-                if lower.hasPrefix(prefix) {
-                    cleanedPrompt = String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-                    break
-                }
-            }
-            submitTypedPrompt(cleanedPrompt)
+            let cleanedPrompt = TheVoiceAmbientListener.extractCommand(from: trimmed, wakePhrase: activeWake) ?? trimmed
+            submitTypedPrompt(cleanedPrompt.isEmpty ? trimmed : cleanedPrompt)
         }
     }
     

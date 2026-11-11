@@ -6,6 +6,7 @@ using VoiceAI.Core.Events;
 using VoiceAI.Core.Grammar;
 using VoiceAI.Core.Math;
 using VoiceAI.Core.Memory;
+using VoiceAI.Core.Routines;
 using VoiceAI.Core.Security;
 using VoiceAI.Core.Tools;
 
@@ -61,6 +62,7 @@ namespace VoiceAI.Core.Tests
             await TestVisualGroundingSoMEngine();
             await TestResourceOptimizationAndCaching();
             await TestPhase0Foundations();
+            await TestPhase1JarvisFeel();
 
             Console.WriteLine("\n=================================================================");
             Console.WriteLine($"Test Run Completed: {_passed} PASSED, {_failed} FAILED");
@@ -400,6 +402,61 @@ namespace VoiceAI.Core.Tests
             AssertEqual(hitsB.Count, 0, "SemanticMemoryStore isolates encrypted memories across accounts");
             store.ClearAccount(accA);
             store.ClearAccount(accB);
+        }
+
+        // -------------------------------------------------------------
+        // Suite 11: Phase 1 JARVIS Feel (PersonaEngine & RoutineEngine)
+        // -------------------------------------------------------------
+        private static async Task TestPhase1JarvisFeel()
+        {
+            Console.WriteLine("\n[Suite 11] Phase 1 JARVIS Feel (PersonaEngine & RoutineEngine)");
+
+            // 1. PersonaEngine directives, probability estimates & Hindi/Hinglish
+            var origCfg = PersonaEngine.Shared.GetConfiguration();
+            PersonaEngine.Shared.UpdateConfiguration(new PersonaConfiguration(
+                PersonaType.Jarvis, 0.55, true, true, "auto"));
+
+            string enPrompt = PersonaEngine.Shared.BuildSystemPromptDirectives("check CPU temperature");
+            AssertTrue(enPrompt.Contains("JARVIS") && enPrompt.Contains("English"),
+                "PersonaEngine builds JARVIS English directives");
+
+            string hiPrompt = PersonaEngine.Shared.BuildSystemPromptDirectives("मेरा कैलेंडर जांचें");
+            AssertTrue(hiPrompt.Contains("Hindi"),
+                "PersonaEngine detects Devanagari Hindi query automatically");
+
+            var risky = PersonaEngine.Shared.AssessRisk("terminal_run", PermissionTier.Consequential, "dir");
+            AssertTrue(risky.ProbabilityPercent < 90 && risky.Warning != null && risky.Warning.Contains("~"),
+                "PersonaEngine attaches honest probability & polite caution for Consequential actions");
+
+            PersonaEngine.Shared.UpdateConfiguration(origCfg);
+
+            // 2. RoutineEngine built-ins, Hinglish matching, custom CRUD & execution
+            AssertTrue(RoutineEngine.Shared.AllRoutines().Count >= 3,
+                "RoutineEngine includes built-in Good Morning, Focus Mode & House Party protocols");
+            AssertEqual(RoutineEngine.Shared.MatchRoutine("suprabhat")?.Id, "builtin_good_morning",
+                "RoutineEngine matches Hindi/Hinglish 'suprabhat' to Good Morning Briefing");
+
+            var custom = new VoiceRoutine(
+                "win_test_routine",
+                "Windows Test Protocol",
+                new[] { "run windows protocol" },
+                true,
+                false,
+                new[]
+                {
+                    new VoiceRoutineStep("Check Env", "echo ok", PermissionTier.ReadOnly)
+                });
+            RoutineEngine.Shared.SaveRoutine(custom);
+            var matched = RoutineEngine.Shared.MatchRoutine("run windows protocol");
+            AssertTrue(matched != null && matched.Id == "win_test_routine",
+                "RoutineEngine saves and matches custom user routine");
+
+            var execResult = await RoutineEngine.Shared.RunRoutineAsync(custom, step => Task.FromResult($"Ran {step.Title}"));
+            AssertTrue(execResult.Success && execResult.Summary.Contains("Ran Check Env"),
+                "RoutineEngine runs multi-step workflow cleanly");
+
+            AssertTrue(RoutineEngine.Shared.DeleteCustomRoutine("win_test_routine"),
+                "RoutineEngine deletes custom routine while protecting built-ins");
         }
     }
 }

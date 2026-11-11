@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Phase 1 — JARVIS Feel] - 2026-11-11
+
+### Added
+- **Configurable On-Device Wake-Word Detection** (`TheVoiceAmbientListener.swift`, `WakeWordDetecting`): Added customizable wake phrase (`jarvis` default, `friday`, `voice`, etc.) running with `requiresOnDeviceRecognition = true`, trailing English/Hindi/Hinglish command extraction, Settings UI picker, automatic barge-in on wake trigger, and `EventBus` wake events.
+- **Streaming TTS with Barge-In & Selectable Voices** (`KokoroTTSEngine.swift`, `TTSServiceProtocol`, `SpeechPipelineEngine.swift`): Added sentence-chunked streaming speech playback backed by `ttsGeneration` cancellation, instant `bargeIn()` on hold-to-talk/wake-word/typed submission/UI stop, and `KokoroVoicePreset` selection (`af_heart`, `bm_george`, `bf_emma`, etc.).
+- **Configurable JARVIS/FRIDAY Persona Layer** (`PersonaManager.swift`, `PersonaManaging`, `PersonaConfiguration`, Windows `PersonaEngine.cs`, `ToolApprovalCoordinator.swift`): Added configurable dry wit (`humorLevel`), honest success probability estimates and localized polite risk cautions on `CONSEQUENTIAL` Notch Approval Cards, and English/Devanagari Hindi/Roman Hinglish prompt adaptation.
+- **Long-Term Memory Integration & Interactive Viewer** (`AutonomousAgentExecutor.swift`, `AppState.swift`, `NotchGlassIslandView.swift`, `SettingsView.swift`): Wired semantic long-term memory recall & short-term `.turn` persistence into LLM prompts, added `"remember this"` / `"forget this"` / `"what do you remember"` voice commands (plus Hindi/Hinglish equivalents), and built interactive search/filter/create/delete Memory Viewers in the Notch HUD and Settings.
+- **Multi-Step Routines & Protocols** (`RoutineManager.swift`, `RoutineManaging`, Windows `RoutineEngine.cs`, `SettingsView.swift`): Added built-in `"Good Morning Briefing"`, `"Focus Mode Protocol"`, and `"House Party Protocol"` plus customizable editable multi-step user routines with English/Hindi/Hinglish trigger matching and `PermissionTier.consequential` approval gating.
+- **Automated Phase 1 Tests**: Added `Suite 34` in `Tests/core/test_core.swift` and `Suite 11` in `windows/tests/VoiceAI.Core.Tests/TestRunner.cs`.
+
+---
+
 ## [Phase 0 — Foundations] - 2026-11-11
 
 ### Added

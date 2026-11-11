@@ -50,15 +50,32 @@ public final class ToolApprovalCoordinator: @unchecked Sendable {
                 return (true, nil)
             }
 
-            var safePayload = SecretRedactor.redactDictionary(payload)
+            var safePayload = payload
+            let lang = PersonaManager.shared.detectedLanguageCode(for: title)
+            let assessment = PersonaManager.shared.assessActionConfidenceAndWarning(
+                toolName: toolName,
+                tier: tier,
+                target: safePayload["recipient"] ?? safePayload["command"] ?? appName,
+                languageHint: lang
+            )
+
             safePayload["permission_tier"] = tier.rawValue
             safePayload["tool_name"] = toolName
+            safePayload["estimated_confidence"] = "\(assessment.probabilityPercent)%"
+
+            let baseSub = subtitle ?? "CONSEQUENTIAL action requires your approval"
+            let enrichedSubtitle: String
+            if let warn = assessment.warning, !warn.isEmpty {
+                enrichedSubtitle = "\(baseSub) • \(warn)"
+            } else {
+                enrichedSubtitle = baseSub
+            }
 
             let action = AgentAction(
                 appName: appName,
                 appIcon: iconForToolApp(appName),
                 title: title,
-                subtitle: subtitle ?? "CONSEQUENTIAL action requires your approval",
+                subtitle: enrichedSubtitle,
                 payload: safePayload,
                 riskLevel: tier.agentRiskLevel,
                 isApproved: false

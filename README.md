@@ -54,8 +54,12 @@ We believe in 100% honesty with no fake claims. Below is the exact breakdown of 
 │ MCP Tool Registry & Permission Tiers (Phase 0)  │ ✅ WORKING NOW (macOS & .NET) │
 │ Typed Pub/Sub Event Bus Foundation (Phase 0)    │ ✅ WORKING NOW (macOS & .NET) │
 │ Encrypted Semantic Memory Store (Phase 0)       │ ✅ WORKING NOW (macOS & .NET) │
+│ Configurable On-Device Wake Word (Phase 1)      │ ✅ WORKING NOW (macOS Native) │
+│ Streaming TTS & Mid-Sentence Barge-In (Phase 1) │ ✅ WORKING NOW (macOS Native) │
+│ JARVIS/FRIDAY Persona & Risk Warnings (Phase 1) │ ✅ WORKING NOW (macOS & .NET) │
+│ Long-Term Memory Recall & Viewer UI (Phase 1)   │ ✅ WORKING NOW (macOS & .NET) │
+│ Multi-Step Routines & Protocols (Phase 1)       │ ✅ WORKING NOW (macOS & .NET) │
 ├─────────────────────────────────────────────────┼───────────────────────────────┤
-│ Wake Word, Streaming Barge-In TTS & Personas    │ 🚧 PLANNED (Phase 1)          │
 │ Proactive Rules Engine, RAG & Home Automation   │ 🚧 PLANNED (Phase 2)          │
 │ Windows 10/11 WinUI 3 Native GUI Shell          │ 🚧 UNDER ACTIVE DEVELOPMENT   │
 │ "Circle to Ask" Visual Beacon Cursor Tutor      │ 🚧 UNDER ACTIVE DEVELOPMENT   │
@@ -237,6 +241,7 @@ cd Voice.AI
 ## 📚 Documentation & Decision Records
 
 - [Cross-Platform Architecture Specification](docs/architecture-cross-platform.md)
+- [Phase 1: JARVIS Feel Architecture](docs/phase-1-jarvis-feel.md)
 - [Free & Offline Setup Guide (Windows)](docs/setup-free-offline-windows.md)
 - [Windows Platform Parity & Test Report](docs/test-report-windows.md)
 - [Windows Developer Toolchain Setup](docs/windows-dev-setup.md)

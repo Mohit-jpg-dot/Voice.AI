@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation — Voice.AI Guides, Architecture &amp; Test Reports</title>
+  <link rel="icon" type="image/png" href="assets/app-icon.png">
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .gradient-text-docs {
+      background: linear-gradient(90deg, #1d6199 0%, #eab308 45%, #60a5fa 90%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .docs-eyebrow {
+      background: #f5f5f7;
+      border-radius: var(--radius-pill);
+      padding: 5px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #6e6e73;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 20px;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .docs-search-wrap {
+      width: 100%;
+      max-width: 640px;
+      margin: 28px auto 0 auto;
+      position: relative;
+    }
+
+    .docs-search-input {
+      width: 100%;
+      background: rgba(245, 245, 247, 0.9);
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      border-radius: var(--radius-pill);
+      padding: 14px 96px 14px 46px;
+      font-family: inherit;
+      font-size: 15px;
+      color: #000000;
+      outline: none;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+    }
+
+    .docs-search-input:focus {
+      background: #ffffff;
+      border-color: #0071e3;
+      box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.14), 0 8px 24px rgba(0, 0, 0, 0.06);
+    }
+
+    .docs-search-icon {
+      position: absolute;
+      left: 18px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #86868b;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+    }
+
+    .docs-search-shortcut {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .docs-kbd {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: #6e6e73;
+    }
+
+    .docs-clear-btn {
+      display: none;
+      background: #e5e5ea;
+      color: #1d1d1f;
+      border: none;
+      border-radius: 9999px;
+      width: 22px;
+      height: 22px;
+      font-size: 12px;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .docs-clear-btn.visible {
+      display: inline-flex;
+    }
+
+    .docs-filter-bar {
+      display: inline-flex;
+      background: #f5f5f7;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      border-radius: var(--radius-pill);
+      padding: 4px;
+      gap: 4px;
+      margin: 28px auto 12px auto;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .docs-filter-btn {
+      background: transparent;
+      border: none;
+      border-radius: var(--radius-pill);
+      padding: 8px 16px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: #555555;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .docs-filter-btn:hover {
+      color: #000000;
+    }
+
+    .docs-filter-btn span {
+      font-size: 11px;
+      color: #86868b;
+      font-weight: 600;
+    }
+
+    .docs-filter-btn.active {
+      background: #ffffff;
+      color: #000000;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      font-weight: 600;
+    }
+
+    .docs-filter-btn.active span {
+      color: #0071e3;
+    }
+
+    /* Main Interactive Docs Workspace */
+    .docs-workspace {
+      max-width: 1240px;
+      margin: 0 auto 80px auto;
+      padding: 0 24px;
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 28px;
+      align-items: start;
+    }
+
+    .docs-mobile-toggle {
+      display: none;
+      width: 100%;
+      margin-bottom: 14px;
+      background: #f5f5f7;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 14px;
+      padding: 12px 16px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      color: #000000;
+      cursor: pointer;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .docs-sidebar {
+      position: sticky;
+      top: 76px;
+      max-height: calc(100vh - 96px);
+      overflow-y: auto;
+      background: #fbfbfd;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 24px;
+      padding: 18px 14px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.025);
+    }
+
+    .docs-sidebar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 2px 10px 12px 10px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      margin-bottom: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #6e6e73;
+    }
+
+    .docs-group {
+      margin-bottom: 16px;
+    }
+
+    .docs-group-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #86868b;
+      padding: 4px 10px 6px 10px;
+    }
+
+    .docs-nav-item {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      padding: 9px 10px;
+      margin-bottom: 3px;
+      cursor: pointer;
+      font-family: inherit;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      transition: all 0.15s ease;
+    }
+
+    .docs-nav-item:hover {
+      background: rgba(0, 0, 0, 0.04);
+    }
+
+    .docs-nav-item.active {
+      background: #ffffff;
+      border-color: rgba(0, 113, 227, 0.25);
+      box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05);
+    }
+
+    .docs-nav-item-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .docs-nav-item-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1d1d1f;
+      line-height: 1.35;
+    }
+
+    .docs-nav-item.active .docs-nav-item-title {
+      color: #0066cc;
+    }
+
+    .docs-nav-badge {
+      flex-shrink: 0;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 9999px;
+      background: #f0f0f3;
+      color: #6e6e73;
+      white-space: nowrap;
+    }
+
+    .docs-nav-item.active .docs-nav-badge {
+      background: rgba(0, 113, 227, 0.1);
+      color: #0066cc;
+    }
+
+    .docs-nav-snippet {
+      font-size: 11.5px;
+      color: #6e6e73;
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Main Article Reader Card */
+    .docs-reader-card {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 28px;
+      padding: 28px 36px 40px 36px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.03);
+      min-width: 0;
+    }
+
+    .docs-reader-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding-bottom: 18px;
+      margin-bottom: 22px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+    }
+
+    .docs-meta-left {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .docs-cat-pill {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      background: #000000;
+      color: #ffffff;
+    }
+
+    .docs-path-chip {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: #4b5563;
+      background: #f5f5f7;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      padding: 4px 10px;
+      border-radius: 8px;
+    }
+
+    .docs-read-time {
+      font-size: 12px;
+      color: #86868b;
+      font-weight: 500;
+    }
+
+    .docs-actions-right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .docs-action-btn {
+      background: #f5f5f7;
+      border: 1px solid rgba(0, 0, 0, 0.07);
+      border-radius: 9999px;
+      padding: 6px 13px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      color: #1d1d1f;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .docs-action-btn:hover {
+      background: #e9e9ed;
+    }
+
+    .docs-action-btn.copied {
+      background: #e8f8ed;
+      color: #147a32;
+      border-color: rgba(52, 199, 89, 0.35);
+    }
+
+    /* Interactive Section Outline Bar */
+    .docs-toc-strip {
+      background: #f8f9fb;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      border-radius: 16px;
+      padding: 12px 16px;
+      margin-bottom: 28px;
+    }
+
+    .docs-toc-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #86868b;
+      margin-bottom: 8px;
+    }
+
+    .docs-toc-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .docs-toc-pill {
+      font-size: 12px;
+      font-weight: 500;
+      color: #374151;
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 9999px;
+      padding: 4px 11px;
+      text-decoration: none;
+      transition: all 0.15s ease;
+      cursor: pointer;
+    }
+
+    .docs-toc-pill:hover {
+      color: #0066cc;
+      border-color: rgba(0, 113, 227, 0.35);
+    }
+
+    /* Markdown Typography (Apple Editorial) */
+    .docs-markdown-body {
+      color: #1d1d1f;
+      font-size: 15.5px;
+      line-height: 1.7;
+      overflow-wrap: anywhere;
+    }
+
+    .docs-markdown-body h1 {
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      color: #000000;
+      margin: 4px 0 18px 0;
+    }
+
+    .docs-markdown-body h2 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+      color: #000000;
+      margin: 34px 0 14px 0;
+      padding-top: 14px;
+      border-top: 1px solid rgba(0, 0, 0, 0.06);
+      scroll-margin-top: 86px;
+    }
+
+    .docs-markdown-body h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #111111;
+      margin: 24px 0 10px 0;
+      scroll-margin-top: 86px;
+    }
+
+    .docs-markdown-body h4 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1d1d1f;
+      margin: 18px 0 8px 0;
+    }
+
+    .docs-markdown-body p {
+      margin: 0 0 15px 0;
+      color: #2c2c2e;
+    }
+
+    .docs-markdown-body a {
+      color: #0066cc;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      font-weight: 500;
+    }
+
+    .docs-markdown-body a:hover {
+      color: #004999;
+    }
+
+    .docs-markdown-body ul,
+    .docs-markdown-body ol {
+      margin: 0 0 16px 24px;
+    }
+
+    .docs-markdown-body li {
+      margin-bottom: 6px;
+      color: #2c2c2e;
+    }
+
+    .docs-markdown-body blockquote {
+      margin: 18px 0;
+      padding: 14px 18px;
+      background: #f5f9ff;
+      border-left: 3.5px solid #0071e3;
+      border-radius: 0 14px 14px 0;
+      color: #1d1d1f;
+    }
+
+    .docs-markdown-body blockquote p:last-child {
+      margin-bottom: 0;
+    }
+
+    .docs-markdown-body hr {
+      border: none;
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+      margin: 28px 0;
+    }
+
+    .doc-inline-code {
+      font-family: var(--font-mono);
+      font-size: 0.87em;
+      background: #f3f4f6;
+      color: #111827;
+      padding: 2px 6px;
+      border-radius: 6px;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .doc-code-block {
+      margin: 18px 0;
+      background: #111215;
+      color: #f5f5f7;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+    }
+
+    .doc-code-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 14px;
+      background: rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #a1a1aa;
+    }
+
+    .doc-code-copy {
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+      border: none;
+      border-radius: 9999px;
+      padding: 3px 10px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .doc-code-copy:hover {
+      background: rgba(255, 255, 255, 0.22);
+    }
+
+    .doc-code-block pre {
+      margin: 0;
+      padding: 14px 16px;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: #f5f5f7;
+    }
+
+    .doc-table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      margin: 18px 0;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 16px;
+      background: #ffffff;
+    }
+
+    .docs-markdown-body table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+      text-align: left;
+    }
+
+    .docs-markdown-body th {
+      background: #f5f5f7;
+      font-weight: 700;
+      color: #111111;
+      padding: 11px 14px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      white-space: nowrap;
+    }
+
+    .docs-markdown-body td {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      color: #2c2c2e;
+      vertical-align: top;
+    }
+
+    .docs-markdown-body tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* Footer Navigation Cards Inside Reader */
+    .docs-pager {
+      margin-top: 38px;
+      padding-top: 24px;
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .docs-pager-card {
+      background: #fbfbfd;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 16px;
+      padding: 14px 18px;
+      text-align: left;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.18s ease;
+    }
+
+    .docs-pager-card:hover {
+      background: #ffffff;
+      border-color: rgba(0, 113, 227, 0.35);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+      transform: translateY(-1px);
+    }
+
+    .docs-pager-card.next {
+      text-align: right;
+    }
+
+    .docs-pager-dir {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #86868b;
+      margin-bottom: 4px;
+    }
+
+    .docs-pager-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #111111;
+    }
+
+    .docs-empty-state {
+      text-align: center;
+      padding: 40px 16px;
+      color: #6e6e73;
+    }
+
+    .docs-highlight {
+      background: #fef08a;
+      color: #000000;
+      border-radius: 3px;
+      padding: 0 2px;
+    }
+
+    @media (max-width: 960px) {
+      .docs-workspace {
+        grid-template-columns: 1fr;
+      }
+      .docs-mobile-toggle {
+        display: flex;
+      }
+      .docs-sidebar {
+        position: static;
+        max-height: none;
+        display: none;
+      }
+      .docs-sidebar.open {
+        display: block;
+      }
+      .docs-reader-card {
+        padding: 22px 20px 30px 20px;
+      }
+      .docs-markdown-body h1 {
+        font-size: 28px;
+      }
+      .docs-pager {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media print {
+      .site-nav, .docs-sidebar, .docs-mobile-toggle, .docs-search-wrap, .docs-filter-bar, .docs-actions-right, .docs-pager, .site-footer {
+        display: none !important;
+      }
+      .docs-workspace {
+        display: block;
+        max-width: 100%;
+        padding: 0;
+      }
+      .docs-reader-card {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Floating Notch Pill Navigation Header -->
+  <header class="site-nav" id="mainHeader">
+    <div class="nav-shell">
+      <div class="site-logo-wrap">
+        <a href="index.html" class="site-logo" title="Voice.AI">
+          <span class="logo-text">Voice.AI</span>
+          <span class="notch-logo-glyphs">
+            <span class="notch-glyph-triangle">▼</span>
+            <span class="notch-glyph-dot">●</span>
+          </span>
+        </a>
+      </div>
+
+      <nav class="nav-links-wrap" id="mainNavLinks">
+        <a href="index.html#features" class="nav-link">Product <svg width="9" height="5" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1L5 5L9 1"/></svg></a>
+        <a href="about.html" class="nav-link">About</a>
+        <a href="blog.html" class="nav-link">Blogs</a>
+        <a href="app-store.html" class="nav-link">App Store</a>
+        <a href="docs.html" class="nav-link" style="color: #000; font-weight: 600;">Docs</a>
+      </nav>
+
+      <div class="nav-cta-wrap">
+        <a href="download.html" class="btn-nav-download" id="headerDownloadBtn"> Download</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero Section -->
+    <section class="site-container hero-wrap" style="padding-bottom: 24px;">
+      <div class="docs-eyebrow" id="docsCountPill">DOCUMENTATION HUB</div>
+
+      <h1 class="hero-main-heading" style="font-size: 68px; margin-bottom: 18px;">
+        Everything in Voice.AI<br>
+        <span class="gradient-text-docs">documented clearly</span>
+      </h1>
+
+      <p class="section-subheadline" style="max-width: 680px; margin-bottom: 0;">
+        Browse setup guides, JARVIS Phase 0–3 specs, Notch Liquid Glass geometry studies, Hindi grammar docs, and verification reports interactively.
+      </p>
+
+      <div class="docs-search-wrap">
+        <span class="docs-search-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </span>
+        <input
+          type="search"
+          id="docsSearchInput"
+          class="docs-search-input"
+          placeholder="Search setup guides, Ollama, Phase 2, Notch geometry, tests…"
+          aria-label="Search documentation"
+          autocomplete="off"
+        >
+        <div class="docs-search-shortcut">
+          <button type="button" id="docsSearchClear" class="docs-clear-btn" title="Clear search">✕</button>
+          <span class="docs-kbd" id="docsShortcutHint">⌘K</span>
+        </div>
+      </div>
+
+      <!-- Category Filter Pills Bar -->
+      <div class="docs-filter-bar" id="docsFilterBar" role="tablist" aria-label="Documentation categories"></div>
+    </section>
+
+    <!-- Interactive Docs Workspace -->
+    <section class="docs-workspace">
+      <button type="button" class="docs-mobile-toggle" id="docsMobileToggle">
+        <span id="docsMobileLabel">Browse All Docs</span>
+        <span>☰</span>
+      </button>
+
+      <aside class="docs-sidebar" id="docsSidebar" aria-label="Documentation index">
+        <div class="docs-sidebar-header">
+          <span id="docsSidebarCount">Loading docs…</span>
+          <span>macOS &amp; .NET</span>
+        </div>
+        <div id="docsNavTree"></div>
+      </aside>
+
+      <article class="docs-reader-card" id="docsReaderCard">
+        <div class="docs-reader-toolbar">
+          <div class="docs-meta-left">
+            <span class="docs-cat-pill" id="docCategoryBadge">Overview</span>
+            <span class="docs-path-chip" id="docSourcePath">README.md</span>
+            <span class="docs-read-time" id="docReadMeta">1 min read</span>
+          </div>
+          <div class="docs-actions-right">
+            <button type="button" class="docs-action-btn" id="btnCopyMarkdown">Copy Markdown</button>
+            <button type="button" class="docs-action-btn" id="btnPrintDoc">Print / PDF</button>
+          </div>
+        </div>
+
+        <div class="docs-toc-strip" id="docTocStrip" style="display: none;">
+          <div class="docs-toc-label">On this page</div>
+          <div class="docs-toc-pills" id="docTocPills"></div>
+        </div>
+
+        <div class="docs-markdown-body" id="docContentBody">
+          <div class="docs-empty-state">Loading interactive documentation…</div>
+        </div>
+
+        <nav class="docs-pager" id="docPager" aria-label="Document navigation"></nav>
+      </article>
+    </section>
+  </main>
+
+  <!-- 4-Column Footer -->
+  <footer class="site-footer">
+    <div class="site-container">
+      <div class="footer-nav-grid">
+        <div>
+          <div class="footer-col-title">Product</div>
+          <div class="footer-links-list">
+            <a href="download.html" class="footer-link">Download</a>
+            <a href="app/index.html" class="footer-link" target="_blank">Try the demo</a>
+            <a href="app/index.html" class="footer-link">Agent Mode</a>
+            <a href="app/index.html" class="footer-link">Dictation Mode</a>
+            <a href="index.html#pricing" class="footer-link">Pricing</a>
+            <a href="app-store.html" class="footer-link">App Store</a>
+            <a href="blog.html" class="footer-link">Blog</a>
+          </div>
+        </div>
+
+        <div>
+          <div class="footer-col-title">Company</div>
+          <div class="footer-links-list">
+            <a href="about.html" class="footer-link">About</a>
+            <a href="about.html#contact" class="footer-link">Contact</a>
+            <a href="docs.html" class="footer-link">Docs Hub</a>
+          </div>
+        </div>
+
+        <div>
+          <div class="footer-col-title">Resources</div>
+          <div class="footer-links-list">
+            <a href="index.html#features" class="footer-link">All features</a>
+            <a href="docs.html?doc=hindi-control-report" class="footer-link">Hindi &amp; Voice Commands</a>
+            <a href="docs.html?doc=changelog" class="footer-link">Changelog</a>
+            <a href="docs.html" class="footer-link">Documentation</a>
+          </div>
+        </div>
+
+        <div>
+          <div class="footer-col-title">Legal</div>
+          <div class="footer-links-list">
+            <a href="index.html#terms" class="footer-link">Terms of Use</a>
+            <a href="index.html#privacy" class="footer-link">Privacy Policy</a>
+            <a href="docs.html?doc=security" class="footer-link">Security</a>
+            <a href="docs.html?doc=third-party-notices" class="footer-link">Third-Party Notices</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="giant-footer-watermark">Voice.AI</div>
+
+      <div class="footer-bottom-bar">
+        <div>Copyright © 2026 Voice.AI Team. All Rights Reserved.</div>
+        <div class="footer-social-links">
+          <a href="#" class="footer-social-link" title="LinkedIn">in</a>
+          <a href="#" class="footer-social-link" title="Email">✉</a>
+          <a href="#" class="footer-social-link" title="X">𝕏</a>
+          <span style="color: #444; margin-left: 8px;">EN</span>
+          <a href="#" class="footer-social-link">HI</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="docs-data.js"></script>
+  <script>
+    (function () {
+      const docs = Array.isArray(window.VOICE_AI_DOCS) ? window.VOICE_AI_DOCS : [];
+      const CATEGORIES = [
+        'All',
+        'Overview',
+        'Setup & Modes',
+        'Phases 0-3',
+        'Architecture & Notch',
+        'Tests & QA',
+        'Security & Project'
+      ];
+
+      let activeCategory = 'All';
+      let searchQuery = '';
+      let activeDocId = docs.length ? docs[0].id : '';
+
+      const elCountPill = document.getElementById('docsCountPill');
+      const elFilterBar = document.getElementById('docsFilterBar');
+      const elSearchInput = document.getElementById('docsSearchInput');
+      const elSearchClear = document.getElementById('docsSearchClear');
+      const elSidebar = document.getElementById('docsSidebar');
+      const elSidebarCount = document.getElementById('docsSidebarCount');
+      const elNavTree = document.getElementById('docsNavTree');
+      const elMobileToggle = document.getElementById('docsMobileToggle');
+      const elMobileLabel = document.getElementById('docsMobileLabel');
+      const elCatBadge = document.getElementById('docCategoryBadge');
+      const elSourcePath = document.getElementById('docSourcePath');
+      const elReadMeta = document.getElementById('docReadMeta');
+      const elTocStrip = document.getElementById('docTocStrip');
+      const elTocPills = document.getElementById('docTocPills');
+      const elContentBody = document.getElementById('docContentBody');
+      const elPager = document.getElementById('docPager');
+      const elBtnCopyMd = document.getElementById('btnCopyMarkdown');
+      const elBtnPrint = document.getElementById('btnPrintDoc');
+
+      if (elCountPill) {
+        elCountPill.textContent = 'DOCUMENTATION HUB · ' + docs.length + ' GUIDES & SPECS';
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function slugify(text) {
+        return String(text)
+          .toLowerCase()
+          .replace(/<[^>]*>/g, '')
+          .replace(/[^\w\u0900-\u097f\s-]/g, '')
+          .trim()
+          .replace(/\s+/g, '-') || 'section';
+      }
+
+      function resolveDocTarget(href) {
+        if (!href) return null;
+        const clean = href.split('#')[0].replace(/^\.\//, '').replace(/^(\.\.\/)+/, '');
+        const lower = clean.toLowerCase();
+        if (!lower.endsWith('.md')) return null;
+
+        // Exact path match
+        let found = docs.find(d => d.path.toLowerCase() === lower);
+        if (found) return found;
+
+        // docs/ prefix match (for links inside docs/ folder)
+        found = docs.find(d => d.path.toLowerCase() === 'docs/' + lower);
+        if (found) return found;
+
+        // Basename match
+        const base = lower.split('/').pop();
+        found = docs.find(d => d.path.split('/').pop().toLowerCase() === base);
+        return found || null;
+      }
+
+      function renderInlineMarkdown(raw) {
+        let html = escapeHtml(raw);
+
+        // Extract inline code first so formatting rules do not mutate code spans
+        const codeTokens = [];
+        html = html.replace(/`([^`]+)`/g, (_, code) => {
+          const idx = codeTokens.length;
+          codeTokens.push('<code class="doc-inline-code">' + code + '</code>');
+          return '\u0000CODE' + idx + '\u0000';
+        });
+
+        // Images (suppress relative SVG badges cleanly if offline/relative or convert shields)
+        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
+          const safeSrc = src.trim();
+          if (safeSrc.startsWith('http://') || safeSrc.startsWith('https://')) {
+            return '<img src="' + safeSrc + '" alt="' + alt + '" style="max-width:100%;vertical-align:middle;">';
+          }
+          return '<span class="docs-nav-badge">' + (alt || 'Asset') + '</span>';
+        });
+
+        // Links
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) => {
+          const cleanHref = href.trim();
+          const targetDoc = resolveDocTarget(cleanHref);
+          if (targetDoc) {
+            return '<a href="?doc=' + encodeURIComponent(targetDoc.id) + '" data-doc-jump="' + targetDoc.id + '">' + label + '</a>';
+          }
+          if (cleanHref.startsWith('#')) {
+            return '<a href="' + cleanHref + '">' + label + '</a>';
+          }
+          if (cleanHref.startsWith('http://') || cleanHref.startsWith('https://')) {
+            return '<a href="' + cleanHref + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
+          }
+          return '<span class="doc-inline-code">' + label + '</span>';
+        });
+
+        // Bold + Italic, Bold, Italic, Strikethrough
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+        html = html.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+        html = html.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+
+        // Restore code spans
+        html = html.replace(/\u0000CODE(\d+)\u0000/g, (_, idx) => codeTokens[Number(idx)]);
+        return html;
+      }
+
+      function renderMarkdown(mdText) {
+        const lines = String(mdText || '').replace(/\r\n/g, '\n').split('\n');
+        const out = [];
+        const headings = [];
+        const usedSlugs = {};
+        let i = 0;
+
+        function nextSlug(text) {
+          const base = slugify(text);
+          const count = (usedSlugs[base] || 0) + 1;
+          usedSlugs[base] = count;
+          return count === 1 ? base : base + '-' + count;
+        }
+
+        function isTableDivider(line) {
+          return /^\s*\|?(\s*:?-+:?\s*\|)+\s*$/.test(line) || /^\s*\|?(\s*:?-+:?\s*\|)+\s*:?-+:?\s*$/.test(line);
+        }
+
+        function splitTableRow(line) {
+          return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+        }
+
+        while (i < lines.length) {
+          const line = lines[i];
+          const trimmed = line.trim();
+
+          // Empty line
+          if (!trimmed) {
+            i++;
+            continue;
+          }
+
+          // Fenced code blocks
+          const fenceMatch = line.match(/^```([^\s`]*)\s*$/);
+          if (fenceMatch) {
+            const lang = fenceMatch[1] || 'text';
+            const codeLines = [];
+            i++;
+            while (i < lines.length && !/^```\s*$/.test(lines[i])) {
+              codeLines.push(lines[i]);
+              i++;
+            }
+            if (i < lines.length) i++;
+            const rawCode = codeLines.join('\n');
+            out.push(
+              '<div class="doc-code-block">' +
+                '<div class="doc-code-header">' +
+                  '<span>' + escapeHtml(lang) + '</span>' +
+                  '<button type="button" class="doc-code-copy">Copy</button>' +
+                '</div>' +
+                '<pre><code>' + escapeHtml(rawCode) + '</code></pre>' +
+              '</div>'
+            );
+            continue;
+          }
+
+          // Horizontal rule
+          if (/^([-*_]){3,}\s*$/.test(trimmed)) {
+            out.push('<hr>');
+            i++;
+            continue;
+          }
+
+          // Headings
+          const hMatch = line.match(/^(#{1,4})\s+(.+?)\s*#*$/);
+          if (hMatch) {
+            const level = hMatch[1].length;
+            const rawHeading = hMatch[2];
+            const slug = nextSlug(rawHeading);
+            if (level === 2 || level === 3) {
+              headings.push({
+                level,
+                id: slug,
+                text: rawHeading.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1').replace(/[`*_]/g, '')
+              });
+            }
+            out.push('<h' + level + ' id="' + slug + '">' + renderInlineMarkdown(rawHeading) + '</h' + level + '>');
+            i++;
+            continue;
+          }
+
+          // Blockquote
+          if (trimmed.startsWith('>')) {
+            const quoteLines = [];
+            while (i < lines.length && lines[i].trim().startsWith('>')) {
+              quoteLines.push(lines[i].trim().replace(/^>\s?/, ''));
+              i++;
+            }
+            out.push('<blockquote>' + quoteLines.map(l => l ? '<p>' + renderInlineMarkdown(l) + '</p>' : '').join('') + '</blockquote>');
+            continue;
+          }
+
+          // GFM Table
+          if (line.includes('|') && i + 1 < lines.length && isTableDivider(lines[i + 1])) {
+            const headers = splitTableRow(line);
+            i += 2;
+            const rows = [];
+            while (i < lines.length && lines[i].includes('|') && lines[i].trim() !== '') {
+              rows.push(splitTableRow(lines[i]));
+              i++;
+            }
+            let tableHtml = '<div class="doc-table-wrap"><table><thead><tr>';
+            headers.forEach(h => {
+              tableHtml += '<th>' + renderInlineMarkdown(h) + '</th>';
+            });
+            tableHtml += '</tr></thead><tbody>';
+            rows.forEach(row => {
+              tableHtml += '<tr>';
+              headers.forEach((_, colIdx) => {
+                tableHtml += '<td>' + renderInlineMarkdown(row[colIdx] || '') + '</td>';
+              });
+              tableHtml += '</tr>';
+            });
+            tableHtml += '</tbody></table></div>';
+            out.push(tableHtml);
+            continue;
+          }
+
+          // Unordered list (including task checklists)
+          if (/^\s*[-*+]\s+/.test(line)) {
+            const items = [];
+            while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
+              let itemText = lines[i].replace(/^\s*[-*+]\s+/, '');
+              if (/^\[x\]\s+/i.test(itemText)) {
+                itemText = '☑ ' + itemText.replace(/^\[x\]\s+/i, '');
+              } else if (/^\[\s\]\s+/.test(itemText)) {
+                itemText = '☐ ' + itemText.replace(/^\[\s\]\s+/, '');
+              }
+              items.push('<li>' + renderInlineMarkdown(itemText) + '</li>');
+              i++;
+            }
+            out.push('<ul>' + items.join('') + '</ul>');
+            continue;
+          }
+
+          // Ordered list
+          if (/^\s*\d+\.\s+/.test(line)) {
+            const items = [];
+            while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+              const itemText = lines[i].replace(/^\s*\d+\.\s+/, '');
+              items.push('<li>' + renderInlineMarkdown(itemText) + '</li>');
+              i++;
+            }
+            out.push('<ol>' + items.join('') + '</ol>');
+            continue;
+          }
+
+          // Raw HTML wrapper tags (e.g., <div align="center">)
+          if (/^<\/?[a-zA-Z][^>]*>$/.test(trimmed)) {
+            i++;
+            continue;
+          }
+
+          // Paragraph
+          const paraLines = [];
+          while (
+            i < lines.length &&
+            lines[i].trim() !== '' &&
+            !/^```/.test(lines[i]) &&
+            !/^#{1,4}\s+/.test(lines[i]) &&
+            !lines[i].trim().startsWith('>') &&
+            !/^\s*[-*+]\s+/.test(lines[i]) &&
+            !/^\s*\d+\.\s+/.test(lines[i]) &&
+            !/^([-*_]){3,}\s*$/.test(lines[i].trim()) &&
+            !(lines[i].includes('|') && i + 1 < lines.length && isTableDivider(lines[i + 1]))
+          ) {
+            paraLines.push(lines[i].trim());
+            i++;
+          }
+          out.push('<p>' + renderInlineMarkdown(paraLines.join(' ')) + '</p>');
+        }
+
+        return { html: out.join('\n'), headings };
+      }
+
+      function getFilteredDocs() {
+        const q = searchQuery.trim().toLowerCase();
+        return docs.filter(d => {
+          if (activeCategory !== 'All' && d.category !== activeCategory) {
+            return false;
+          }
+          if (!q) return true;
+          return (
+            d.title.toLowerCase().includes(q) ||
+            d.path.toLowerCase().includes(q) ||
+            d.category.toLowerCase().includes(q) ||
+            d.badge.toLowerCase().includes(q) ||
+            d.markdown.toLowerCase().includes(q)
+          );
+        });
+      }
+
+      function findMatchSnippet(doc, q) {
+        if (!q) return '';
+        const idx = doc.markdown.toLowerCase().indexOf(q);
+        if (idx === -1) return doc.excerpt;
+        const start = Math.max(0, idx - 36);
+        const end = Math.min(doc.markdown.length, idx + q.length + 72);
+        return (start > 0 ? '…' : '') +
+          doc.markdown.slice(start, end).replace(/\s+/g, ' ').replace(/[#*`]/g, '') +
+          (end < doc.markdown.length ? '…' : '');
+      }
+
+      function renderFilterBar() {
+        elFilterBar.innerHTML = '';
+        CATEGORIES.forEach(cat => {
+          const count = cat === 'All'
+            ? docs.length
+            : docs.filter(d => d.category === cat).length;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'docs-filter-btn' + (activeCategory === cat ? ' active' : '');
+          btn.innerHTML = escapeHtml(cat) + ' <span>' + count + '</span>';
+          btn.addEventListener('click', () => {
+            activeCategory = cat;
+            const visible = getFilteredDocs();
+            if (visible.length && !visible.some(d => d.id === activeDocId)) {
+              activeDocId = visible[0].id;
+              syncUrl(activeDocId);
+            }
+            renderAll();
+          });
+          elFilterBar.appendChild(btn);
+        });
+      }
+
+      function renderSidebar(filtered) {
+        elSidebarCount.textContent = filtered.length + ' of ' + docs.length + ' docs';
+        elNavTree.innerHTML = '';
+
+        if (!filtered.length) {
+          elNavTree.innerHTML = '<div class="docs-empty-state" style="padding:20px 8px;font-size:13px;">No matching docs found for "' + escapeHtml(searchQuery) + '".</div>';
+          return;
+        }
+
+        const q = searchQuery.trim().toLowerCase();
+        const groupOrder = CATEGORIES.slice(1);
+        groupOrder.forEach(cat => {
+          const items = filtered.filter(d => d.category === cat);
+          if (!items.length) return;
+
+          const groupEl = document.createElement('div');
+          groupEl.className = 'docs-group';
+
+          const titleEl = document.createElement('div');
+          titleEl.className = 'docs-group-title';
+          titleEl.textContent = cat + ' (' + items.length + ')';
+          groupEl.appendChild(titleEl);
+
+          items.forEach(doc => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'docs-nav-item' + (doc.id === activeDocId ? ' active' : '');
+            const snippet = q ? findMatchSnippet(doc, q) : '';
+            btn.innerHTML =
+              '<div class="docs-nav-item-top">' +
+                '<span class="docs-nav-item-title">' + escapeHtml(doc.title) + '</span>' +
+                '<span class="docs-nav-badge">' + escapeHtml(doc.badge) + '</span>' +
+              '</div>' +
+              (snippet ? '<div class="docs-nav-snippet">' + escapeHtml(snippet) + '</div>' : '');
+
+            btn.addEventListener('click', () => {
+              selectDoc(doc.id, true);
+              elSidebar.classList.remove('open');
+            });
+            groupEl.appendChild(btn);
+          });
+
+          elNavTree.appendChild(groupEl);
+        });
+      }
+
+      function renderActiveDoc(filtered) {
+        const doc = docs.find(d => d.id === activeDocId) || filtered[0] || docs[0];
+        if (!doc) {
+          elContentBody.innerHTML = '<div class="docs-empty-state">No documentation entries loaded.</div>';
+          return;
+        }
+        activeDocId = doc.id;
+        elCatBadge.textContent = doc.category;
+        elSourcePath.textContent = doc.path;
+        elReadMeta.textContent = doc.readMinutes + ' min read · ' + doc.words.toLocaleString() + ' words';
+        elMobileLabel.textContent = 'Doc: ' + doc.title;
+
+        const rendered = renderMarkdown(doc.markdown);
+        elContentBody.innerHTML = rendered.html;
+
+        // Wire interactive "On this page" outline pills
+        if (rendered.headings.length > 1) {
+          elTocStrip.style.display = 'block';
+          elTocPills.innerHTML = '';
+          rendered.headings.slice(0, 14).forEach(h => {
+            const pill = document.createElement('button');
+            pill.type = 'button';
+            pill.className = 'docs-toc-pill';
+            pill.textContent = (h.level === 3 ? '↳ ' : '') + h.text;
+            pill.addEventListener('click', () => {
+              const target = document.getElementById(h.id);
+              if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+            elTocPills.appendChild(pill);
+          });
+        } else {
+          elTocStrip.style.display = 'none';
+        }
+
+        // Wire internal doc cross-links
+        elContentBody.querySelectorAll('a[data-doc-jump]').forEach(link => {
+          link.addEventListener('click', e => {
+            e.preventDefault();
+            const nextId = link.getAttribute('data-doc-jump');
+            activeCategory = 'All';
+            selectDoc(nextId, true);
+          });
+        });
+
+        // Wire code block Copy buttons
+        elContentBody.querySelectorAll('.doc-code-copy').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const codeEl = btn.closest('.doc-code-block').querySelector('code');
+            const text = codeEl ? codeEl.textContent : '';
+            if (navigator.clipboard && text) {
+              navigator.clipboard.writeText(text).then(() => {
+                btn.textContent = 'Copied ✓';
+                setTimeout(() => { btn.textContent = 'Copy'; }, 1600);
+              });
+            }
+          });
+        });
+
+        // Prev / Next pager inside active list
+        const list = filtered.length ? filtered : docs;
+        const pos = list.findIndex(d => d.id === doc.id);
+        const prevDoc = pos > 0 ? list[pos - 1] : null;
+        const nextDoc = pos >= 0 && pos < list.length - 1 ? list[pos + 1] : null;
+        elPager.innerHTML = '';
+
+        if (prevDoc) {
+          const prevBtn = document.createElement('button');
+          prevBtn.type = 'button';
+          prevBtn.className = 'docs-pager-card';
+          prevBtn.innerHTML =
+            '<div class="docs-pager-dir">← Previous</div>' +
+            '<div class="docs-pager-title">' + escapeHtml(prevDoc.title) + '</div>';
+          prevBtn.addEventListener('click', () => selectDoc(prevDoc.id, true));
+          elPager.appendChild(prevBtn);
+        } else {
+          elPager.appendChild(document.createElement('div'));
+        }
+
+        if (nextDoc) {
+          const nextBtn = document.createElement('button');
+          nextBtn.type = 'button';
+          nextBtn.className = 'docs-pager-card next';
+          nextBtn.innerHTML =
+            '<div class="docs-pager-dir">Next →</div>' +
+            '<div class="docs-pager-title">' + escapeHtml(nextDoc.title) + '</div>';
+          nextBtn.addEventListener('click', () => selectDoc(nextDoc.id, true));
+          elPager.appendChild(nextBtn);
+        }
+      }
+
+      function syncUrl(docId) {
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.set('doc', docId);
+          window.history.replaceState({}, '', url.toString());
+        } catch (_) {}
+      }
+
+      function selectDoc(docId, scrollToReader) {
+        const exists = docs.some(d => d.id === docId);
+        if (!exists) return;
+        activeDocId = docId;
+        syncUrl(docId);
+        renderAll();
+        if (scrollToReader) {
+          const cardTop = document.getElementById('docsReaderCard').getBoundingClientRect().top + window.scrollY - 82;
+          window.scrollTo({ top: Math.max(0, cardTop), behavior: 'smooth' });
+        }
+      }
+
+      function renderAll() {
+        const filtered = getFilteredDocs();
+        renderFilterBar();
+        renderSidebar(filtered);
+        renderActiveDoc(filtered);
+      }
+
+      // Initialize from ?doc=<id>
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const requested = params.get('doc');
+        if (requested && docs.some(d => d.id === requested)) {
+          activeDocId = requested;
+        }
+      } catch (_) {}
+
+      elSearchInput.addEventListener('input', () => {
+        searchQuery = elSearchInput.value;
+        elSearchClear.classList.toggle('visible', searchQuery.trim().length > 0);
+        const visible = getFilteredDocs();
+        if (visible.length && !visible.some(d => d.id === activeDocId)) {
+          activeDocId = visible[0].id;
+        }
+        renderAll();
+      });
+
+      elSearchClear.addEventListener('click', () => {
+        searchQuery = '';
+        elSearchInput.value = '';
+        elSearchClear.classList.remove('visible');
+        renderAll();
+        elSearchInput.focus();
+      });
+
+      elMobileToggle.addEventListener('click', () => {
+        elSidebar.classList.toggle('open');
+      });
+
+      elBtnCopyMd.addEventListener('click', () => {
+        const doc = docs.find(d => d.id === activeDocId);
+        if (!doc || !navigator.clipboard) return;
+        navigator.clipboard.writeText(doc.markdown).then(() => {
+          elBtnCopyMd.textContent = 'Copied Markdown ✓';
+          elBtnCopyMd.classList.add('copied');
+          setTimeout(() => {
+            elBtnCopyMd.textContent = 'Copy Markdown';
+            elBtnCopyMd.classList.remove('copied');
+          }, 1600);
+        });
+      });
+
+      elBtnPrint.addEventListener('click', () => window.print());
+
+      window.addEventListener('keydown', e => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          elSearchInput.focus();
+          elSearchInput.select();
+        } else if (e.key === '/' && document.activeElement !== elSearchInput) {
+          e.preventDefault();
+          elSearchInput.focus();
+        }
+      });
+
+      renderAll();
+    })();
+
+    function handleNavScroll() {
+      if (window.scrollY > 40) {
+        document.body.classList.add('scrolled');
+      } else {
+        document.body.classList.remove('scrolled');
+      }
+    }
+    window.addEventListener('scroll', handleNavScroll, { passive: true });
+    window.addEventListener('DOMContentLoaded', handleNavScroll);
+    handleNavScroll();
+  </script>
+  <script src="release.js"></script>
+</body>
+</html>

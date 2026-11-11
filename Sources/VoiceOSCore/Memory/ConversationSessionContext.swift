@@ -17,6 +17,7 @@ public final class ConversationSessionContext: @unchecked Sendable {
     private var _lastCommand: String?
     private var _lastActiveBrowser: String?
     private var _lastCreatedOrModifiedPath: String?
+    private var _lastTypedText: String?
     private var _lastSearchQuery: String?
     private var _lastSearchResults: [(title: String, url: String)] = []
     private var _pendingDeletePath: String?
@@ -32,6 +33,7 @@ public final class ConversationSessionContext: @unchecked Sendable {
             _lastCommand = nil
             _lastActiveBrowser = nil
             _lastCreatedOrModifiedPath = nil
+            _lastTypedText = nil
             _lastSearchQuery = nil
             _lastSearchResults = []
             _pendingDeletePath = nil
@@ -45,7 +47,20 @@ public final class ConversationSessionContext: @unchecked Sendable {
     public var lastCommand: String? { lock.withLock { _lastCommand } }
     public var lastActiveBrowser: String? { lock.withLock { _lastActiveBrowser } }
     public var lastCreatedOrModifiedPath: String? { lock.withLock { _lastCreatedOrModifiedPath } }
+    public var lastTypedText: String? { lock.withLock { _lastTypedText } }
     public var lastSearchQuery: String? { lock.withLock { _lastSearchQuery } }
+
+    public func setLastTypedText(_ text: String) {
+        lock.withLock { _lastTypedText = text }
+    }
+
+    public func clearLastFilePathIfMatching(_ path: String) {
+        lock.withLock {
+            if _lastCreatedOrModifiedPath == path {
+                _lastCreatedOrModifiedPath = nil
+            }
+        }
+    }
     public var pendingDeletePath: String? { lock.withLock { _pendingDeletePath } }
 
     public func recordReply(_ reply: String, forCommand cmd: String) {

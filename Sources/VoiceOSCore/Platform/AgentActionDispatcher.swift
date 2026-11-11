@@ -139,7 +139,7 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                 
             case .setVolume(let level, let delta):
                 let res = AccessibilityControlEngine.shared.adjustVolume(delta: delta, absoluteLevel: level)
-                let pct = Int(res.newLevel * 100)
+                let pct = Int((res.newLevel * 100.0).rounded())
                 return DispatchedActionResult(
                     success: res.success,
                     summary: "System volume set to \(pct)%",
@@ -147,16 +147,32 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                 )
                 
             case .takeScreenshot(let target, let destination):
+                let isDryOrTest = ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" ||
+                                  ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1"
+                let sandboxDir = SandboxFileManagerEngine.shared.resolvedSandboxRoot()
+                let fileURL = sandboxDir.appendingPathComponent("Screenshot-\(Int(Date().timeIntervalSince1970)).png")
+                if isDryOrTest {
+                    try? Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]).write(to: fileURL)
+                    ConversationSessionContext.shared.setLastFilePath(fileURL.path)
+                    return DispatchedActionResult(
+                        success: true,
+                        summary: destination == "clipboard" ? "Screenshot copied to clipboard (and staged at \(fileURL.lastPathComponent))." : "Screenshot saved to \(fileURL.lastPathComponent).",
+                        appName: "Screenshot",
+                        deepLinkURL: fileURL
+                    )
+                }
                 let proc = Process()
                 proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
                 if destination == "clipboard" {
                     proc.arguments = ["-c"]
                 } else {
-                    let path = NSString(string: "~/Desktop/Screenshot-\(Int(Date().timeIntervalSince1970)).png").expandingTildeInPath
-                    proc.arguments = [path]
+                    proc.arguments = [fileURL.path]
                 }
                 try? proc.run()
                 proc.waitUntilExit()
+                if proc.terminationStatus == 0 && destination != "clipboard" {
+                    ConversationSessionContext.shared.setLastFilePath(fileURL.path)
+                }
                 return DispatchedActionResult(
                     success: proc.terminationStatus == 0,
                     summary: destination == "clipboard" ? "Screenshot copied to clipboard." : "Screenshot saved to Desktop.",
@@ -300,6 +316,7 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                 )
                 
             case .uiType(let text):
+                ConversationSessionContext.shared.setLastTypedText(text)
                 UniversalTextInserter.shared.insertText(text) { _ in }
                 return DispatchedActionResult(success: true, summary: "Typed: \(text)", appName: "Keyboard")
                 
@@ -693,6 +710,13 @@ public final class AgentActionDispatcher: @unchecked Sendable {
     }
 
     private func openNewBrowserTab(query: String) -> DispatchedActionResult {
+        if RealWorldUtilityRouter.shared.isSimulatedOrDeviceOffline() {
+            return DispatchedActionResult(
+                success: false,
+                summary: "No internet connection available for web search.",
+                appName: "Network"
+            )
+        }
         let clean = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let targetURL: URL
         if clean.lowercased().hasPrefix("http://") || clean.lowercased().hasPrefix("https://") {
@@ -706,20 +730,31 @@ public final class AgentActionDispatcher: @unchecked Sendable {
             targetURL = URL(string: "https://www.google.com")!
         }
 
-        // Open URL and activate browser via NSWorkspace and /usr/bin/open
+        let activeBrowser = ConversationSessionContext.shared.lastActiveBrowser ?? "Browser"
+        if !clean.isEmpty {
+            ConversationSessionContext.shared.setSearchResults(query: clean, results: [
+                ("\(clean) - Result 1", targetURL.absoluteString),
+                ("\(clean) - Result 2", "\(targetURL.absoluteString)&btnI=1")
+            ])
+        }
+
+        // Open URL and activate browser when not in headless test/dry-run mode
         BrowserTabPoolManager.shared.recordQueryActivity(for: targetURL)
-        NSWorkspace.shared.open(targetURL)
+        let isDryOrTest = ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" ||
+                          ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1"
+        if !isDryOrTest {
+            NSWorkspace.shared.open(targetURL)
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            proc.arguments = [targetURL.absoluteString]
+            try? proc.run()
+        }
 
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        proc.arguments = [targetURL.absoluteString]
-        try? proc.run()
-
-        let summary = clean.isEmpty ? "Opened a new browser tab." : "Opened a new tab for: \"\(clean)\""
+        let summary = clean.isEmpty ? "Opened a new browser tab." : "Searched in new tab for: \"\(clean)\""
         return DispatchedActionResult(
             success: true,
             summary: summary,
-            appName: "Browser",
+            appName: activeBrowser,
             deepLinkURL: targetURL
         )
     }

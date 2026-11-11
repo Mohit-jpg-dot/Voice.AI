@@ -84,6 +84,7 @@ public final class SandboxFileManagerEngine: @unchecked Sendable {
             switch op {
             case .createdFile(let path), .createdFolder(let path), .copiedFile(let path):
                 try? fm.removeItem(atPath: path)
+                ConversationSessionContext.shared.clearLastFilePathIfMatching(path)
                 let name = URL(fileURLWithPath: path).lastPathComponent
                 return AutonomousExecutionResult(
                     success: true,

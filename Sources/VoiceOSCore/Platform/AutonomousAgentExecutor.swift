@@ -274,7 +274,17 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         }
 
         // -------------------------------------------------------------
-        // Step -1.2: Section 5 Sandboxed File & Folder Operations (+ Undo / Confirmed Delete)
+        // Step -1.2: System Utilities, Multi-Step Chains, Context Follow-ups & Error Guards
+        // (Must run before single-step file/tool parsers so chains like "Create X, then create Y" split cleanly)
+        // -------------------------------------------------------------
+        if triggerMode == .agent,
+           let utilResult = await RealWorldUtilityRouter.shared.handleUtilityOrFollowUp(taskDescription) {
+            ConversationSessionContext.shared.recordReply(utilResult.summary, forCommand: trimmed)
+            return utilResult
+        }
+
+        // -------------------------------------------------------------
+        // Step -1.1: Section 5 Sandboxed File & Folder Operations (+ Undo / Confirmed Delete)
         // -------------------------------------------------------------
         if triggerMode == .agent,
            let fileResult = await SandboxFileManagerEngine.shared.handleFileCommand(trimmed) {

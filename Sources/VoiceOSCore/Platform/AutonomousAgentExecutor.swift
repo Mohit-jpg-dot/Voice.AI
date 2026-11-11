@@ -205,6 +205,64 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             return firewallResult
         }
 
+        // -------------------------------------------------------------
+        // Step -1.5: Section 1 Conversation Controls (Greeting, Stop Listening, Cancel, Repeat)
+        // -------------------------------------------------------------
+        if triggerMode == .agent {
+            let cleanLower = trimmed.lowercased()
+            if cleanLower == "hello" || cleanLower == "hi" || cleanLower == "hey" || cleanLower == "namaste" {
+                let greet = "Hello! How can I help you today?"
+                ConversationSessionContext.shared.recordReply(greet, forCommand: trimmed)
+                return AutonomousExecutionResult(success: true, summary: greet, targetAppName: AppBrand.name)
+            }
+            if cleanLower == "stop listening" || cleanLower == "pause listening" {
+                TheVoiceAmbientListener.shared.isTheVoiceModeEnabled = false
+                let msg = "Stopped listening. Press Fn or say your wake word when you need me."
+                ConversationSessionContext.shared.recordReply(msg, forCommand: trimmed)
+                return AutonomousExecutionResult(success: true, summary: msg, targetAppName: AppBrand.name)
+            }
+            if cleanLower == "cancel" || cleanLower == "never mind" || cleanLower == "nevermind" || cleanLower == "abort" {
+                SpeechPipelineEngine.shared.bargeIn()
+                ConversationSessionContext.shared.setPendingDeletePath(nil)
+                let msg = "Cancelled."
+                ConversationSessionContext.shared.recordReply(msg, forCommand: trimmed)
+                return AutonomousExecutionResult(success: false, summary: msg, targetAppName: AppBrand.name)
+            }
+            if cleanLower == "repeat that" || cleanLower == "say that again" || cleanLower == "repeat" {
+                let prev = ConversationSessionContext.shared.lastReply ?? "I haven't said anything yet."
+                return AutonomousExecutionResult(
+                    success: ConversationSessionContext.shared.lastReply != nil,
+                    summary: prev,
+                    targetAppName: AppBrand.name,
+                    executedSteps: ["Repeated previous spoken response"]
+                )
+            }
+            // Multi-app fast launch ("Open Chrome and Notepad")
+            if cleanLower.hasPrefix("open ") && cleanLower.contains(" and ") && !cleanLower.contains("search") && !cleanLower.contains("note:") && !cleanLower.contains("a note") && !cleanLower.contains("type") {
+                let body = String(trimmed.dropFirst(5))
+                let parts = body.components(separatedBy: " and ").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                if parts.count >= 2 && parts.allSatisfy({ $0.split(separator: " ").count <= 3 }) {
+                    var openedNames: [String] = []
+                    for appPart in parts {
+                        let res = await AgentActionDispatcher.shared.dispatch(transcript: "open \(appPart)")
+                        if res.success {
+                            openedNames.append(res.appName)
+                        }
+                    }
+                    if !openedNames.isEmpty {
+                        let summary = "Opened \(openedNames.joined(separator: " and "))."
+                        ConversationSessionContext.shared.recordReply(summary, forCommand: trimmed)
+                        return AutonomousExecutionResult(
+                            success: true,
+                            summary: summary,
+                            targetAppName: openedNames.joined(separator: ", "),
+                            executedSteps: openedNames.map { "Opened \($0)" }
+                        )
+                    }
+                }
+            }
+        }
+
         if PersonaManager.shared.evaluateSafetyGuardrail(userInput: trimmed) {
             return AutonomousExecutionResult(
                 success: true,
@@ -287,6 +345,7 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         // Step 1: Instant Deterministic Math Evaluation
         // -------------------------------------------------------------
         if let mathResult = MathEngine.shared.evaluate(trimmed) {
+            ConversationSessionContext.shared.recordReply(mathResult.displaySummary, forCommand: trimmed)
             LocalMemoryManager.shared.remember(
                 content: "\(trimmed) -> \(mathResult.displaySummary)",
                 category: "task",
@@ -336,6 +395,19 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 }
             } catch {
                 print("[AutonomousAgentExecutor] Conversation chatModel error: \(error)")
+                // Preserve dictated speech cleanly rather than falling back to Wikipedia lookup
+                let polished = DictationPolishEngine.shared.polish(
+                    rawText: taskDescription,
+                    profile: .general
+                ).polishedText.trimmingCharacters(in: .whitespacesAndNewlines)
+                let output = polished.isEmpty ? taskDescription : polished
+                ConversationSessionContext.shared.recordReply(output, forCommand: taskDescription)
+                return AutonomousExecutionResult(
+                    success: true,
+                    summary: output,
+                    targetAppName: "Dictation",
+                    executedSteps: ["Polished dictated speech locally"]
+                )
             }
         }
         
@@ -346,6 +418,7 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             // 1. Direct Native macOS Tools (<1ms, zero LLM round-trip for explicit commands)
             if let _ = AgentToolParser.parse(query: trimmed) {
                 let dispatchResult = await AgentActionDispatcher.shared.dispatch(transcript: trimmed)
+                ConversationSessionContext.shared.recordReply(dispatchResult.summary, forCommand: trimmed)
                 LocalMemoryManager.shared.remember(
                     content: "\(trimmed) -> \(dispatchResult.summary)",
                     category: "task",
@@ -360,12 +433,13 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 )
             }
 
-            // 1b. Direct local Apple Notes / Reminders / Finder tasks (reliable without risking LLM app hallucination)
+            // 1b. Direct local Apple Notes / Reminders / Finder tasks (never hijack explicit file/folder commands)
             let qLower = trimmed.lowercased()
+            let mentionsFileSystem = qLower.contains("file") || qLower.contains("folder") || qLower.contains(".txt") || qLower.contains("rename ") || qLower.contains("move ") || qLower.contains("copy ") || qLower.contains("delete ")
             let isDirectLocalUtilityTask =
-                ((qLower.contains("note") || qLower.contains("notes")) && (qLower.contains("create") || qLower.contains("add") || qLower.contains("write") || qLower.contains("take") || qLower.contains("likh") || qLower.contains("save"))) ||
+                (!mentionsFileSystem && (qLower.contains("note") || qLower.contains("notes")) && (qLower.contains("create") || qLower.contains("add") || qLower.contains("write") || qLower.contains("take") || qLower.contains("likh") || qLower.contains("save"))) ||
                 qLower.contains("remind me to ") || qLower.hasPrefix("reminder ") ||
-                qLower.contains("open downloads") || qLower.contains("show downloads") ||
+                qLower.contains("open downloads") || qLower.contains("show downloads") || qLower.contains("downloads folder") ||
                 qLower.contains("open documents") || qLower.contains("show documents")
             if isDirectLocalUtilityTask {
                 let dispatchResult = await AgentActionDispatcher.shared.dispatch(transcript: trimmed)

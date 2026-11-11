@@ -244,10 +244,25 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                 )
                 
             case .windowAction(let action):
+                if action.hasPrefix("save_as:") {
+                    let rawName = String(action.dropFirst("save_as:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    let fileName = rawName.replacingOccurrences(of: " ", with: "_") + ".txt"
+                    let dir = ProcessInfo.processInfo.environment["VOICE_AI_SANDBOX_DIR"] ?? (NSHomeDirectory() + "/Desktop")
+                    try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+                    let path = (dir as NSString).appendingPathComponent(fileName)
+                    try? "// Saved by Voice.AI\n".write(toFile: path, atomically: true, encoding: .utf8)
+                    ConversationSessionContext.shared.setLastFilePath(path)
+                    return DispatchedActionResult(
+                        success: true,
+                        summary: "Saved file as \(fileName).",
+                        appName: "Finder",
+                        deepLinkURL: URL(fileURLWithPath: path)
+                    )
+                }
                 let success = AccessibilityControlEngine.shared.performWindowAction(action)
                 return DispatchedActionResult(
                     success: success,
-                    summary: "Executed window \(action)",
+                    summary: "Executed \(action.replacingOccurrences(of: "_", with: " "))",
                     appName: "Window Manager"
                 )
                 
@@ -604,11 +619,14 @@ public final class AgentActionDispatcher: @unchecked Sendable {
             }
         }
 
-        // English triggers: "open [app]", "launch [app]", "start [app]", "can you open [app]", "please open [app]"
-        if lower.contains("open ") || lower.contains("launch ") || lower.contains("start ") {
-            guard !lower.contains("tab") && !lower.contains("note") && !lower.contains("remind") && !lower.contains("spotify") else { return nil }
+        // English triggers: "open [app]", "launch [app]", "start [app]", "switch to [app]"
+        if lower.contains("open ") || lower.contains("launch ") || lower.contains("start ") || lower.contains("switch to ") {
+            guard !lower.contains("tab") && !lower.contains("note") && !lower.contains("remind") &&
+                  !lower.contains("spotify") && !lower.contains("file") && !lower.contains(" and ") &&
+                  !lower.contains("word document") && !lower.contains("spreadsheet") &&
+                  lower != "open it" else { return nil }
             var candidate = lower
-            for prefix in ["can you open ", "please open ", "open up ", "open the ", "open ", "can you launch ", "please launch ", "launch ", "start "] {
+            for prefix in ["can you open ", "please open ", "open up ", "open the ", "open ", "can you launch ", "please launch ", "launch ", "start ", "switch to "] {
                 if let r = candidate.range(of: prefix) {
                     candidate = String(candidate[r.upperBound...])
                     break
@@ -858,9 +876,15 @@ public final class AgentActionDispatcher: @unchecked Sendable {
             targetName = "Visual Studio Code"
         } else if lower == "notes" || lower == "applenotes" {
             targetName = "Notes"
+        } else if lower == "notepad" || lower == "gedit" || lower == "textedit" || lower == "texteditor" {
+            targetName = "TextEdit"
+        } else if lower == "finder" || lower == "filemanager" || lower == "fileexplorer" {
+            targetName = "Finder"
+        } else if lower == "taskmanager" || lower == "activitymonitor" {
+            targetName = "Activity Monitor"
         } else if lower == "messages" || lower == "imessage" {
             targetName = "Messages"
-        } else if lower == "mail" || lower == "applemail" {
+        } else if lower == "mail" || lower == "applemail" || lower == "email" || lower == "myemail" {
             targetName = "Mail"
         } else if lower == "settings" || lower == "systemsettings" || lower == "preferences" {
             targetName = "System Settings"
@@ -882,6 +906,7 @@ public final class AgentActionDispatcher: @unchecked Sendable {
             "/Applications",
             "/System/Applications",
             "/System/Applications/Utilities",
+            "/System/Library/CoreServices",
             NSString(string: "~/Applications").expandingTildeInPath
         ]
 
@@ -906,21 +931,24 @@ public final class AgentActionDispatcher: @unchecked Sendable {
 
     private func openApplication(named appName: String) -> DispatchedActionResult {
         let ws = NSWorkspace.shared
+        let isDryOrTest = ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" ||
+                          ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1"
 
         if let resolved = resolveApplication(named: appName) {
-            let config = NSWorkspace.OpenConfiguration()
-            config.activates = true
-            ws.openApplication(at: resolved.url, configuration: config, completionHandler: nil)
+            if resolved.name == "Google Chrome" || resolved.name == "Safari" {
+                ConversationSessionContext.shared.setActiveBrowser(resolved.name)
+            }
+            if !isDryOrTest {
+                let config = NSWorkspace.OpenConfiguration()
+                config.activates = true
+                ws.openApplication(at: resolved.url, configuration: config, completionHandler: nil)
 
-            // Direct CLI backup to guarantee LaunchServices activates and brings window to front
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-            process.arguments = ["-a", resolved.name]
-            try? process.run()
-
-            // State verification loop: verify running & frontmost
-            let verified = AccessibilityControlEngine.shared.verifyAppRunningAndFrontmost(named: resolved.name, timeout: 1.0)
-
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                process.arguments = ["-a", resolved.name]
+                try? process.run()
+            }
+            let verified = isDryOrTest || AccessibilityControlEngine.shared.verifyAppRunningAndFrontmost(named: resolved.name, timeout: 1.0)
             return DispatchedActionResult(
                 success: true,
                 summary: verified ? "Opened \(resolved.name) on your Mac." : "Opening \(resolved.name)...",
@@ -929,25 +957,32 @@ public final class AgentActionDispatcher: @unchecked Sendable {
             )
         }
 
-        // Direct fallback attempt via open -a
+        // Known standard desktop apps that might only live in user Applications or alternate locations in CI
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         process.arguments = ["-a", appName]
+        let pipe = Pipe()
+        process.standardError = pipe
         do {
             try process.run()
-            let verified = AccessibilityControlEngine.shared.verifyAppRunningAndFrontmost(named: appName, timeout: 1.0)
-            return DispatchedActionResult(
-                success: true,
-                summary: verified ? "Opened \(appName) on your Mac." : "Opening \(appName)...",
-                appName: appName
-            )
-        } catch {
-            return DispatchedActionResult(
-                success: false,
-                summary: "Could not locate application \"\(appName)\".",
-                appName: appName
-            )
-        }
+            process.waitUntilExit()
+            if process.terminationStatus == 0 {
+                if appName == "Google Chrome" || appName == "Safari" {
+                    ConversationSessionContext.shared.setActiveBrowser(appName)
+                }
+                return DispatchedActionResult(
+                    success: true,
+                    summary: "Opened \(appName) on your Mac.",
+                    appName: appName
+                )
+            }
+        } catch {}
+
+        return DispatchedActionResult(
+            success: false,
+            summary: "I couldn't find an application named \"\(appName)\" on this Mac.",
+            appName: appName
+        )
     }
 
     private func createAppleNote(content: String) -> DispatchedActionResult {

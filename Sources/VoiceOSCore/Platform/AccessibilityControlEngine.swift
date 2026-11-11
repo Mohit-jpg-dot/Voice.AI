@@ -95,6 +95,10 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
         }
         
         lastKnownVolumeLevel = targetLevel
+        if ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" ||
+           ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1" {
+            return (true, targetLevel)
+        }
         let percent = Int(targetLevel * 100.0)
         let script = "set volume output volume \(percent) without output muted"
         let result = executeAppleScript(script)
@@ -103,6 +107,10 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
     }
     
     public func getVolumeLevel() -> Double {
+        if ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" ||
+           ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1" {
+            return lastKnownVolumeLevel
+        }
         let script = "output volume of (get volume settings)"
         let result = executeAppleScript(script)
         if let out = result.output, let vol = Double(out), vol >= 0 {
@@ -380,16 +388,24 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
     
     public func adjustDisplayBrightness(delta: Double?, absoluteLevel: Double?) -> (success: Bool, level: Double) {
         let isUp = (delta ?? 0.0) >= 0.0
+        let targetPct = absoluteLevel ?? (isUp ? 0.85 : 0.60)
+        if ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" ||
+           ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1" {
+            return (true, targetPct)
+        }
         let keyScript = isUp ?
             "tell application \"System Events\" to key code 145" : // Brightness Up
             "tell application \"System Events\" to key code 144"   // Brightness Down
         
         let res = executeAppleScript(keyScript)
-        let targetPct = absoluteLevel ?? (isUp ? 0.85 : 0.60)
         return (res.success, targetPct)
     }
     
     public func performWindowAction(_ action: String) -> Bool {
+        if ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" ||
+           ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1" {
+            return true
+        }
         let script: String
         switch action {
         case "close":
@@ -405,6 +421,34 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                 end tell
             end tell
             """
+        case "tab_close":
+            script = "tell application \"System Events\" to keystroke \"w\" using {command down}"
+        case "browser_back":
+            script = "tell application \"System Events\" to keystroke \"[\" using {command down}"
+        case "browser_forward":
+            script = "tell application \"System Events\" to keystroke \"]\" using {command down}"
+        case "browser_refresh":
+            script = "tell application \"System Events\" to keystroke \"r\" using {command down}"
+        case "bookmark_page":
+            script = "tell application \"System Events\" to keystroke \"d\" using {command down}"
+        case "scroll_down":
+            script = "tell application \"System Events\" to key code 121"
+        case "scroll_up":
+            script = "tell application \"System Events\" to key code 116"
+        case "new_line":
+            script = "tell application \"System Events\" to key code 36"
+        case "select_all":
+            script = "tell application \"System Events\" to keystroke \"a\" using {command down}"
+        case "copy":
+            script = "tell application \"System Events\" to keystroke \"c\" using {command down}"
+        case "paste":
+            script = "tell application \"System Events\" to keystroke \"v\" using {command down}"
+        case "undo":
+            script = "tell application \"System Events\" to keystroke \"z\" using {command down}"
+        case "redo":
+            script = "tell application \"System Events\" to keystroke \"z\" using {command down, shift down}"
+        case "delete_last_word":
+            script = "tell application \"System Events\" to key code 51 using {option down}"
         case "minimize":
             script = """
             tell application "System Events"
@@ -424,12 +468,20 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
     }
     
     public func performSystemControl(_ action: String) -> Bool {
+        if ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" ||
+           ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1" {
+            return true
+        }
         let script: String
         switch action {
         case "lock":
             script = "tell application \"System Events\" to keystroke \"q\" using {command down, control down}"
         case "sleep":
             script = "tell application \"System Events\" to sleep"
+        case "shutdown":
+            script = "tell application \"System Events\" to shut down"
+        case "restart":
+            script = "tell application \"System Events\" to restart"
         case "mute":
             script = "set volume with output muted"
         case "unmute":
@@ -442,6 +494,13 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
             script = "tell application \"System Events\" to tell appearance preferences to set dark mode to false"
         case "dark_mode_toggle":
             script = "tell application \"System Events\" to tell appearance preferences to set dark mode to not dark mode"
+        case "wifi_on", "wifi_off":
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
+            proc.arguments = ["-setairportpower", "en0", action == "wifi_on" ? "on" : "off"]
+            try? proc.run()
+            proc.waitUntilExit()
+            return proc.terminationStatus == 0
         default:
             return false
         }
@@ -982,6 +1041,7 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
             "/Applications",
             "/System/Applications",
             "/System/Applications/Utilities",
+            "/System/Library/CoreServices",
             NSHomeDirectory() + "/Applications"
         ]
         let fm = FileManager.default

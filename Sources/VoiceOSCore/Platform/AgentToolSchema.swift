@@ -333,8 +333,11 @@ public enum AgentToolParser {
                 return .systemControl(action: "mute")
             }
             
-            // Zero volume / Mute
-            if lower.contains("zero") || lower.contains("0%") || lower.contains("0 percent") || lower.contains("to 0") {
+            // Zero volume / Mute (use word boundaries so "30 percent" does not match "0 percent")
+            let isExplicitZero = lower.contains("zero") ||
+                                 lower.range(of: "\\b0\\s*(?:%|percent)\\b", options: .regularExpression) != nil ||
+                                 lower.range(of: "\\bto 0\\b", options: .regularExpression) != nil
+            if isExplicitZero {
                 return .setVolume(level: 0.0, delta: nil)
             }
             
@@ -374,11 +377,72 @@ public enum AgentToolParser {
         if lower.contains("window band") || lower.contains("close window") || lower.contains("close this window") || lower.contains("band kar do ye window") {
             return .windowAction(action: "close")
         }
+        if lower.contains("close this tab") || lower.contains("close tab") || lower == "close the tab" {
+            return .windowAction(action: "tab_close")
+        }
+        if lower == "go back" || lower == "navigate back" || lower == "back" || lower == "page back" {
+            return .windowAction(action: "browser_back")
+        }
+        if lower == "go forward" || lower == "navigate forward" || lower == "page forward" {
+            return .windowAction(action: "browser_forward")
+        }
+        if lower.contains("scroll down") || lower == "scroll down page" {
+            return .windowAction(action: "scroll_down")
+        }
+        if lower.contains("scroll up") || lower == "scroll up page" {
+            return .windowAction(action: "scroll_up")
+        }
+        if lower.contains("refresh the page") || lower == "refresh page" || lower == "reload page" || lower.contains("reload this page") || lower == "refresh" {
+            return .windowAction(action: "browser_refresh")
+        }
+        if lower.contains("bookmark this page") || lower == "bookmark page" || lower == "add bookmark" {
+            return .windowAction(action: "bookmark_page")
+        }
+        if lower.contains("read this page") || lower.contains("read the page") || lower.contains("summarize this page") {
+            return .screenRead(query: query)
+        }
         if lower.contains("minimize") || lower.contains("chhota kar do") {
             return .windowAction(action: "minimize")
         }
         if lower.contains("maximize") || lower.contains("full screen") || lower.contains("bada kar do") {
             return .windowAction(action: "maximize")
+        }
+
+        // 4.5 Editor & Typing Commands (Section 4)
+        if lower == "new line" || lower == "next line" {
+            return .windowAction(action: "new_line")
+        }
+        if lower == "select all" {
+            return .windowAction(action: "select_all")
+        }
+        if lower == "copy" || lower == "copy that" {
+            return .windowAction(action: "copy")
+        }
+        if lower == "paste" || lower == "paste that" {
+            return .windowAction(action: "paste")
+        }
+        if lower == "undo" {
+            return .windowAction(action: "undo")
+        }
+        if lower == "redo" {
+            return .windowAction(action: "redo")
+        }
+        if lower.contains("delete the last word") || lower == "delete last word" {
+            return .windowAction(action: "delete_last_word")
+        }
+        if lower.hasPrefix("save this file as ") || lower.hasPrefix("save file as ") {
+            let cleanName = lower
+                .replacingOccurrences(of: "save this file as ", with: "")
+                .replacingOccurrences(of: "save file as ", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            if !cleanName.isEmpty {
+                return .windowAction(action: "save_as:\(cleanName)")
+            }
+        }
+        if lower.hasPrefix("type ") {
+            let rawTyped = String(query.trimmingCharacters(in: .whitespacesAndNewlines).dropFirst(5))
+            let formatted = formatSpokenPunctuation(rawTyped)
+            return .uiType(text: formatted)
         }
 
         // 5. Open Application Intent (PRIORITIZED BEFORE MEDIA TO PREVENT 'spotify kholo' -> media_play)
@@ -536,8 +600,11 @@ public enum AgentToolParser {
     private static func extractAppToOpen(from text: String) -> String? {
         let lower = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
         
-        // Disqualify URLs, tabs, messaging, and music media requests from being hijacked as plain app launches
-        if lower.contains("tab") || lower.contains("youtube") || lower.contains("github") || lower.contains("twitter") || lower.contains(".com") {
+        // Disqualify URLs, tabs, messaging, multi-app chains, files, and music media requests from single-app launch
+        if lower.contains("tab") || lower.contains("youtube") || lower.contains("github") || lower.contains("twitter") || lower.contains(".com") || lower.contains(".org") || lower.contains(" and ") {
+            return nil
+        }
+        if (lower.hasPrefix("open file ") && !lower.contains("file manager") && !lower.contains("file explorer")) || lower == "open it" || lower.contains("word document") || lower.contains("spreadsheet") || lower.contains("latest file") {
             return nil
         }
         if lower.contains("message") || lower.contains("sandesh") || lower.contains("bhejo") {
@@ -548,7 +615,7 @@ public enum AgentToolParser {
             return nil
         }
         
-        // Common app dictionary
+        // Common app dictionary (including cross-OS aliases)
         let knownApps = [
             "whatsapp": "WhatsApp",
             "whats app": "WhatsApp",
@@ -563,16 +630,26 @@ public enum AgentToolParser {
             "safari": "Safari",
             "terminal": "Terminal",
             "finder": "Finder",
+            "file manager": "Finder",
+            "file explorer": "Finder",
             "notes": "Notes",
             "apple notes": "Notes",
+            "notepad": "TextEdit",
+            "textedit": "TextEdit",
+            "gedit": "TextEdit",
+            "text editor": "TextEdit",
             "settings": "System Settings",
             "system settings": "System Settings",
+            "task manager": "Activity Monitor",
+            "activity monitor": "Activity Monitor",
             "slack": "Slack",
             "notion": "Notion",
             "discord": "Discord",
             "photos": "Photos",
             "calendar": "Calendar",
             "mail": "Mail",
+            "email": "Mail",
+            "my email": "Mail",
             "music": "Music",
             "podcasts": "Podcasts",
             "calculator": "Calculator",
@@ -596,11 +673,14 @@ public enum AgentToolParser {
             return direct
         }
         
-        // Check if query is an app opening command: "[app] kholo", "kholo [app]", "open [app]", "[app] open", "klo", "chalao"
-        let isOpeningVerb = lower.contains("kholo") || lower.contains("klo") || lower.contains("kldo") || lower.contains("open") || (lower.contains("chalao") && !lower.contains("gana") && !lower.contains("music")) || lower.contains("launch") || lower.contains("start")
+        // Check if query is an app opening/switching command
+        let isOpeningVerb = lower.contains("kholo") || lower.contains("klo") || lower.contains("kldo") ||
+                            lower.contains("open") || lower.contains("switch to") ||
+                            (lower.contains("chalao") && !lower.contains("gana") && !lower.contains("music")) ||
+                            lower.contains("launch") || lower.contains("start")
         guard isOpeningVerb else { return nil }
         
-        for (key, appName) in knownApps {
+        for (key, appName) in knownApps.sorted(by: { $0.key.count > $1.key.count }) {
             let pattern = "\\b" + NSRegularExpression.escapedPattern(for: key) + "\\b"
             if lower.range(of: pattern, options: .regularExpression) != nil {
                 return appName
@@ -1039,12 +1119,33 @@ public enum AgentToolParser {
         if lowerTrimmed == "safari" { return "Safari" }
         if lowerTrimmed == "chrome" || lowerTrimmed == "google chrome" { return "Google Chrome" }
         if lowerTrimmed == "notes" || lowerTrimmed == "apple notes" { return "Notes" }
+        if lowerTrimmed == "notepad" || lowerTrimmed == "textedit" || lowerTrimmed == "gedit" { return "TextEdit" }
         if lowerTrimmed == "calendar" || lowerTrimmed == "apple calendar" { return "Calendar" }
         if lowerTrimmed == "whatsapp" { return "WhatsApp" }
         if lowerTrimmed == "vscode" || lowerTrimmed == "vs code" || lowerTrimmed == "visual studio code" { return "Visual Studio Code" }
-        if lowerTrimmed == "finder" { return "Finder" }
+        if lowerTrimmed == "finder" || lowerTrimmed == "file manager" { return "Finder" }
+        if lowerTrimmed == "task manager" || lowerTrimmed == "activity monitor" { return "Activity Monitor" }
         
         return trimmedCandidate.capitalized
+    }
+
+    private static func formatSpokenPunctuation(_ raw: String) -> String {
+        var result = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let replacements: [(String, String)] = [
+            ("\\s+comma\\b", ","),
+            ("\\s+period\\b", "."),
+            ("\\s+full stop\\b", "."),
+            ("\\s+question mark\\b", "?"),
+            ("\\s+exclamation mark\\b", "!"),
+            ("\\s+exclamation point\\b", "!"),
+            ("\\s+colon\\b", ":"),
+            ("\\s+semicolon\\b", ";"),
+            ("\\s+new line\\b", "\n")
+        ]
+        for (pattern, replacement) in replacements {
+            result = result.replacingOccurrences(of: pattern, with: replacement, options: [.regularExpression, .caseInsensitive])
+        }
+        return result
     }
 
     // MARK: - Rich Multi-App Integration Intent Extractor
@@ -1058,6 +1159,11 @@ public enum AgentToolParser {
         let isConceptualQ = (lower.hasPrefix("what is ") || lower.hasPrefix("explain ") || lower.hasPrefix("who invented ") || lower.hasPrefix("how does ")) &&
                             !lower.contains("this youtube") && !lower.contains("this video") && !lower.contains("my email") && !lower.contains("my inbox") && !lower.contains("my note")
         if isConceptualQ { return nil }
+
+        // Handle "Open my email" / "Open email" directly as launching Mail before integration extractor
+        if lower == "open my email" || lower == "open email" || lower == "open mail" || lower == "launch mail" {
+            return .openApp(name: "Mail")
+        }
 
         // 1. Email / Apple Mail / Gmail (draft, reply, send, check inbox, search)
         let mentionsEmail = lower.range(of: "\\b(e?mails?|inbox|gmail)\\b", options: .regularExpression) != nil

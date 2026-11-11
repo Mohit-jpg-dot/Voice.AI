@@ -2,16 +2,16 @@
 
 > A voice-first AI computer agent for macOS and Windows. Speaks Hindi, English, and Hinglish. Controls native applications, web browsers, and terminals; understands your screen live; and operates flexibly with your own Cloud API keys, 100% private offline local models (Ollama + Whisper), or in a lightweight zero-key Google Search mode.
 
-🌐 **Live Website & Web Demo:** **[https://mohit-jpg-dot.github.io/Voice.AI/](https://mohit-jpg-dot.github.io/Voice.AI/)**
+🌐 **Live Website & Docs:** **[https://mohit-jpg-dot.github.io/Voice.AI/](https://mohit-jpg-dot.github.io/Voice.AI/)** · **[Interactive Docs Hub](website/docs.html)**
 
-[Website](https://mohit-jpg-dot.github.io/Voice.AI/) • [English](README.md) • [हिन्दी में पढ़ें (Hindi Quickstart)](README.hi.md) • [Changelog](CHANGELOG.md) • [Contributing](CONTRIBUTING.md) • [Third-Party Notices](THIRD_PARTY_NOTICES.md)
+[Website](https://mohit-jpg-dot.github.io/Voice.AI/) • [Docs Hub](website/docs.html) • [English](README.md) • [हिन्दी में पढ़ें (Hindi Quickstart)](README.hi.md) • [Changelog](CHANGELOG.md) • [Contributing](CONTRIBUTING.md) • [Third-Party Notices](THIRD_PARTY_NOTICES.md)
 
 [![Live Website](https://img.shields.io/badge/Live%20Website-mohit--jpg--dot.github.io%2FVoice.AI-5865F2?logo=googlechrome&logoColor=white)](https://mohit-jpg-dot.github.io/Voice.AI/)
 [![macOS 14.0+ Ready](https://img.shields.io/badge/macOS-14.0%2B%20Sonoma%20%2F%20Tahoe-0071e3.svg)]()
 [![Windows 11 (In Preview)](https://img.shields.io/badge/Windows-11%20In%20Preview-0078d4.svg)]()
 [![Apple Silicon Native](https://img.shields.io/badge/Architecture-Apple%20Silicon%20(M1--M5)-black.svg)]()
-[![Core Tests: 316/316](https://img.shields.io/badge/macOS%20Tests-316%2F316%20PASSED-34c759.svg)]()
-[![Windows Core: 110/110](https://img.shields.io/badge/Windows%20Core-110%2F110%20PASSED-34c759.svg)]()
+[![Core Tests: 340/340](https://img.shields.io/badge/macOS%20Tests-340%2F340%20PASSED-34c759.svg)]()
+[![Windows Core: 114/114](https://img.shields.io/badge/Windows%20Core-114%2F114%20PASSED-34c759.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -48,6 +48,9 @@ We believe in 100% honesty with no fake claims. Below is the exact breakdown of 
 │ Instant Offline Deterministic Math Engine       │ ✅ WORKING NOW (macOS & .NET) │
 │ Zero-Key Free Google Search Mode                │ ✅ WORKING NOW (macOS & .NET) │
 │ Universal Dictation (Hold-to-Talk 250ms)        │ ✅ WORKING NOW (macOS Native) │
+│ Fn + D Hands-Free Clipboard Dictation Mode      │ ✅ WORKING NOW (macOS Native) │
+│ Voice-Controlled Local / Cloud Model Switching  │ ✅ WORKING NOW (macOS Native) │
+│ Control-Key Computer-Use Operator Loop          │ ✅ WORKING NOW (macOS & .NET) │
 │ Consequential Action Safety Approvals           │ ✅ WORKING NOW (macOS & .NET) │
 │ Encrypted Account History & API Key Scrubbing   │ ✅ WORKING NOW (macOS & .NET) │
 │ Bring-Your-Own-Key Cloud LLMs (GPT/Claude)      │ ✅ WORKING NOW (macOS & .NET) │
@@ -71,10 +74,12 @@ We believe in 100% honesty with no fake claims. Below is the exact breakdown of 
 │ Opt-In Local Camera & Gesture Vision (Phase 3)  │ ✅ WORKING NOW (macOS Native) │
 │ Phone Remote Companion & Approval Bridge (Ph. 3)│ ✅ WORKING NOW (macOS & .NET) │
 │ Runtime Plugin & MCP Manifest Loader (Phase 3)  │ ✅ WORKING NOW (macOS & .NET) │
+│ Interactive Website Docs Hub (37 Guides)        │ ✅ WORKING NOW (Web / Static) │
 ├─────────────────────────────────────────────────┼───────────────────────────────┤
 │ Windows 10/11 WinUI 3 Native GUI Shell          │ 🚧 UNDER ACTIVE DEVELOPMENT   │
 │ In-App 1-Click Offline Model Downloader (Ollama)│ 🚧 UNDER ACTIVE DEVELOPMENT   │
 │ Deep In-Browser DOM Video Element Scraping      │ 🚧 UNDER ACTIVE DEVELOPMENT   │
+│ Live Interactive Desktop Computer-Use QA Matrix │ 🚧 PENDING ACCESSIBILITY QA   │
 └─────────────────────────────────────────────────┴───────────────────────────────┘
 ```
 
@@ -132,6 +137,25 @@ The following features are completely built, integrated, and verified with autom
 ### 10. Bring-Your-Own-Key Cloud LLMs
 - Direct native support for OpenAI (GPT-4o), Anthropic (Claude 3.5), and Gemini 1.5 Pro using your own personal API keys stored securely in macOS Keychain.
 
+### 11. `Fn + D` Hands-Free Clipboard Dictation (`Suite 37`)
+- **Speak Once, Paste Anywhere**: Press `fn + D` (or `⌘⇧C`), speak naturally in English, Hindi, or Hinglish, and release. Polished text copies directly to the macOS clipboard with a compact Notch confirmation pill so you can paste anywhere (`⌘V`) without interrupting focus.
+
+### 12. Voice-Controlled Automatic AI Model Switching (`Suite 38`)
+- **Seamless Local ↔ Cloud Tier Switching**: Switch AI brains mid-conversation by voice alone:
+  - *"Switch to smaller local model"* / *"chote model pe jao"* &rarr; Selects the lightweight Ollama local tier (`3b`/smaller installed model).
+  - *"Switch to larger local model"* / *"8b model chalao"* &rarr; Upgrades to the larger local Ollama model (`8b`/`14b`).
+  - *"Switch to Claude"* / *"go to ChatGPT"* / *"use paid models"* &rarr; Routes immediately to configured cloud models.
+
+### 13. Native Control-Key (`⌃`) Computer-Use Operator Loop (`Suite 39` & Windows `Suite 14`)
+- **Iterative See → Decide → Act Screen Automation**: Adapted natively in Swift (`ComputerUseOperator`) and `.NET` (`ComputerUseLoopEngine`), combining display captures with Retina DPI-normalized coordinates and Accessibility UI actions (`maxSteps = 15`, `90s` time limit).
+- **Hard Safety Guardrails**: Wraps visible screen text inside `<UNTRUSTED_SCREEN_DATA>`, detects top-left corner failsafes, logs redacted `audit.json` + step screenshots to `~/.voiceos/computer_use_logs/`, blocks destructive/payment/send steps behind `.consequential` Notch Approval Cards, and halts immediately on `Esc` or spoken `"stop"` / `"ruko"`.
+
+### 14. Full JARVIS/FRIDAY Platform Architecture (Phases 0–3)
+- **Foundations & Autonomy**: MCP-compatible `ToolRegistry`, pub/sub `EventBus`, encrypted semantic `MemoryStore`, on-device wake word, barge-in TTS, multi-step Routines, proactive alert rules, local RAG search, Smart Home, opt-in Health trends, Iron Legion parallel subagents, CAD/physics/3D hologram viewer, Cyber Defense & Lockdown, opt-in camera gestures, Phone Remote Companion, and runtime plugin loading.
+
+### 15. Interactive Website Documentation Hub (`website/docs.html`)
+- **All App Docs in One Theme-Aligned Portal**: Replaced the placeholder `Affiliates` navbar tab across the public site with an interactive HTML reader bundling all 37 guides, phase architectures, Notch geometry studies, and verification reports with full-text `⌘K` search, category filters, internal `.md` cross-links, and copyable code blocks.
+
 ---
 
 ## 🚧 Features Under Active Development (In Progress)
@@ -139,24 +163,24 @@ The following features are completely built, integrated, and verified with autom
 To ensure truthful engineering, these features are actively in progress and not yet marked as stable production releases:
 
 ### 1. Windows 10/11 WinUI 3 Native Shell
-- **Current Status**: Shared .NET Core library (`VoiceAI.Core`) is complete with **40/40 unit tests passing** (Math, Grammar, Encrypted History, Safety Planner).
+- **Current Status**: Shared .NET Core library (`VoiceAI.Core`) is complete with **114/114 unit tests passing** across 14 suites (Math, Grammar, Encrypted History, Safety Planner, Phase 0–3 engines, and `ComputerUseLoopEngine`).
 - **In Progress**: WinUI 3 top-center floating island UI rendering, low-level keyboard hook (`WH_KEYBOARD_LL`), WASAPI microphone streaming, and live Windows UIPI elevation handling (`Blocked: needs physical/VM Windows machine for live GUI QA`).
 
-### 2. "Circle to Ask" Guided Visual Beacon Screen Tutor
-- **Current Status**: Screen region bounding and Apple Vision offline OCR are implemented in code.
-- **In Progress**: Live animated pulsing beacon cursor overlay that visually highlights the exact button to click on multi-monitor setups.
+### 2. Multi-Monitor Animated "Circle to Ask" Beacon Overlay
+- **Current Status**: `understandScreenQuestion` (VLM + Apple Vision OCR + privacy badges) and region capture are complete and verified in Phase 2 (`Suite 35`).
+- **In Progress**: Multi-monitor animated pulsing beacon cursor halo that tracks target buttons across external scaled displays.
 
 ### 3. In-App 1-Click Offline Model Downloader
-- **Current Status**: Setup wizard UI exists for choosing Offline Mode. Local Ollama/Whisper endpoints can be connected manually.
+- **Current Status**: Setup wizard UI exists for choosing Offline Mode. Local Ollama/Whisper endpoints can be connected manually or switched dynamically by voice.
 - **In Progress**: Built-in automated model catalog downloader that fetches, verifies, and launches bundled Ollama and Whisper daemons without requiring power-user terminal setup.
 
 ### 4. Deep In-Browser DOM Video Element Scraping
 - **Current Status**: High-level window focusing and media playback controls work.
 - **In Progress**: Deep internal DOM element traversal for complex client-side single-page applications without triggering browser accessibility permission warnings.
 
-### 5. Phone Remote Companion & Approval Bridge
-- **Current Status**: Architecture and WebSocket payload schemas designed.
-- **In Progress**: Dedicated mobile web app pairing for remote voice dictation and one-tap approval notifications from mobile devices.
+### 5. Live Desktop Accessibility QA for Computer-Use Mode
+- **Current Status**: Core See-Decide-Act loop, DPI scaling, corner failsafe, prompt-injection isolation, kill switches, and safety gates pass automated headless verification in macOS (`Suite 39`) and Windows (`Suite 14`).
+- **Pending Manual QA**: End-to-end interactive mouse-warp cursor clicks and live VLM calls on real macOS apps after granting Accessibility & Screen Recording permissions (see [real-test.md](real-test.md)).
 
 ---
 
@@ -188,6 +212,12 @@ To ensure truthful engineering, these features are actively in progress and not 
 - *"Turn down the volume"* / *"Aawaz kam karo"* &rarr; Adjusts master audio volume.
 - *"Adjust brightness to 70%"* / *"Screen light badhao"* &rarr; Adjusts display brightness.
 - *"Take a screenshot"* / *"Screenshot lo"* &rarr; Captures display to clipboard.
+
+### Clipboard Dictation, Model Switching & Computer-Use (`⌃`)
+- **`Fn + D`** (or **`⌘⇧C`**) &rarr; Hands-free dictation copied straight to your clipboard for pasting anywhere (`⌘V`).
+- *"Switch to smaller local model"* / *"Chote model pe jao"* &rarr; Switches Ollama chat brain to the smaller installed model (`3b`).
+- *"Switch to larger local model"* / *"Go to Claude"* &rarr; Upgrades to your larger local (`8b`) or configured cloud LLM.
+- **`⌃` Control + Open-Ended Screen Goal** (e.g., *"Click the blue submit button"*) &rarr; Runs the iterative See-Decide-Act Computer-Use loop (`Esc` or say *"stop"* / *"ruko"* to halt).
 
 ### Instant Offline Math & Real-Time Knowledge (Working Now)
 - *"What is 25 * 4?"* / *"25 into 4 kitna hota hai"* &rarr; Evaluates to `100` in < 5ms.
@@ -225,11 +255,14 @@ cd Voice.AI
 ./scripts/make-dmg.sh
 
 # 4. Run the automated verification test suites
-./scripts/run-tests.sh core    # 316 / 316 PASSED
+./scripts/run-tests.sh core    # 340 / 340 PASSED (Suites 1-39)
 ./scripts/run-tests.sh brain   # 28 / 28 PASSED
 ./scripts/run-tests.sh google  # 83 / 83 PASSED
 ./scripts/run-tests.sh hindi   # 125 / 125 PASSED
 ./scripts/run-tests.sh auth    # Offline sandbox: 37/41 (Suite 3/5 require host disk & live network)
+
+# 5. Run the cross-platform Windows core suite (.NET)
+dotnet run --project windows/tests/VoiceAI.Core.Tests/VoiceAI.Core.Tests.csproj --no-restore  # 114 / 114 PASSED (Suites 1-14)
 ```
 
 ---
@@ -250,10 +283,13 @@ cd Voice.AI
 
 ## 📚 Documentation & Decision Records
 
+- [Interactive Website Docs Hub (All 37 Guides)](website/docs.html)
 - [Cross-Platform Architecture Specification](docs/architecture-cross-platform.md)
+- [Phase 0: Core Foundations Architecture](docs/phase-0-foundations.md)
 - [Phase 1: JARVIS Feel Architecture](docs/phase-1-jarvis-feel.md)
 - [Phase 2: Proactive Assistant Architecture](docs/phase-2-proactive-assistant.md)
 - [Phase 3: Advanced Capabilities Architecture](docs/phase-3-advanced.md)
+- [Computer-Use Agent Mode QA Matrix](real-test.md)
 - [Free & Offline Setup Guide (Windows)](docs/setup-free-offline-windows.md)
 - [Windows Platform Parity & Test Report](docs/test-report-windows.md)
 - [Windows Developer Toolchain Setup](docs/windows-dev-setup.md)

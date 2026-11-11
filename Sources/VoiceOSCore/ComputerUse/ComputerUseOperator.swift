@@ -252,19 +252,32 @@ public final class ComputerUseOperator: @unchecked Sendable {
                 }
             }
 
-            // 1. SEE: Capture screen & OCR text
+            // 1. SEE: Capture screen & OCR text + normalized bounding-box coordinates
             onProgress?("Step \(step)/\(boundedSteps): Observing screen...")
             let pngData: Data?
+            let ocrElements: [ScreenTextElement]
             let ocrText: String
             let activeApp: String
             if isTestEnv && decisionProvider != nil {
                 pngData = nil
+                ocrElements = []
                 ocrText = "(Dry-run test frame)"
                 activeApp = "TestHarness"
             } else {
                 let capture = await ScreenVisionService.shared.captureFullScreenWithImage()
                 pngData = capture.pngData
-                ocrText = SecretRedactor.redact(capture.analysis.fullText)
+                ocrElements = capture.analysis.recognizedElements.map {
+                    ScreenTextElement(
+                        text: SecretRedactor.redact($0.text),
+                        centerX: $0.centerX,
+                        centerY: $0.centerY,
+                        width: $0.width,
+                        height: $0.height
+                    )
+                }
+                let formattedElements = Self.formatOCRElementsForPrompt(ocrElements)
+                let rawOCR = SecretRedactor.redact(capture.analysis.fullText)
+                ocrText = formattedElements.isEmpty ? rawOCR : "\(formattedElements)\n\nRaw Text:\n\(rawOCR)"
                 activeApp = capture.analysis.activeAppTitle ?? "Desktop"
             }
 
@@ -372,8 +385,8 @@ public final class ComputerUseOperator: @unchecked Sendable {
                 }
             }
 
-            // 4. ACT: Execute single step natively
-            let stepDetail = await executeSingleAction(action, activeApp: activeApp, dryRun: isTestEnv)
+            // 4. ACT: Execute single step natively (with OCR coordinate snapping when label is given)
+            let stepDetail = await executeSingleAction(action, activeApp: activeApp, ocrElements: ocrElements, dryRun: isTestEnv)
             stepDescriptions.append(stepDetail)
             history.append(action)
             stepLogs.append(ComputerUseStepLog(
@@ -397,6 +410,32 @@ public final class ComputerUseOperator: @unchecked Sendable {
             targetURL: nil,
             executedSteps: stepDescriptions
         )
+    }
+
+    /// Formats Apple Vision OCR bounding boxes as compact clickable coordinates for VLMs & text-only LLMs.
+    public static func formatOCRElementsForPrompt(_ elements: [ScreenTextElement], maxItems: Int = 40) -> String {
+        guard !elements.isEmpty else { return "" }
+        let lines = elements.prefix(maxItems).map { el in
+            let safeLabel = el.text.replacingOccurrences(of: "\n", with: " ").prefix(64)
+            return String(format: "- \"%@\" @ (%.3f, %.3f)", String(safeLabel), el.centerX, el.centerY)
+        }
+        return "Clickable OCR Elements (normalized x, y):\n" + lines.joined(separator: "\n")
+    }
+
+    /// Snaps a target label to its closest matching OCR element center coordinate.
+    public static func snapNormalizedPoint(forLabel label: String?, elements: [ScreenTextElement]) -> (x: Double, y: Double)? {
+        guard let rawLabel = label?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawLabel.isEmpty else {
+            return nil
+        }
+        let target = rawLabel.lowercased()
+        if let exact = elements.first(where: { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == target }) {
+            return (exact.centerX, exact.centerY)
+        }
+        if let contains = elements.first(where: { $0.text.lowercased().contains(target) || target.contains($0.text.lowercased()) }) {
+            return (contains.centerX, contains.centerY)
+        }
+        return nil
     }
 
     // MARK: - Model Decision Prompt (Untrusted-Screen Hardened)
@@ -444,10 +483,14 @@ public final class ComputerUseOperator: @unchecked Sendable {
         """
 
         let rawReply: String
-        if let png = pngData, let img = NSImage(data: png), let vision = try? ModelRouter.shared.resolveVisionModel() {
-            let resp = try await vision.analyzeImage(image: img, prompt: prompt, tools: nil)
-            rawReply = resp.text
+        if let png = pngData,
+           let img = NSImage(data: png),
+           let vision = try? ModelRouter.shared.resolveVisionModel(),
+           let visionResp = try? await vision.analyzeImage(image: img, prompt: prompt, tools: nil),
+           !visionResp.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            rawReply = visionResp.text
         } else {
+            // Fall back cleanly to text chat model with normalized OCR element coordinates
             let chat = ModelRouter.shared.resolveChatModel()
             let resp = try await chat.sendMessage(
                 messages: [
@@ -477,7 +520,12 @@ public final class ComputerUseOperator: @unchecked Sendable {
 
     // MARK: - Native Action Executor
 
-    private func executeSingleAction(_ action: ComputerUseAction, activeApp: String, dryRun: Bool) async -> String {
+    private func executeSingleAction(
+        _ action: ComputerUseAction,
+        activeApp: String,
+        ocrElements: [ScreenTextElement],
+        dryRun: Bool
+    ) async -> String {
         switch action.operation {
         case .openApp:
             let appName = action.app ?? action.label ?? ""
@@ -488,6 +536,7 @@ public final class ComputerUseOperator: @unchecked Sendable {
 
         case .click, .doubleClick:
             let isDouble = (action.operation == .doubleClick)
+            // Prefer exact OCR snap when coordinates are omitted, otherwise use explicit normalized coords
             if let nx = action.x, let ny = action.y {
                 if !dryRun {
                     let bounds = CGDisplayBounds(CGMainDisplayID())
@@ -498,7 +547,12 @@ public final class ComputerUseOperator: @unchecked Sendable {
             }
             if let lbl = action.label, !lbl.isEmpty {
                 if !dryRun {
-                    _ = await AccessibilityControlEngine.shared.clickElement(matching: lbl, frontmostAppName: activeApp)
+                    let clickedAX = await AccessibilityControlEngine.shared.clickElement(matching: lbl, frontmostAppName: activeApp)
+                    if !clickedAX.success, let snapped = Self.snapNormalizedPoint(forLabel: lbl, elements: ocrElements) {
+                        let bounds = CGDisplayBounds(CGMainDisplayID())
+                        let pt = Self.dpiAwareScreenPoint(normalizedX: snapped.x, normalizedY: snapped.y, displayBounds: bounds)
+                        _ = AccessibilityControlEngine.shared.postClick(at: pt, doubleClick: isDouble)
+                    }
                 }
                 return "Clicked UI element '\(lbl)'"
             }

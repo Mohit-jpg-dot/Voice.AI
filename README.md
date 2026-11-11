@@ -10,7 +10,7 @@
 [![macOS 14.0+ Ready](https://img.shields.io/badge/macOS-14.0%2B%20Sonoma%20%2F%20Tahoe-0071e3.svg)]()
 [![Windows 11 (In Preview)](https://img.shields.io/badge/Windows-11%20In%20Preview-0078d4.svg)]()
 [![Apple Silicon Native](https://img.shields.io/badge/Architecture-Apple%20Silicon%20(M1--M5)-black.svg)]()
-[![Core Tests: 340/340](https://img.shields.io/badge/macOS%20Tests-340%2F340%20PASSED-34c759.svg)]()
+[![Core Tests: 342/342](https://img.shields.io/badge/macOS%20Tests-342%2F342%20PASSED-34c759.svg)]()
 [![Windows Core: 114/114](https://img.shields.io/badge/Windows%20Core-114%2F114%20PASSED-34c759.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -255,7 +255,7 @@ cd Voice.AI
 ./scripts/make-dmg.sh
 
 # 4. Run the automated verification test suites
-./scripts/run-tests.sh core    # 340 / 340 PASSED (Suites 1-39)
+./scripts/run-tests.sh core    # 342 / 342 PASSED (Suites 1-39)
 ./scripts/run-tests.sh brain   # 28 / 28 PASSED
 ./scripts/run-tests.sh google  # 83 / 83 PASSED
 ./scripts/run-tests.sh hindi   # 125 / 125 PASSED

@@ -2,15 +2,39 @@ import AppKit
 import Vision
 import Foundation
 
+public struct ScreenTextElement: Codable, Sendable, Equatable {
+    public let text: String
+    public let centerX: Double   // Normalized 0.0...1.0 (left -> right)
+    public let centerY: Double   // Normalized 0.0...1.0 (top -> bottom)
+    public let width: Double
+    public let height: Double
+
+    public init(text: String, centerX: Double, centerY: Double, width: Double = 0, height: Double = 0) {
+        self.text = text
+        self.centerX = centerX
+        self.centerY = centerY
+        self.width = width
+        self.height = height
+    }
+}
+
 public struct ScreenVisionAnalysis: Sendable {
     public let fullText: String
     public let recognizedBlocks: [String]
+    public let recognizedElements: [ScreenTextElement]
     public let activeAppTitle: String?
     public let summary: String
     
-    public init(fullText: String, recognizedBlocks: [String], activeAppTitle: String?, summary: String) {
+    public init(
+        fullText: String,
+        recognizedBlocks: [String],
+        recognizedElements: [ScreenTextElement] = [],
+        activeAppTitle: String?,
+        summary: String
+    ) {
         self.fullText = fullText
         self.recognizedBlocks = recognizedBlocks
+        self.recognizedElements = recognizedElements
         self.activeAppTitle = activeAppTitle
         self.summary = summary
     }
@@ -120,8 +144,24 @@ public final class ScreenVisionService: @unchecked Sendable {
                     return
                 }
                 
-                let recognizedStrings = observations.compactMap {
-                    $0.topCandidates(1).first?.string
+                var recognizedStrings: [String] = []
+                var recognizedElements: [ScreenTextElement] = []
+                recognizedStrings.reserveCapacity(observations.count)
+                recognizedElements.reserveCapacity(observations.count)
+                for obs in observations {
+                    guard let candidate = obs.topCandidates(1).first else { continue }
+                    let str = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !str.isEmpty else { continue }
+                    recognizedStrings.append(str)
+                    let box = obs.boundingBox
+                    // Vision origin is bottom-left; flip Y to match top-down CGDisplay normalized space.
+                    recognizedElements.append(ScreenTextElement(
+                        text: str,
+                        centerX: Double(box.midX),
+                        centerY: Double(1.0 - box.midY),
+                        width: Double(box.width),
+                        height: Double(box.height)
+                    ))
                 }
                 let combined = recognizedStrings.joined(separator: "\n")
                 let preview = recognizedStrings.prefix(12).joined(separator: ", ")
@@ -130,6 +170,7 @@ public final class ScreenVisionService: @unchecked Sendable {
                 continuation.resume(returning: ScreenVisionAnalysis(
                     fullText: combined,
                     recognizedBlocks: recognizedStrings,
+                    recognizedElements: recognizedElements,
                     activeAppTitle: frontApp,
                     summary: summary
                 ))

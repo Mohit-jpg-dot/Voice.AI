@@ -1404,6 +1404,18 @@ assertTrue(AutonomousAgentExecutor.isLikelyOpenEndedComputerUseGoal("click the b
 assertTrue(!AutonomousAgentExecutor.isLikelyOpenEndedComputerUseGoal("set volume to 30"),
            "Simple direct system command stays on fast deterministic handler")
 
+// 7. OCR Element Bounding-Box Grounding & Snap
+let ocrElements = [
+    ScreenTextElement(text: "Cancel", centerX: 0.35, centerY: 0.72),
+    ScreenTextElement(text: "Submit Order", centerX: 0.68, centerY: 0.72)
+]
+let formattedOCR = ComputerUseOperator.formatOCRElementsForPrompt(ocrElements)
+assertTrue(formattedOCR.contains("Submit Order") && formattedOCR.contains("0.680"),
+           "OCR grounding formats normalized coordinates for vision/chat prompts")
+let snappedPt = ComputerUseOperator.snapNormalizedPoint(forLabel: "submit", elements: ocrElements)
+assertTrue(snappedPt != nil && abs(snappedPt!.x - 0.68) < 0.001 && abs(snappedPt!.y - 0.72) < 0.001,
+           "Label-based click snaps cleanly to matching OCR element center coordinate")
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

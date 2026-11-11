@@ -4,14 +4,14 @@
 
 🌐 **Live Website & Web Demo:** **[https://mohit-jpg-dot.github.io/Voice.AI/](https://mohit-jpg-dot.github.io/Voice.AI/)**
 
-[Website](https://mohit-jpg-dot.github.io/Voice.AI/) • [English](README.md) • [हिन्दी में पढ़ें (Hindi Quickstart)](README.hi.md) • [Changelog](CHANGELOG.md) • [Contributing](CONTRIBUTING.md) • [Third-Party Notices]a(THIRD_PARTY_NOTICES.md)
+[Website](https://mohit-jpg-dot.github.io/Voice.AI/) • [English](README.md) • [हिन्दी में पढ़ें (Hindi Quickstart)](README.hi.md) • [Changelog](CHANGELOG.md) • [Contributing](CONTRIBUTING.md) • [Third-Party Notices](THIRD_PARTY_NOTICES.md)
 
 [![Live Website](https://img.shields.io/badge/Live%20Website-mohit--jpg--dot.github.io%2FVoice.AI-5865F2?logo=googlechrome&logoColor=white)](https://mohit-jpg-dot.github.io/Voice.AI/)
 [![macOS 14.0+ Ready](https://img.shields.io/badge/macOS-14.0%2B%20Sonoma%20%2F%20Tahoe-0071e3.svg)]()
 [![Windows 11 (In Preview)](https://img.shields.io/badge/Windows-11%20In%20Preview-0078d4.svg)]()
 [![Apple Silicon Native](https://img.shields.io/badge/Architecture-Apple%20Silicon%20(M1--M5)-black.svg)]()
-[![Core Tests: 184/184](https://img.shields.io/badge/macOS%20Tests-184%2F184%20PASSED-34c759.svg)]()
-[![Windows Core: 40/40](https://img.shields.io/badge/Windows%20Core-40%2F40%20PASSED-34c759.svg)]()
+[![Core Tests: 316/316](https://img.shields.io/badge/macOS%20Tests-316%2F316%20PASSED-34c759.svg)]()
+[![Windows Core: 110/110](https://img.shields.io/badge/Windows%20Core-110%2F110%20PASSED-34c759.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -225,10 +225,11 @@ cd Voice.AI
 ./scripts/make-dmg.sh
 
 # 4. Run the automated verification test suites
-./scripts/run-tests.sh core    # 184 / 184 PASSED
+./scripts/run-tests.sh core    # 316 / 316 PASSED
+./scripts/run-tests.sh brain   # 28 / 28 PASSED
 ./scripts/run-tests.sh google  # 83 / 83 PASSED
-./scripts/run-tests.sh auth    # 41 / 41 PASSED
 ./scripts/run-tests.sh hindi   # 125 / 125 PASSED
+./scripts/run-tests.sh auth    # Offline sandbox: 37/41 (Suite 3/5 require host disk & live network)
 ```
 
 ---

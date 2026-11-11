@@ -537,6 +537,9 @@ public final class AccountAuthService: NSObject, @unchecked Sendable, ASWebAuthe
            let str = String(data: data, encoding: .utf8) {
             setCredential(str, forKey: "session.\(token)")
         }
+
+        EncryptedChatHistoryManager.shared.loadForAccount(accountId: account.id)
+        MemoryStore.shared.load(accountId: account.id)
         
         return session
     }
@@ -549,6 +552,8 @@ public final class AccountAuthService: NSObject, @unchecked Sendable, ASWebAuthe
         deleteActiveSessionFromDisk()
         deleteCredential(forKey: sessionTokenKey)
         UserDefaults.standard.removeObject(forKey: activeAccountIdKey)
+        EncryptedChatHistoryManager.shared.unloadCurrentAccount()
+        MemoryStore.shared.unload()
     }
     
     public func deleteAccount() throws {

@@ -208,12 +208,39 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                 return openNewBrowserTab(query: query)
                 
             case .messageDraft(let app, let recipient, let body):
-                // Stage message draft and prepare confirmation
-                _ = openApplication(named: app == "whatsapp" ? "WhatsApp" : (app == "slack" ? "Slack" : "Messages"))
+                let wantsSend = (lower.contains("send") || lower.contains("bhej")) && !lower.contains("draft") && !lower.contains("likh")
+                if app == "messages" {
+                    _ = openApplication(named: "Messages")
+                    return DispatchedActionResult(
+                        success: true,
+                        summary: "Drafted iMessage for \(recipient): \"\(body)\".",
+                        appName: "Messages"
+                    )
+                }
+                let op = wantsSend ? "send" : "draft"
+                if let toolName = ToolRegistry.registryToolName(forApp: app, operation: op) {
+                    let toolRes = await ToolRegistry.shared.invoke(
+                        name: toolName,
+                        arguments: ["operation": op, "recipient": recipient, "body": body],
+                        bypassApproval: false,
+                        customApprovalHandler: nil
+                    )
+                    return DispatchedActionResult(
+                        success: toolRes.success,
+                        summary: toolRes.summary,
+                        appName: app.capitalized
+                    )
+                }
+                let res = await AppIntegrationEngine.shared.execute(
+                    app: app,
+                    operation: op,
+                    params: ["recipient": recipient, "body": body]
+                )
                 return DispatchedActionResult(
-                    success: true,
-                    summary: "Drafted message for \(recipient): \"\(body)\". Bhej doon?",
-                    appName: app.capitalized
+                    success: res.success,
+                    summary: res.summary,
+                    appName: res.appName,
+                    deepLinkURL: res.deepLinkURL
                 )
                 
             case .windowAction(let action):
@@ -233,11 +260,18 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                 )
                 
             case .screenRead(let query):
-                let analysis = await ScreenVisionService.shared.captureAndAnalyzeScreen()
+                let captured = await ScreenVisionService.shared.captureFullScreenWithImage()
+                let llm = await AutonomousAgentExecutor.shared.analyzeScreenWithActiveModel(
+                    pngData: captured.pngData,
+                    ocrText: captured.analysis.fullText,
+                    appName: captured.analysis.activeAppTitle ?? "Screen",
+                    sourceLabel: "Full Screen",
+                    question: query
+                )
                 return DispatchedActionResult(
                     success: true,
-                    summary: analysis.summary,
-                    appName: "Screen Vision"
+                    summary: llm?.summary ?? captured.analysis.summary,
+                    appName: llm?.usedProvider ?? "Screen Vision"
                 )
                 
             case .uiClick(let desc):
@@ -256,20 +290,15 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                 
             case .runTerminalCommand(let command):
                 BoringSoundEngine.shared.playDispatch()
-                let proc = Process()
-                let pipe = Pipe()
-                proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
-                proc.arguments = ["-c", command]
-                proc.standardOutput = pipe
-                proc.standardError = pipe
-                try? proc.run()
-                proc.waitUntilExit()
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                let snippet = output.isEmpty ? "Command finished with exit code \(proc.terminationStatus)" : String(output.prefix(300))
+                let toolRes = await ToolRegistry.shared.invoke(
+                    name: "terminal_run",
+                    arguments: ["operation": "run_headless", "command": command],
+                    bypassApproval: false,
+                    customApprovalHandler: nil
+                )
                 return DispatchedActionResult(
-                    success: proc.terminationStatus == 0,
-                    summary: "Ran terminal command `\(command)`: \(snippet)",
+                    success: toolRes.success,
+                    summary: toolRes.summary,
                     appName: "Terminal"
                 )
                 
@@ -357,16 +386,52 @@ public final class AgentActionDispatcher: @unchecked Sendable {
             case .chainedWorkflow(let plan):
                 BoringSoundEngine.shared.playDispatch()
                 return await handleChainedWorkflow(plan: plan)
+
+            case .appIntegration(let app, let operation, let params):
+                BoringSoundEngine.shared.playDispatch()
+                if let toolName = ToolRegistry.registryToolName(forApp: app, operation: operation) {
+                    var mergedParams = params
+                    mergedParams["operation"] = operation
+                    let toolRes = await ToolRegistry.shared.invoke(
+                        name: toolName,
+                        arguments: mergedParams,
+                        bypassApproval: false,
+                        customApprovalHandler: nil
+                    )
+                    return DispatchedActionResult(
+                        success: toolRes.success,
+                        summary: toolRes.summary,
+                        appName: toolRes.data["app"] ?? app.capitalized
+                    )
+                }
+                let res = await AppIntegrationEngine.shared.execute(
+                    app: app,
+                    operation: operation,
+                    params: params
+                )
+                return DispatchedActionResult(
+                    success: res.success,
+                    summary: res.summary,
+                    appName: res.appName,
+                    deepLinkURL: res.deepLinkURL
+                )
             }
         }
 
         // 1. Screen Vision Query ("what is on my screen?", "screen pe kya hai", "read my screen")
         if lower.contains("screen") && (lower.contains("what") || lower.contains("read") || lower.contains("summarize") || lower.contains("kya") || lower.contains("dekho") || lower.contains("view")) {
-            let analysis = await ScreenVisionService.shared.captureAndAnalyzeScreen()
+            let captured = await ScreenVisionService.shared.captureFullScreenWithImage()
+            let llm = await AutonomousAgentExecutor.shared.analyzeScreenWithActiveModel(
+                pngData: captured.pngData,
+                ocrText: captured.analysis.fullText,
+                appName: captured.analysis.activeAppTitle ?? "Screen",
+                sourceLabel: "Full Screen",
+                question: text
+            )
             return DispatchedActionResult(
                 success: true,
-                summary: analysis.summary,
-                appName: "Screen Vision"
+                summary: llm?.summary ?? captured.analysis.summary,
+                appName: llm?.usedProvider ?? "Screen Vision"
             )
         }
 
@@ -389,8 +454,14 @@ public final class AgentActionDispatcher: @unchecked Sendable {
             return openApplication(named: appToOpen)
         }
 
-        // 5. Type / Write Text Directly into Frontmost Window ("type ...", "write ...")
-        if (lower.hasPrefix("type ") || lower.hasPrefix("write ")) && !lower.contains("note") && !lower.contains("code") {
+        // 5. Type / Write Literal Text Directly into Frontmost Window ("type ...", "write ...")
+        // Avoid hijacking generative LLM requests ("write a poem...", "write an email...", "write a python function...")
+        let isGenerativeWrite = lower.hasPrefix("write a ") || lower.hasPrefix("write an ") ||
+                                lower.hasPrefix("write me ") || lower.contains("email") ||
+                                lower.contains("poem") || lower.contains("essay") ||
+                                lower.contains("function") || lower.contains("script") ||
+                                lower.contains("summary") || lower.contains("story")
+        if (lower.hasPrefix("type ") || (lower.hasPrefix("write ") && !isGenerativeWrite)) && !lower.contains("note") && !lower.contains("code") {
             var textToInsert = text
             if let r = textToInsert.range(of: "type ", options: .caseInsensitive) {
                 textToInsert = String(textToInsert[r.upperBound...])
@@ -434,7 +505,7 @@ public final class AgentActionDispatcher: @unchecked Sendable {
         }
 
         // 7. Spotify / Music Playback Intent ("gaana bajao", "spotify pe gaana chalao", "play music", "play song")
-        let isMusicTrigger = !isClose && (lower.contains("gaana") || lower.contains("play music") || lower.contains("play song") || lower.contains("chala do") || lower.contains("spotify"))
+        let isMusicTrigger = !isClose && (lower.contains("gaana") || lower.contains("play music") || lower.contains("play song") || lower.contains("spotify"))
         if isMusicTrigger {
             return controlSpotify(command: (lower.contains("pause") || lower.contains("band")) ? "pause" : "play")
         }

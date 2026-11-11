@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using VoiceAI.Core.Brain;
+using VoiceAI.Core.Events;
 using VoiceAI.Core.Grammar;
 using VoiceAI.Core.Math;
 using VoiceAI.Core.Memory;
+using VoiceAI.Core.Security;
 using VoiceAI.Core.Tools;
 
 namespace VoiceAI.Core.Tests
@@ -58,6 +60,7 @@ namespace VoiceAI.Core.Tests
             await TestLLMIntentOrchestrator();
             await TestVisualGroundingSoMEngine();
             await TestResourceOptimizationAndCaching();
+            await TestPhase0Foundations();
 
             Console.WriteLine("\n=================================================================");
             Console.WriteLine($"Test Run Completed: {_passed} PASSED, {_failed} FAILED");
@@ -337,6 +340,66 @@ namespace VoiceAI.Core.Tests
             string compactedPrompt = compactor.GetCompactedPromptContext();
             AssertTrue(!string.IsNullOrEmpty(compactedPrompt), "Generated compact sliding-window prompt context");
             AssertTrue(compactedPrompt.Contains("Blender") || compactedPrompt.Contains("Spotify"), "Context contains target app history");
+        }
+
+        // -------------------------------------------------------------
+        // Suite 10: Phase 0 Foundations (SecretRedactor, EventBus, ToolRegistry, SemanticMemoryStore)
+        // -------------------------------------------------------------
+        private static async Task TestPhase0Foundations()
+        {
+            Console.WriteLine("\n[Suite 10] Phase 0 Foundations (SecretRedactor, EventBus, ToolRegistry & SemanticMemoryStore)");
+
+            // 1. Extended secret redaction
+            string dirty = "key=sk-1234567890abcdefghijklmnop pat=ghp_1234567890abcdefghij123456 bearer=Bearer tokenval12345";
+            string clean = SecretRedactor.Redact(dirty);
+            AssertTrue(!clean.Contains("sk-1234567890") && !clean.Contains("ghp_1234567890") && !clean.Contains("tokenval12345"),
+                "SecretRedactor scrubs OpenAI, GitHub, and Bearer tokens");
+
+            // 2. EventBus pub/sub filtering
+            int seen = 0;
+            var subId = EventBus.Shared.Subscribe(SystemEventKind.BatteryChanged, evt =>
+            {
+                if (evt.Payload.TryGetValue("token", out var tok) && tok == "[REDACTED_API_KEY]") seen++;
+            });
+            EventBus.Shared.Publish(VoiceEvent.Create(SystemEventKind.ToolInvoked, "test"));
+            EventBus.Shared.Publish(VoiceEvent.Create(SystemEventKind.BatteryChanged, "Power",
+                new Dictionary<string, string> { ["level"] = "18%", ["token"] = "secret123" }));
+            AssertEqual(seen, 1, "EventBus delivers matching filtered events with redacted payload");
+            EventBus.Shared.Unsubscribe(subId);
+
+            // 3. ToolRegistry tiers & approval gate
+            var readRes = await ToolRegistry.Shared.InvokeAsync("math_evaluate",
+                new Dictionary<string, string> { ["expression"] = "8 * 7" });
+            AssertTrue(readRes.Success && readRes.Summary.Contains("56"), "ReadOnly tool executes immediately via ToolRegistry");
+
+            var deniedRes = await ToolRegistry.Shared.InvokeAsync("send_message",
+                new Dictionary<string, string> { ["recipient"] = "Rahul", ["body"] = "Hi" },
+                (_, _) => Task.FromResult(false));
+            AssertTrue(!deniedRes.Success && deniedRes.RequiresApproval && !deniedRes.WasApproved,
+                "Consequential tool blocks execution when approval is denied");
+
+            var approvedRes = await ToolRegistry.Shared.InvokeAsync("send_message",
+                new Dictionary<string, string> { ["recipient"] = "Rahul", ["body"] = "Hi" },
+                (_, _) => Task.FromResult(true));
+            AssertTrue(approvedRes.Success && approvedRes.WasApproved,
+                "Consequential tool executes when explicit approval is granted");
+
+            // 4. SemanticMemoryStore per-account encryption & semantic retrieval
+            string accA = $"win_a_{Guid.NewGuid()}";
+            string accB = $"win_b_{Guid.NewGuid()}";
+            var store = new SemanticMemoryStore();
+            store.LoadAccount(accA);
+            store.Remember("Prefer C# WinUI 3 with clean interfaces and key sk-abcdef1234567890abcdef",
+                MemoryScope.LongTerm, MemoryFactKind.Preference);
+            var hits = store.SearchSemantic("WinUI C# interfaces", MemoryScope.LongTerm, 3);
+            AssertTrue(hits.Count == 1 && hits[0].Item.Content.Contains("WinUI") && !hits[0].Item.Content.Contains("sk-abcdef"),
+                "SemanticMemoryStore embeds, searches semantically, and redacts secrets");
+
+            store.LoadAccount(accB);
+            var hitsB = store.SearchSemantic("WinUI C# interfaces", MemoryScope.LongTerm, 3);
+            AssertEqual(hitsB.Count, 0, "SemanticMemoryStore isolates encrypted memories across accounts");
+            store.ClearAccount(accA);
+            store.ClearAccount(accB);
         }
     }
 }

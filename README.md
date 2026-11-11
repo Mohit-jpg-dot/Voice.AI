@@ -4,7 +4,7 @@
 
 🌐 **Live Website & Web Demo:** **[https://mohit-jpg-dot.github.io/Voice.AI/](https://mohit-jpg-dot.github.io/Voice.AI/)**
 
-[Website](https://mohit-jpg-dot.github.io/Voice.AI/) • [English](README.md) • [हिन्दी में पढ़ें (Hindi Quickstart)](README.hi.md) • [Changelog](CHANGELOG.md) • [Contributing](CONTRIBUTING.md) • [Third-Party Notices](THIRD_PARTY_NOTICES.md)
+[Website](https://mohit-jpg-dot.github.io/Voice.AI/) • [English](README.md) • [हिन्दी में पढ़ें (Hindi Quickstart)](README.hi.md) • [Changelog](CHANGELOG.md) • [Contributing](CONTRIBUTING.md) • [Third-Party Notices]a(THIRD_PARTY_NOTICES.md)
 
 [![Live Website](https://img.shields.io/badge/Live%20Website-mohit--jpg--dot.github.io%2FVoice.AI-5865F2?logo=googlechrome&logoColor=white)](https://mohit-jpg-dot.github.io/Voice.AI/)
 [![macOS 14.0+ Ready](https://img.shields.io/badge/macOS-14.0%2B%20Sonoma%20%2F%20Tahoe-0071e3.svg)]()
@@ -51,7 +51,12 @@ We believe in 100% honesty with no fake claims. Below is the exact breakdown of 
 │ Consequential Action Safety Approvals           │ ✅ WORKING NOW (macOS & .NET) │
 │ Encrypted Account History & API Key Scrubbing   │ ✅ WORKING NOW (macOS & .NET) │
 │ Bring-Your-Own-Key Cloud LLMs (GPT/Claude)      │ ✅ WORKING NOW (macOS & .NET) │
+│ MCP Tool Registry & Permission Tiers (Phase 0)  │ ✅ WORKING NOW (macOS & .NET) │
+│ Typed Pub/Sub Event Bus Foundation (Phase 0)    │ ✅ WORKING NOW (macOS & .NET) │
+│ Encrypted Semantic Memory Store (Phase 0)       │ ✅ WORKING NOW (macOS & .NET) │
 ├─────────────────────────────────────────────────┼───────────────────────────────┤
+│ Wake Word, Streaming Barge-In TTS & Personas    │ 🚧 PLANNED (Phase 1)          │
+│ Proactive Rules Engine, RAG & Home Automation   │ 🚧 PLANNED (Phase 2)          │
 │ Windows 10/11 WinUI 3 Native GUI Shell          │ 🚧 UNDER ACTIVE DEVELOPMENT   │
 │ "Circle to Ask" Visual Beacon Cursor Tutor      │ 🚧 UNDER ACTIVE DEVELOPMENT   │
 │ In-App 1-Click Offline Model Downloader (Ollama)│ 🚧 UNDER ACTIVE DEVELOPMENT   │

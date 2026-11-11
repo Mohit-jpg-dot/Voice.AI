@@ -21,6 +21,7 @@ public enum AgentTool: Sendable, Equatable {
     case tutorialGuide(query: String)
     case worldSearch(topic: String)
     case chainedWorkflow(plan: String)
+    case appIntegration(app: String, operation: String, params: [String: String])
     
     public var toolName: String {
         switch self {
@@ -43,6 +44,7 @@ public enum AgentTool: Sendable, Equatable {
         case .tutorialGuide: return "tutorial_guide"
         case .worldSearch: return "world_search"
         case .chainedWorkflow: return "chained_workflow"
+        case .appIntegration: return "app_integration"
         }
     }
 }
@@ -209,6 +211,13 @@ public enum AgentToolSchema {
 
 public enum AgentToolParser {
     
+    public static func isConceptualAudioQuery(_ lower: String) -> Bool {
+        lower.contains("volume of ") || lower.contains("speed of sound") ||
+        lower.contains("sound wave") || lower.contains("sound like") ||
+        lower.hasPrefix("what is ") || lower.hasPrefix("explain ") ||
+        lower.hasPrefix("why ") || lower.hasPrefix("how does sound")
+    }
+
     /// Parses any user utterance (English, Hindi, Hinglish, Devanagari) directly into an `AgentTool`
     public static func parse(query: String) -> AgentTool? {
         let normalized = HinglishTransliterator.normalize(query)
@@ -254,7 +263,14 @@ public enum AgentToolParser {
             return .worldSearch(topic: topic)
         }
         
-        // 2. Terminal Command Execution ("run this command on terminal...", "run command in terminal...", "terminal mein command chalao")
+        // 2. Terminal Command Execution ("run this command on terminal...", "open terminal and run...", "read terminal output")
+        if lower.contains("terminal") && (lower.contains("read output") || lower.contains("read terminal") || lower.contains("terminal output")) {
+            return .appIntegration(app: "terminal", operation: "read_output", params: [:])
+        }
+        if lower.contains("terminal") && (lower.contains("in terminal window") || lower.contains("open terminal and run") || lower.contains("terminal mein chalao")) {
+            let cmd = extractTerminalCommand(from: normalized)
+            return .appIntegration(app: "terminal", operation: "run_in_window", params: ["command": cmd])
+        }
         if lower.contains("terminal") && (lower.contains("command") || lower.contains("run") || lower.contains("chalao") || lower.contains("execute")) {
             let cmd = extractTerminalCommand(from: normalized)
             return .runTerminalCommand(command: cmd)
@@ -275,14 +291,18 @@ public enum AgentToolParser {
         }
         
         // 4. Tutorial / How-To / Blender / Live Screen Guidance
-        let isTutor = lower.contains("how can i") || lower.contains("how do i") || lower.contains("how to") ||
+        let hasUITutorContext = lower.contains("screen") || lower.contains("blender") || lower.contains("option") ||
+                                lower.contains("button") || lower.contains("menu") || lower.contains("hide") ||
+                                lower.contains("animate") || lower.contains("guide me") || lower.contains("select") ||
+                                lower.contains("in photoshop") || lower.contains("in figma") || lower.contains("in xcode") ||
+                                lower.contains("in vscode") || lower.contains("in vs code") || lower.contains("in terminal")
+        let isTutor = (hasUITutorContext && (lower.contains("how can i") || lower.contains("how do i") || lower.contains("how to"))) ||
                       lower.contains("based on what is on my computer screen") || lower.contains("based on my screen") ||
                       lower.contains("on my computer screen") || lower.contains("look at my screen") ||
                       lower.contains("see my computer screen") || lower.contains("see my screen live") ||
                       lower.contains("blender visualization") || lower.contains("hide the bones") ||
                       lower.contains("hide bones") || lower.contains("animate that thing") ||
                       lower.contains("which option to select") || lower.contains("guide me through") ||
-                      lower.contains("tell me how can i") || lower.contains("tell me how to") ||
                       lower.contains("blender")
         if isTutor {
             return .tutorialGuide(query: query)
@@ -299,10 +319,12 @@ public enum AgentToolParser {
             }
         }
         
-        // 2. Volume & Audio Mute Control
-        let isVolumeQuery = lower.contains("volume") || lower.contains("aawaz") || lower.contains("sound") ||
+        // 2. Volume & Audio Mute Control (avoid hijacking geometry/physics questions or YouTube player mute/unmute)
+        let isYouTubeAudioCommand = lower.contains("youtube") || lower == "mute video" || lower == "unmute video"
+        let isVolumeQuery = !isConceptualAudioQuery(lower) && !isYouTubeAudioCommand && (
+                            lower.contains("volume") || lower.contains("aawaz") || lower.contains("sound") ||
                             lower.contains("mute") || lower.contains("unmute") || lower.contains("louder") ||
-                            lower.contains("quieter") || lower.contains("turn it up") || lower.contains("turn it down")
+                            lower.contains("quieter") || lower.contains("turn it up") || lower.contains("turn it down"))
         if isVolumeQuery {
             if lower.contains("unmute") || (lower.contains("mute") && (lower.contains("hatao") || lower.contains("off") || lower.contains("un") || lower.contains("kholo"))) {
                 return .systemControl(action: "unmute")
@@ -364,12 +386,17 @@ public enum AgentToolParser {
             return .openApp(name: appName)
         }
         
-        // 6. Messaging ("Rahul ko WhatsApp pe message bhejo ki main late hoon", "send message to...")
+        // 6. Hinglish/Generic Messaging ("Rahul ko WhatsApp pe message bhejo ki main late hoon", "slack pe team ko message bhejo...")
         if lower.contains("bhejo") || lower.contains("send message") || lower.contains("message bhejo") || lower.contains("whatsapp pe message") {
             let (app, recipient, body) = extractMessageParameters(from: normalized)
             if !recipient.isEmpty {
                 return .messageDraft(app: app, recipient: recipient, body: body)
             }
+        }
+
+        // 6b. Rich App Integrations (Email/Mail/Gmail, Slack, Discord, WhatsApp, Notion, Notes, YouTube controls)
+        if let integration = extractAppIntegration(from: normalized, raw: query) {
+            return integration
         }
         
         // 7. Explicit Website / Browser Navigation ("Can you open YouTube tab on Safari", "Chrome mein YouTube kholo", "open YouTube in Safari", "open a new tab in safari or chrome about any website")
@@ -436,7 +463,27 @@ public enum AgentToolParser {
         
         // 9. Media / Music ("Spotify pe Arijit Singh ke gaane chalao", "ye gana laga do", "gaana chalao", "play music", "play top hits", "play a song on spotify")
         let isCloseRequest = lower.contains("close") || lower.contains("quit") || lower.contains("kill") || lower.contains("terminate") || (lower.contains("band") && !lower.contains("gana") && !lower.contains("music") && !lower.contains("song") && !lower.contains("video"))
-        if !isCloseRequest && (lower.contains("spotify") || lower.contains("youtube") || lower.contains("video") || lower.contains("gana") || lower.contains("gaana") || lower.contains("music") || lower.contains("song") || lower.contains("playlist") || lower.hasPrefix("play ") || lower.contains("play top") || lower.contains("track play") || lower.contains("track chalao") || lower.contains("arijit") || lower.contains("diljit") || lower.contains("shreya")) {
+        let hasWholePlay = lower.range(of: "\\bplay\\b", options: .regularExpression) != nil
+        let hasMediaActionVerb = hasWholePlay || lower.contains("chalao") || lower.contains("chala do") ||
+                                 lower.contains("bajao") || lower.contains("laga do") || lower.contains("pause") ||
+                                 lower.contains("skip") || lower.contains("next") || lower.contains("previous") ||
+                                 lower.contains("rok do") || lower.contains("band karo")
+        let isInfoMediaQuestion = !hasMediaActionVerb && (
+                                  query.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?") ||
+                                  lower.hasPrefix("who ") || lower.hasPrefix("what ") || lower.hasPrefix("why ") ||
+                                  lower.hasPrefix("how ") || lower.hasPrefix("when ") || lower.hasPrefix("explain ") ||
+                                  lower.hasPrefix("write ") || lower.hasPrefix("tell me "))
+        let explicitMediaTarget = lower.contains("spotify") ||
+                                  (lower.contains("youtube") && hasMediaActionVerb) ||
+                                  (lower.contains("video") && hasMediaActionVerb) ||
+                                  lower.contains("gana") || lower.contains("gaana") ||
+                                  (lower.contains("music") && (hasMediaActionVerb || lower.contains("top"))) ||
+                                  (lower.contains("song") && (hasMediaActionVerb || lower.contains("top"))) ||
+                                  (lower.contains("playlist") && hasMediaActionVerb) ||
+                                  lower.hasPrefix("play ") || lower.contains("play top") ||
+                                  lower.contains("track play") || lower.contains("track chalao") ||
+                                  lower.contains("arijit") || lower.contains("diljit") || lower.contains("shreya")
+        if !isCloseRequest && !isInfoMediaQuestion && explicitMediaTarget {
             if lower.contains("band karo") || lower.contains("rok do") || lower.contains("pause") || lower.contains("stop") {
                 return .mediaPlay(app: targetMediaApp, query: nil, action: "pause")
             }
@@ -459,8 +506,13 @@ public enum AgentToolParser {
             return .mediaPlay(app: targetMediaApp, query: queryTarget, action: "play")
         }
         
-        // 9. Fallback Generic Search ("Google pe search karo...", "dhoondo...")
-        if lower.contains("search karo") || lower.contains("dhoondo") || lower.contains("search") || lower.contains("pata karo") {
+        // 9. Fallback Generic Search ("Google pe search karo...", "dhoondo...", explicit web search)
+        let isCodingSearchTopic = lower.contains("binary search") || lower.contains("linear search") ||
+                                    lower.contains("depth first search") || lower.contains("breadth first search") ||
+                                    lower.contains("a* search") || lower.contains("search algorithm") ||
+                                    lower.contains("search my files") || lower.contains("job search")
+        let hasWholeSearch = lower.range(of: "\\bsearch\\b", options: .regularExpression) != nil
+        if !isCodingSearchTopic && (lower.contains("search karo") || lower.contains("dhoondo") || lower.contains("pata karo") || hasWholeSearch) {
             let searchQuery = extractSearchQuery(from: normalized)
             return .browserSearch(query: searchQuery, engine: "google", background: false)
         }
@@ -549,7 +601,8 @@ public enum AgentToolParser {
         guard isOpeningVerb else { return nil }
         
         for (key, appName) in knownApps {
-            if lower.contains(key) {
+            let pattern = "\\b" + NSRegularExpression.escapedPattern(for: key) + "\\b"
+            if lower.range(of: pattern, options: .regularExpression) != nil {
                 return appName
             }
         }
@@ -809,9 +862,11 @@ public enum AgentToolParser {
             "run this command on terminal and tell me what happened ",
             "run this command on terminal and tell me what happened",
             "run this command on terminal ", "run this command in terminal ",
+            "open terminal and run ", "open terminal and execute ",
+            "run command in terminal ", "run command on terminal ",
             "run terminal command ", "terminal mein command chalao ",
             "run command ", "execute command ", "terminal mein chalao ",
-            "terminal pe chalao ", "terminal command "
+            "terminal pe chalao ", "terminal command ", "run "
         ]
         for p in prefixes {
             if let r = str.range(of: p, options: .caseInsensitive) {
@@ -819,7 +874,7 @@ public enum AgentToolParser {
                 break
             }
         }
-        for s in [" and tell me what happened", " aur batao kya hua", " aur check karo"] {
+        for s in [" in terminal window", " on terminal", " in terminal", " and tell me what happened", " aur batao kya hua", " aur check karo"] {
             if let r = str.range(of: s, options: .caseInsensitive) {
                 str = String(str[..<r.lowerBound])
             }
@@ -990,5 +1045,237 @@ public enum AgentToolParser {
         if lowerTrimmed == "finder" { return "Finder" }
         
         return trimmedCandidate.capitalized
+    }
+
+    // MARK: - Rich Multi-App Integration Intent Extractor
+
+    private static func extractAppIntegration(from normalized: String, raw: String) -> AgentTool? {
+        let lower = normalized.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        // Preserve original capitalization for English titles, names, and drafted bodies while still using Hinglish normalization when rewritten
+        let textForExtraction = (normalized.lowercased() == raw.lowercased()) ? raw.trimmingCharacters(in: .whitespacesAndNewlines) : normalized
+
+        // Exclude pure conceptual questions unless asking about active content/inbox/video
+        let isConceptualQ = (lower.hasPrefix("what is ") || lower.hasPrefix("explain ") || lower.hasPrefix("who invented ") || lower.hasPrefix("how does ")) &&
+                            !lower.contains("this youtube") && !lower.contains("this video") && !lower.contains("my email") && !lower.contains("my inbox") && !lower.contains("my note")
+        if isConceptualQ { return nil }
+
+        // 1. Email / Apple Mail / Gmail (draft, reply, send, check inbox, search)
+        let mentionsEmail = lower.range(of: "\\b(e?mails?|inbox|gmail)\\b", options: .regularExpression) != nil
+        if mentionsEmail && !lower.contains("what is an email") && !lower.contains("explain email") {
+            if lower.contains("check") || lower.contains("unread") || lower.contains("inbox") || lower.contains("read my") || lower.contains("latest email") || lower.contains("latest mail") {
+                return .appIntegration(app: "mail", operation: "check_inbox", params: [:])
+            }
+            if lower.contains("search ") || lower.contains("find ") {
+                let q = stripLeadingVerbs(textForExtraction, prefixes: ["search my emails for ", "search emails for ", "search email for ", "find emails from ", "find email from ", "find email about ", "search email "])
+                return .appIntegration(app: "mail", operation: "search", params: ["query": q])
+            }
+            if lower.contains("reply") || lower.contains("respond") {
+                let shouldSend = lower.contains("and send") || lower.contains("bhej do")
+                let body = extractAfterMarkers(textForExtraction, markers: [" saying ", " that ", " with ", " ki ", ": "]) ?? ""
+                let rawRecipient = extractRecipientAfter(textForExtraction, prepositions: [" to "]) ?? ""
+                let fillerRecipients: Set<String> = ["this", "the", "it", "email", "mail", "this email", "the email", "this mail", "the mail", "latest email", "last email"]
+                let recipient = fillerRecipients.contains(rawRecipient.lowercased()) ? "" : rawRecipient
+                return .appIntegration(app: "mail", operation: shouldSend ? "reply_and_send" : "reply", params: [
+                    "recipient": recipient,
+                    "body": body,
+                    "query": body.isEmpty ? textForExtraction : ""
+                ])
+            }
+            if lower.contains("draft") || lower.contains("compose") || lower.contains("send") || lower.contains("write a mail") || lower.contains("write an email") || lower.contains("mail ") {
+                let shouldSend = (lower.contains("send ") && !lower.contains("draft")) || lower.contains("bhej do")
+                let recipient = extractRecipientAfter(textForExtraction, prepositions: [" to "]) ?? ""
+                let subject = extractBetween(textForExtraction, startMarkers: [" about ", " subject ", " regarding "], endMarkers: [" saying ", " body ", " that ", " ki ", " with "]) ?? ""
+                let body = extractAfterMarkers(textForExtraction, markers: [" saying ", " body ", " with message ", " that ", " ki "]) ?? ""
+                return .appIntegration(app: "mail", operation: shouldSend ? "send" : "draft", params: [
+                    "recipient": recipient,
+                    "subject": subject,
+                    "body": body,
+                    "query": textForExtraction
+                ])
+            }
+        }
+
+        // 2. Slack & Discord ("send slack message to #dev saying ...", "draft discord message...", "open #general in slack")
+        if lower.contains("slack") || lower.contains("discord") {
+            let appId = lower.contains("slack") ? "slack" : "discord"
+            if lower.contains("read ") || lower.contains("check ") || lower.contains("summarize ") {
+                return .appIntegration(app: appId, operation: "read", params: [:])
+            }
+            let hasExplicitSend = (lower.contains("send") || lower.contains("post") || lower.contains("bhej")) && !lower.contains("draft")
+            let isDraft = lower.contains("draft") || lower.contains("compose") || lower.contains("write") || lower.contains("likh")
+            let body = extractAfterMarkers(textForExtraction, markers: [" saying ", " that ", " ki ", ": "]) ?? ""
+            let target = extractChannelOrPerson(from: textForExtraction, appName: appId)
+            if hasExplicitSend || isDraft || !body.isEmpty || !target.isEmpty {
+                let op = hasExplicitSend ? "send" : (isDraft || !body.isEmpty ? "draft" : "open_channel")
+                return .appIntegration(app: appId, operation: op, params: [
+                    "recipient": target,
+                    "body": body
+                ])
+            }
+        }
+
+        // 3. WhatsApp English/Rich ("draft whatsapp message to Rahul saying ...", "open Rahul chat on whatsapp", "read whatsapp")
+        // Note: preserve existing Hinglish "Rahul ko WhatsApp pe message bhejo..." for `.messageDraft` parity!
+        if lower.contains("whatsapp") || lower.contains("whatapp") {
+            if lower.contains("read ") || lower.contains("check ") || lower.contains("summarize ") {
+                return .appIntegration(app: "whatsapp", operation: "read", params: [:])
+            }
+            if lower.contains("chat with ") || (lower.contains("open ") && lower.contains(" chat")) {
+                let target = extractRecipientAfter(textForExtraction, prepositions: [" with ", " chat ", " to "]) ?? extractChannelOrPerson(from: textForExtraction, appName: "whatsapp")
+                return .appIntegration(app: "whatsapp", operation: "open_chat", params: ["recipient": target])
+            }
+            if (lower.contains("draft") || lower.contains("compose")) && lower.contains("whatsapp") {
+                let body = extractAfterMarkers(textForExtraction, markers: [" saying ", " that ", " ki ", ": "]) ?? ""
+                let recipient = extractRecipientAfter(textForExtraction, prepositions: [" to ", " for "]) ?? ""
+                return .appIntegration(app: "whatsapp", operation: "draft", params: ["recipient": recipient, "body": body])
+            }
+            if lower.hasPrefix("send a whatsapp") || lower.hasPrefix("send whatsapp") {
+                let body = extractAfterMarkers(textForExtraction, markers: [" saying ", " that ", ": "]) ?? ""
+                let recipient = extractRecipientAfter(textForExtraction, prepositions: [" to "]) ?? ""
+                return .appIntegration(app: "whatsapp", operation: "send", params: ["recipient": recipient, "body": body])
+            }
+        }
+
+        // 4. Notion ("create notion page ...", "search ... in notion", "open ... in notion", "append ... to notion")
+        if lower.contains("notion") {
+            if lower.contains("search ") || lower.contains("find ") || (lower.contains("open ") && !lower.trimmingCharacters(in: .whitespaces).hasSuffix("notion")) {
+                let q = stripLeadingVerbs(textForExtraction, prefixes: ["search notion for ", "search ", "find ", "open "])
+                    .replacingOccurrences(of: " in notion", with: "", options: .caseInsensitive)
+                    .replacingOccurrences(of: " on notion", with: "", options: .caseInsensitive)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !q.isEmpty {
+                    return .appIntegration(app: "notion", operation: "search", params: ["query": q, "title": q])
+                }
+            }
+            if lower.contains("append") || lower.contains("add to notion") || lower.contains("add to my notion") {
+                let body = extractAfterMarkers(textForExtraction, markers: [" saying ", " text ", " to notion ", ": "]) ?? stripLeadingVerbs(textForExtraction, prefixes: ["append ", "add "])
+                return .appIntegration(app: "notion", operation: "append", params: ["body": body])
+            }
+            if lower.contains("create") || lower.contains("new page") || lower.contains("make a page") || lower.contains("add page") {
+                let title = extractBetween(textForExtraction, startMarkers: ["titled ", "called ", "named ", "page "], endMarkers: [" with ", " saying ", " content ", ": "]) ?? ""
+                let body = extractAfterMarkers(textForExtraction, markers: [" with ", " content ", " saying ", ": "]) ?? ""
+                return .appIntegration(app: "notion", operation: "create_page", params: [
+                    "title": title.replacingOccurrences(of: "notion", with: "", options: .caseInsensitive).trimmingCharacters(in: .whitespacesAndNewlines),
+                    "body": body
+                ])
+            }
+        }
+
+        // 5. Apple Notes ("append ... to my ... note", "read my ... note", "list my notes")
+        if lower.contains("note") && !lower.contains("notion") {
+            if lower.contains("list my notes") || lower.contains("list notes") || lower.contains("show my notes") || lower.contains("recent notes") {
+                return .appIntegration(app: "notes", operation: "list", params: [:])
+            }
+            if (lower.hasPrefix("read ") || lower.contains("read my ")) && (lower.contains(" note") || lower.contains(" notes")) {
+                let q = stripLeadingVerbs(textForExtraction, prefixes: ["read my ", "read the ", "read "])
+                    .replacingOccurrences(of: " note", with: "", options: .caseInsensitive)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return .appIntegration(app: "notes", operation: "read", params: ["query": q])
+            }
+            if lower.contains("append ") || (lower.contains("add ") && (lower.contains(" to my ") || lower.contains(" to the ") || lower.contains(" to note "))) {
+                let title = extractAfterMarkers(textForExtraction, markers: [" to my ", " to the ", " to note "])?
+                    .replacingOccurrences(of: " note", with: "", options: .caseInsensitive)
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let body = extractBetween(textForExtraction, startMarkers: ["append ", "add "], endMarkers: [" to my ", " to the ", " to note "]) ?? ""
+                if !body.isEmpty {
+                    return .appIntegration(app: "notes", operation: "append", params: ["title": title, "body": body])
+                }
+            }
+        }
+
+        // 6. YouTube Rich Player Controls & Summarization
+        if lower.contains("mute youtube") || lower == "mute video" {
+            return .appIntegration(app: "youtube", operation: "mute", params: [:])
+        }
+        if lower.contains("unmute youtube") || lower == "unmute video" {
+            return .appIntegration(app: "youtube", operation: "unmute", params: [:])
+        }
+        if lower.contains("fullscreen youtube") || lower.contains("youtube fullscreen") {
+            return .appIntegration(app: "youtube", operation: "fullscreen", params: [:])
+        }
+        if lower.contains("fast forward") || lower.contains("skip forward") || lower.contains("forward 10") {
+            return .appIntegration(app: "youtube", operation: "forward", params: [:])
+        }
+        if lower.contains("rewind") || lower.contains("skip back") || lower.contains("back 10") {
+            return .appIntegration(app: "youtube", operation: "rewind", params: [:])
+        }
+        if lower.contains("like this video") || lower.contains("like the video") {
+            return .appIntegration(app: "youtube", operation: "like", params: [:])
+        }
+        if lower == "subscribe" || lower.contains("subscribe to this channel") || lower.contains("subscribe to channel") {
+            return .appIntegration(app: "youtube", operation: "subscribe", params: [:])
+        }
+        if (lower.contains("summarize") || lower.contains("what is this video") || lower.contains("what's this video")) &&
+           (lower.contains("youtube") || lower.contains("video")) {
+            return .appIntegration(app: "youtube", operation: "summarize", params: [:])
+        }
+
+        return nil
+    }
+
+    private static func stripLeadingVerbs(_ text: String, prefixes: [String]) -> String {
+        for p in prefixes {
+            if let r = text.range(of: p, options: [.caseInsensitive, .anchored]) {
+                return String(text[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return text
+    }
+
+    private static func extractAfterMarkers(_ text: String, markers: [String]) -> String? {
+        for m in markers {
+            if let r = text.range(of: m, options: .caseInsensitive) {
+                let tail = String(text[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !tail.isEmpty { return tail }
+            }
+        }
+        return nil
+    }
+
+    private static func extractBetween(_ text: String, startMarkers: [String], endMarkers: [String]) -> String? {
+        for s in startMarkers {
+            if let sr = text.range(of: s, options: .caseInsensitive) {
+                let after = String(text[sr.upperBound...])
+                var endIndex = after.endIndex
+                for e in endMarkers {
+                    if let er = after.range(of: e, options: .caseInsensitive), er.lowerBound < endIndex {
+                        endIndex = er.lowerBound
+                    }
+                }
+                let result = String(after[..<endIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !result.isEmpty { return result }
+            }
+        }
+        return nil
+    }
+
+    private static func extractRecipientAfter(_ text: String, prepositions: [String]) -> String? {
+        let stopTokens: Set<String> = ["about", "saying", "that", "with", "subject", "regarding", "on", "in", "ki"]
+        for prep in prepositions {
+            if let r = text.range(of: prep, options: .caseInsensitive) {
+                let after = String(text[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let words = after.split(separator: " ").map { String($0) }
+                var collected: [String] = []
+                for w in words {
+                    if stopTokens.contains(w.lowercased()) { break }
+                    collected.append(w)
+                    if collected.count >= 3 { break }
+                }
+                let res = collected.joined(separator: " ").trimmingCharacters(in: .punctuationCharacters)
+                if !res.isEmpty { return res }
+            }
+        }
+        return nil
+    }
+
+    private static func extractChannelOrPerson(from text: String, appName: String) -> String {
+        if let hashMatch = text.range(of: "#[A-Za-z0-9_-]+", options: .regularExpression) {
+            return String(text[hashMatch])
+        }
+        if let rec = extractRecipientAfter(text, prepositions: [" to ", " in ", " channel "]) {
+            let cleaned = rec.replacingOccurrences(of: appName, with: "", options: .caseInsensitive).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !cleaned.isEmpty { return cleaned }
+        }
+        return ""
     }
 }

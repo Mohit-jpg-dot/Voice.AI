@@ -3,7 +3,7 @@ import Combine
 import CoreGraphics
 import AppKit
 
-public final class AppState: ObservableObject, @unchecked Sendable {
+public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecked Sendable {
     @Published public var activeNavTab: NavTab = .dashboard
     @Published public var activeNotchTab: NotchTab = .ask
     @Published public var isTypingFocused: Bool = false
@@ -69,6 +69,9 @@ public final class AppState: ObservableObject, @unchecked Sendable {
     @Published public var dynamicNotchSize: CGSize = CGSize(width: 185, height: 32)
     @Published public var isCompactResponseMode: Bool = true
     @Published public var lastPromptOrQuestion: String = ""
+    @Published public var llmSuggestions: [BrainSuggestion] = []
+    @Published public var isThinkingSuggestions: Bool = false
+    private var recordingWatchdogWorkItem: DispatchWorkItem?
     
     // "THE VOICE" Hands-free ambient wake-word mode & one-time search permission
     @Published public var isTheVoiceModeEnabled: Bool {
@@ -84,6 +87,7 @@ public final class AppState: ObservableObject, @unchecked Sendable {
     public var currentExecutionTask: Task<Void, Never>? = nil
     
     @Published public var currentAction: AgentAction? = nil
+    private var pendingApprovalContinuation: CheckedContinuation<Bool, Never>? = nil
     
     // Real User Profile - loaded dynamically from system & UserDefaults
     @Published public var userName: String
@@ -99,8 +103,14 @@ public final class AppState: ObservableObject, @unchecked Sendable {
     // Usage Breakdown - dynamically computed from actual sessions
     @Published public var appUsages: [AppUsageStat] = []
     
-    // Real macOS Connected Applications
-    @Published public var connectedApps: [ConnectedApp] = []
+    // Real macOS Connected Applications (persists enable/disable toggles into AppIntegrationEngine)
+    @Published public var connectedApps: [ConnectedApp] = [] {
+        didSet {
+            for app in connectedApps {
+                AppIntegrationEngine.shared.setAppIntegrated(app.id, enabled: app.isConnected)
+            }
+        }
+    }
     
     // Real History - loaded from UserDefaults
     @Published public var recentHistory: [SessionRecord] = []
@@ -230,6 +240,11 @@ public final class AppState: ObservableObject, @unchecked Sendable {
         
         // 8. Bind Now Playing media observer & Coding Subagents manager
         setupNowPlayingAndAgentBindings()
+
+        // 9. Initialize per-account encrypted MemoryStore & bind interactive ToolApprovalCoordinator UI
+        let accountScope = AccountAuthService.shared.currentSession?.accountId ?? resolvedEmail
+        MemoryStore.shared.load(accountId: accountScope)
+        ToolApprovalCoordinator.shared.setPresenter(self)
     }
     
     private func setupNowPlayingAndAgentBindings() {
@@ -252,30 +267,106 @@ public final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private func setupConnectedApps() {
+        let engine = AppIntegrationEngine.shared
         self.connectedApps = [
+            ConnectedApp(
+                id: "mail",
+                name: "Email (Mail / Gmail)",
+                description: "Draft emails, reply to threads, check unread inbox, and send mail by voice.",
+                iconName: "envelope.fill",
+                iconColor: "#007AFF",
+                isConnected: engine.isAppIntegrated("mail"),
+                category: "Connected Apps"
+            ),
             ConnectedApp(
                 id: "whatsapp",
                 name: "WhatsApp",
-                description: "Voice-compose messages, open chats, and dispatch quick replies.",
+                description: "Open chats, voice-draft replies, and send WhatsApp messages hands-free.",
                 iconName: "message.fill",
                 iconColor: "#25D366",
-                isConnected: true
+                isConnected: engine.isAppIntegrated("whatsapp"),
+                category: "Connected Apps"
             ),
             ConnectedApp(
-                id: "safari",
-                name: "Safari",
-                description: "Instant web searches, URL navigation, and browser dictation.",
-                iconName: "safari.fill",
-                iconColor: "#007AFF",
-                isConnected: true
+                id: "slack",
+                name: "Slack",
+                description: "Switch to #channels or DMs, draft updates, or post via webhook.",
+                iconName: "number.square.fill",
+                iconColor: "#4A154B",
+                isConnected: engine.isAppIntegrated("slack"),
+                category: "Connected Apps"
+            ),
+            ConnectedApp(
+                id: "discord",
+                name: "Discord",
+                description: "Jump to servers/channels, draft chat messages, or post via webhook.",
+                iconName: "bubble.left.and.bubble.right.fill",
+                iconColor: "#5865F2",
+                isConnected: engine.isAppIntegrated("discord"),
+                category: "Connected Apps"
+            ),
+            ConnectedApp(
+                id: "youtube",
+                name: "YouTube",
+                description: "Search videos, control playback, skip, mute, like, subscribe, or summarize.",
+                iconName: "play.rectangle.fill",
+                iconColor: "#FF0000",
+                isConnected: engine.isAppIntegrated("youtube"),
+                category: "System Integrations"
+            ),
+            ConnectedApp(
+                id: "notion",
+                name: "Notion",
+                description: "Create Notion pages, Quick Find docs, and append notes by voice.",
+                iconName: "doc.text.fill",
+                iconColor: "#191919",
+                isConnected: engine.isAppIntegrated("notion"),
+                category: "Connected Apps"
             ),
             ConnectedApp(
                 id: "notes",
                 name: "Apple Notes",
-                description: "Create quick notes, speech dictation memos, and thought capture.",
+                description: "Create rich notes, append ideas, read, and list notes via AppleScript.",
                 iconName: "note.text",
                 iconColor: "#F5A623",
-                isConnected: true
+                isConnected: engine.isAppIntegrated("notes"),
+                category: "System Integrations"
+            ),
+            ConnectedApp(
+                id: "terminal",
+                name: "Terminal",
+                description: "Execute safe shell commands, read stdout, or launch commands in Terminal.app.",
+                iconName: "terminal.fill",
+                iconColor: "#24292E",
+                isConnected: engine.isAppIntegrated("terminal"),
+                category: "Developer Tools"
+            ),
+            ConnectedApp(
+                id: "spotify",
+                name: "Spotify",
+                description: "Play tracks or artists, skip, pause, and resume playback by voice.",
+                iconName: "music.note",
+                iconColor: "#1DB954",
+                isConnected: engine.isAppIntegrated("spotify"),
+                category: "System Integrations"
+            ),
+            ConnectedApp(
+                id: "safari",
+                name: "Safari",
+                description: "Instant web searches, URL navigation, and DOM browser automation.",
+                iconName: "safari.fill",
+                iconColor: "#007AFF",
+                isConnected: engine.isAppIntegrated("safari"),
+                category: "System Integrations"
+            ),
+            ConnectedApp(
+                id: "chrome",
+                name: "Google Chrome",
+                description: "Web automation, YouTube/Gmail tab control, and active tab scripting.",
+                iconName: "globe",
+                iconColor: "#EA4335",
+                isConnected: engine.isAppIntegrated("chrome"),
+                category: "System Integrations"
             ),
             ConnectedApp(
                 id: "calendar",
@@ -283,7 +374,8 @@ public final class AppState: ObservableObject, @unchecked Sendable {
                 description: "Check schedule and voice-add roadmap events or meetings.",
                 iconName: "calendar",
                 iconColor: "#FF3B30",
-                isConnected: true
+                isConnected: engine.isAppIntegrated("calendar"),
+                category: "System Integrations"
             ),
             ConnectedApp(
                 id: "reminders",
@@ -291,31 +383,17 @@ public final class AppState: ObservableObject, @unchecked Sendable {
                 description: "Voice-create to-dos, shopping lists, and follow-up alerts.",
                 iconName: "list.bullet.circle.fill",
                 iconColor: "#FF9500",
-                isConnected: true
+                isConnected: engine.isAppIntegrated("reminders"),
+                category: "System Integrations"
             ),
             ConnectedApp(
                 id: "vscode",
                 name: "Visual Studio Code",
-                description: "Dictate comments, code docstrings, and control IDE workflows.",
+                description: "Create code files, dictate comments, and automate IDE workflows.",
                 iconName: "chevron.left.forwardslash.chevron.right",
                 iconColor: "#0078D7",
-                isConnected: true
-            ),
-            ConnectedApp(
-                id: "chrome",
-                name: "Google Chrome",
-                description: "Web automation, fast research searches, and active tab control.",
-                iconName: "globe",
-                iconColor: "#EA4335",
-                isConnected: true
-            ),
-            ConnectedApp(
-                id: "terminal",
-                name: "Terminal",
-                description: "Dictate shell commands and trigger local developer scripts.",
-                iconName: "terminal.fill",
-                iconColor: "#24292E",
-                isConnected: false
+                isConnected: engine.isAppIntegrated("vscode"),
+                category: "Developer Tools"
             )
         ]
     }
@@ -490,9 +568,16 @@ public final class AppState: ObservableObject, @unchecked Sendable {
             let polished = DictationPolishEngine.shared.polish(rawText: trimmed, profile: .general)
             self.currentTranscript = polished.polishedText
 
+            let lower = polished.polishedText.lowercased()
+            if Self.isBrainSuggestionPrompt(lower) {
+                DispatchQueue.main.async {
+                    self.triggerBrainThinkAndSuggest()
+                }
+                return
+            }
+
             let isCommand = AgentActionDispatcher.shared.isCommandIntent(polished.polishedText)
             let isHinglish = HinglishParser.isHinglishQuery(polished.polishedText)
-            let lower = polished.polishedText.lowercased()
             let isQuestion = polished.polishedText.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?") ||
                              ["what", "who", "where", "why", "how", "when", "can", "could", "should", "tell me", "search", "kya", "kaise", "batao", "dikhao", "screen", "google", "gaana", "note", "tab"].contains { lower.contains($0) }
 
@@ -516,11 +601,19 @@ public final class AppState: ObservableObject, @unchecked Sendable {
                     self.chatMessages = LocalChatMemoryManager.shared.allMessages()
                 }
 
+                let activeCrop = self.currentCropResult
+                self.currentAgentReply = ""
                 self.currentExecutionTask?.cancel()
                 self.currentExecutionTask = Task {
                     let result = await AutonomousAgentExecutor.shared.planAndExecute(
                         taskDescription: polished.polishedText,
-                        triggerMode: mode
+                        triggerMode: mode,
+                        screenCrop: activeCrop,
+                        onPartialReply: { [weak self] partial in
+                            Task { @MainActor in
+                                self?.currentAgentReply = partial
+                            }
+                        }
                     ) { [weak self] stepMsg in
                         Task { @MainActor in
                             self?.executionState = .executing(stepMsg)
@@ -575,6 +668,9 @@ public final class AppState: ObservableObject, @unchecked Sendable {
                         )
                         // Speak aloud direct answer / summary
                         SpeechPipelineEngine.shared.speakResponse(result.summary)
+                        if result.success {
+                            self.refreshBrainSuggestions(query: polished.polishedText, reply: result.summary)
+                        }
 
                         // Keep HUD open so user can read response; auto-close after 12s if not pinned/hovered
                         if !self.isPinned {
@@ -661,33 +757,50 @@ public final class AppState: ObservableObject, @unchecked Sendable {
     }
     
     public func triggerVoice(mode: VoiceTriggerMode) {
+        recordingWatchdogWorkItem?.cancel()
         GoogleSearchEngine.shared.clearLastAnswer()
         BoringSoundEngine.shared.playQueued()
         executionState = .listening(mode)
         islandState = .voiceCompact(mode)
         SpeechPipelineEngine.shared.startRecording(mode: mode)
         
-        // Safety Watchdog: Auto-cancel recording after 20s if hotkey or mic stalls
-        DispatchQueue.main.asyncAfter(deadline: .now() + 20.0) { [weak self] in
+        // Safety Watchdog: Auto-cancel recording after 20s if mic stalls (cancelled on stop or new recording)
+        let watchdog = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             if case .listening = self.executionState {
                 self.stopVoice()
             }
         }
+        recordingWatchdogWorkItem = watchdog
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20.0, execute: watchdog)
     }
     
     public func stopVoice() {
+        recordingWatchdogWorkItem?.cancel()
+        recordingWatchdogWorkItem = nil
         BoringSoundEngine.shared.playSend()
         SpeechPipelineEngine.shared.stopRecording()
     }
     
+    private static func isBrainSuggestionPrompt(_ lower: String) -> Bool {
+        lower.contains("suggest something") || lower.contains("what should i do next") ||
+        lower.contains("give me suggestions") || lower.contains("brain suggest") ||
+        lower.contains("think and suggest")
+    }
+
     public func submitTypedPrompt(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        if Self.isBrainSuggestionPrompt(trimmed.lowercased()) {
+            promptInputText = ""
+            triggerBrainThinkAndSuggest()
+            return
+        }
         BoringSoundEngine.shared.playSend()
         currentTranscript = trimmed
         lastPromptOrQuestion = trimmed
         promptInputText = ""
+        llmSuggestions = []
         BoringSoundEngine.shared.playReply()
         executionState = .thinking("Formulating answer & executing task...")
         islandState = .hoverExpanded
@@ -697,9 +810,19 @@ public final class AppState: ObservableObject, @unchecked Sendable {
         _ = LocalChatMemoryManager.shared.addMessage(role: "user", text: trimmed)
         self.chatMessages = LocalChatMemoryManager.shared.allMessages()
         
+        let activeCrop = self.currentCropResult
+        self.currentAgentReply = ""
         currentExecutionTask?.cancel()
         currentExecutionTask = Task {
-            let result = await AutonomousAgentExecutor.shared.planAndExecute(taskDescription: trimmed) { [weak self] stepMsg in
+            let result = await AutonomousAgentExecutor.shared.planAndExecute(
+                taskDescription: trimmed,
+                screenCrop: activeCrop,
+                onPartialReply: { [weak self] partial in
+                    Task { @MainActor in
+                        self?.currentAgentReply = partial
+                    }
+                }
+            ) { [weak self] stepMsg in
                 Task { @MainActor in
                     self?.executionState = .executing(stepMsg)
                 }
@@ -751,10 +874,55 @@ public final class AppState: ObservableObject, @unchecked Sendable {
                     appIcon: "sparkles"
                 )
                 SpeechPipelineEngine.shared.speakResponse(result.summary)
+                if result.success {
+                    self.refreshBrainSuggestions(query: trimmed, reply: result.summary)
+                }
             }
         }
     }
     
+    private func refreshBrainSuggestions(query: String, reply: String) {
+        guard ModelRouter.shared.currentMode != .googleSearch else { return }
+        self.isThinkingSuggestions = true
+        Task.detached(priority: .utility) { [weak self] in
+            let generated = await AutonomousAgentExecutor.shared.generateBrainSuggestions(
+                forQuery: query,
+                reply: reply
+            )
+            await MainActor.run {
+                self?.llmSuggestions = generated
+                self?.isThinkingSuggestions = false
+            }
+        }
+    }
+
+    public func triggerBrainThinkAndSuggest() {
+        BoringSoundEngine.shared.playReply()
+        self.executionState = .thinking("Local Brain analyzing your Mac & screen context...")
+        self.islandState = .hoverExpanded
+        self.activeNotchTab = .ask
+        self.isThinkingSuggestions = true
+        self.llmSuggestions = []
+        
+        Task {
+            let outcome = await AutonomousAgentExecutor.shared.thinkAndSuggestForCurrentContext()
+            await MainActor.run {
+                BoringSoundEngine.shared.playDone()
+                self.executionState = .completed(outcome.insight)
+                self.currentAgentReply = outcome.insight
+                self.llmSuggestions = outcome.suggestions
+                self.isThinkingSuggestions = false
+                _ = LocalChatMemoryManager.shared.addMessage(
+                    role: "assistant",
+                    text: outcome.insight,
+                    sourceTitle: "Ollama Brain Suggestions"
+                )
+                self.chatMessages = LocalChatMemoryManager.shared.allMessages()
+                SpeechPipelineEngine.shared.speakResponse(outcome.insight)
+            }
+        }
+    }
+
     public func triggerScreenVision() {
         self.executionState = .thinking("Scanning current screen via Apple Vision OCR...")
         self.islandState = .hoverExpanded
@@ -762,18 +930,27 @@ public final class AppState: ObservableObject, @unchecked Sendable {
         self.chatMessages = LocalChatMemoryManager.shared.allMessages()
         
         Task {
-            let analysis = await ScreenVisionService.shared.captureAndAnalyzeScreen()
+            let captured = await ScreenVisionService.shared.captureFullScreenWithImage()
+            let llmResult = await AutonomousAgentExecutor.shared.analyzeScreenWithActiveModel(
+                pngData: captured.pngData,
+                ocrText: captured.analysis.fullText,
+                appName: captured.analysis.activeAppTitle ?? "Active App",
+                sourceLabel: "Full Screen",
+                question: "Summarize what is currently visible on my screen concisely and clearly."
+            )
+            let finalSummary = llmResult?.summary ?? captured.analysis.summary
+            let sourceLabel = llmResult?.usedProvider ?? "Screen OCR"
             await MainActor.run {
-                self.executionState = .completed(analysis.summary)
-                self.currentAgentReply = analysis.summary
+                self.executionState = .completed(finalSummary)
+                self.currentAgentReply = finalSummary
                 _ = LocalChatMemoryManager.shared.addMessage(
                     role: "assistant",
-                    text: analysis.summary,
-                    sourceTitle: "Screen OCR",
+                    text: finalSummary,
+                    sourceTitle: sourceLabel,
                     isScreenContext: true
                 )
                 self.chatMessages = LocalChatMemoryManager.shared.allMessages()
-                SpeechPipelineEngine.shared.speakResponse(analysis.summary)
+                SpeechPipelineEngine.shared.speakResponse(finalSummary)
             }
         }
     }
@@ -784,6 +961,7 @@ public final class AppState: ObservableObject, @unchecked Sendable {
         self.chatMessages = LocalChatMemoryManager.shared.allMessages()
         self.currentAgentReply = ""
         self.currentTranscript = ""
+        self.llmSuggestions = []
     }
     
     public func confirmRedirect() {
@@ -863,16 +1041,25 @@ public final class AppState: ObservableObject, @unchecked Sendable {
     }
     
     public func triggerCircleToAsk() {
+        BoringSoundEngine.shared.playTap()
         isScreenCaptureActive = true
         islandState = .circleToAskActive
     }
     
     public func completeCircleSelection(crop: ScreenCropResult) {
+        BoringSoundEngine.shared.playDone()
         isScreenCaptureActive = false
         currentCropResult = crop
+        activeNotchTab = .ask
+        isCompactResponseMode = false
         islandState = .selectionReview(crop)
-        currentTranscript = "What is shown in this selected area?"
-        currentAgentReply = "Identified selected UI context: \"\(crop.extractedOCRText.prefix(60))...\""
+        let appLabel = crop.sourceAppName ?? "Screen"
+        currentTranscript = "Captured \(crop.toolUsed.rawValue) from \(appLabel)"
+        if crop.extractedOCRText.isEmpty {
+            currentAgentReply = "Selected region captured (\(Int(crop.boundingBox.width))×\(Int(crop.boundingBox.height)) px). Ask anything about it."
+        } else {
+            currentAgentReply = ""
+        }
     }
     
     public func cancelCircleSelection() {
@@ -880,34 +1067,65 @@ public final class AppState: ObservableObject, @unchecked Sendable {
         islandState = isPinned ? .pinned : .resting
     }
     
+    public func clearCircleSelection() {
+        currentCropResult = nil
+        if case .selectionReview = islandState {
+            islandState = isPinned ? .pinned : .hoverExpanded
+        }
+    }
+    
+    @MainActor
+    public func presentApprovalCard(for action: AgentAction) async -> Bool {
+        if let stale = pendingApprovalContinuation {
+            pendingApprovalContinuation = nil
+            stale.resume(returning: false)
+        }
+        self.currentAction = action
+        self.executionState = .awaitingApproval(action)
+        self.activeNotchTab = .ask
+        self.islandState = .approvalExpanded(action)
+
+        return await withCheckedContinuation { continuation in
+            self.pendingApprovalContinuation = continuation
+        }
+    }
+
     public func approveCurrentAction() {
-        if var action = currentAction {
-            action.isApproved = true
-            currentAction = action
-            executionState = .executing(action.title)
-            islandState = .approvalExpanded(action)
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                self.executionState = .completed("Task completed.")
-                self.recentHistory.insert(
-                    SessionRecord(
-                        mode: .agent,
-                        prompt: self.currentTranscript,
-                        response: "Added task to Things 3: \(action.title)",
-                        appName: action.appName,
-                        appIcon: action.appIcon,
-                        action: action
-                    ),
-                    at: 0
-                )
-                self.totalSessions += 1
-                self.totalWords += self.currentTranscript.split(separator: " ").count
-                self.timeSavedMinutes += 1
-                
-                if !self.isPinned {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                        self.islandState = .resting
-                    }
+        guard var action = currentAction else { return }
+        action.isApproved = true
+        currentAction = nil
+        executionState = .executing(action.title)
+
+        if let continuation = pendingApprovalContinuation {
+            pendingApprovalContinuation = nil
+            continuation.resume(returning: true)
+            if !self.isPinned {
+                islandState = .hoverExpanded
+            }
+            return
+        }
+
+        // Fallback completion for standalone manual action cards
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            self.executionState = .completed("Approved: \(action.title)")
+            self.recentHistory.insert(
+                SessionRecord(
+                    mode: .agent,
+                    prompt: self.currentTranscript.isEmpty ? action.title : self.currentTranscript,
+                    response: action.subtitle ?? "Approved \(action.title)",
+                    appName: action.appName,
+                    appIcon: action.appIcon,
+                    action: action
+                ),
+                at: 0
+            )
+            self.totalSessions += 1
+            self.totalWords += self.currentTranscript.split(separator: " ").count
+            self.timeSavedMinutes += 1
+
+            if !self.isPinned {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    self.islandState = .resting
                 }
             }
         }
@@ -915,6 +1133,11 @@ public final class AppState: ObservableObject, @unchecked Sendable {
     
     public func dismissAction() {
         currentAction = nil
+        if let continuation = pendingApprovalContinuation {
+            pendingApprovalContinuation = nil
+            continuation.resume(returning: false)
+        }
+        executionState = .idle
         islandState = isPinned ? .pinned : .resting
     }
 }

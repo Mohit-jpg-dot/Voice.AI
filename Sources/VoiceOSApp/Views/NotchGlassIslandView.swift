@@ -21,7 +21,7 @@ public struct NotchGlassIslandView: View {
     private var isOpen: Bool {
         if appState.isMediaExpanded { return true }
         switch appState.islandState {
-        case .resting, .voiceCompact:
+        case .resting, .voiceCompact, .circleToAskActive:
             return false
         default:
             return true
@@ -85,24 +85,31 @@ public struct NotchGlassIslandView: View {
                 return (510.0, 135.0 + mediaOffset)
             }
             
+            let cropOffset: CGFloat = (appState.currentCropResult != nil) ? 118.0 : 0.0
+            let suggestionOffset: CGFloat = !appState.llmSuggestions.isEmpty ? 36.0 : 0.0
+            
             // Adaptive height based on active response length
             let reply = appState.currentAgentReply
             if !reply.isEmpty {
                 let count = reply.count
-                let width: CGFloat = max(520.0, min(630.0, CGFloat(count) * 1.5 + 420.0))
+                let width: CGFloat = max(540.0, min(650.0, CGFloat(count) * 1.5 + 420.0))
                 let height: CGFloat
                 if count <= 65 {
-                    height = 110.0
+                    height = 145.0
                 } else if count <= 160 {
-                    height = 165.0
+                    height = 190.0
                 } else if count <= 300 {
-                    height = 235.0
+                    height = 250.0
                 } else if count <= 550 {
-                    height = 320.0
+                    height = 330.0
                 } else {
                     height = 440.0
                 }
-                return (width, height + mediaOffset)
+                return (width, min(520.0, height + mediaOffset + cropOffset + suggestionOffset))
+            }
+            
+            if appState.currentCropResult != nil {
+                return (580.0, 240.0 + mediaOffset)
             }
             
             // Standard interactive Ask input
@@ -290,6 +297,16 @@ public struct NotchGlassIslandView: View {
         .onChange(of: currentHeight) { _, newHeight in
             appState.dynamicNotchSize = CGSize(width: currentWidth, height: newHeight)
         }
+        .onChange(of: appState.islandState) { _, newState in
+            if case .selectionReview = newState {
+                isCompactMode = false
+                appState.isCompactResponseMode = false
+                appState.activeNotchTab = .ask
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isFieldFocused = true
+                }
+            }
+        }
     }
     
     // MARK: - Hover Management (boring.notch feel)
@@ -298,7 +315,7 @@ public struct NotchGlassIslandView: View {
         
         if hovering {
             isHovering = true
-            guard !isOpen, !appState.isPinned else { return }
+            guard !isOpen, !appState.isPinned, appState.islandState != .circleToAskActive else { return }
             
             // Dwell Delay (200ms) strictly on hardware notch touch prevents swift cursor sweep opens
             hoverTask = Task {
@@ -306,7 +323,7 @@ public struct NotchGlassIslandView: View {
                 guard !Task.isCancelled else { return }
                 
                 await MainActor.run {
-                    guard self.isHovering, !self.isOpen, !self.appState.isPinned else { return }
+                    guard self.isHovering, !self.isOpen, !self.appState.isPinned, self.appState.islandState != .circleToAskActive else { return }
                     withAnimation(NotchAnimations.openSpring) {
                         if self.appState.isNotchMediaDisplayEnabled, let media = self.appState.currentMedia, media.isPlaying {
                             self.appState.isMediaExpanded = true
@@ -325,8 +342,14 @@ public struct NotchGlassIslandView: View {
                 await MainActor.run {
                     self.isHovering = false
                     
-                    // Do not auto-close if pinned or user is actively typing in the Ask input box
+                    // Do not auto-close if pinned, typing, or actively using Circle to Ask
                     guard !self.appState.isPinned, !self.appState.isTypingFocused else { return }
+                    if self.appState.islandState == .circleToAskActive || self.appState.isScreenCaptureActive {
+                        return
+                    }
+                    if case .selectionReview = self.appState.islandState {
+                        return
+                    }
                     
                     // If in voice compact (listening), cancel recording and return to resting
                     if case .voiceCompact = self.appState.islandState {
@@ -437,7 +460,11 @@ public struct NotchGlassIslandView: View {
             
             // Bottom Content: Live Speech Transcript (PROMINENT, CRISP, VISIBLE)
             HStack {
-                if appState.currentTranscript.isEmpty {
+                if appState.executionState == .transcribing && appState.currentTranscript.isEmpty {
+                    Text("Transcribing speech...")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(Color.cyan.opacity(0.85))
+                } else if appState.currentTranscript.isEmpty {
                     Text("Listening... Speak your command or dictation")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(Color.white.opacity(0.55))
@@ -1220,6 +1247,29 @@ public struct NotchGlassIslandView: View {
                                 appState.submitTypedPrompt(prompt)
                             }
                         
+                        // Circle to Ask / Lasso Selection Button
+                        Button(action: {
+                            appState.triggerCircleToAsk()
+                        }) {
+                            Image(systemName: "lasso")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color.cyan.opacity(0.9))
+                                .help("Circle / Lasso anything on screen to Ask (⌘⇧C)")
+                        }
+                        .buttonStyle(.plain)
+
+                        // Brain Think & Suggest Button
+                        Button(action: {
+                            BoringSoundEngine.shared.playTap()
+                            appState.triggerBrainThinkAndSuggest()
+                        }) {
+                            Image(systemName: "lightbulb.max.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color.yellow.opacity(0.92))
+                                .help("Brain Suggest: let local Ollama LLM analyze your screen & suggest actions")
+                        }
+                        .buttonStyle(.plain)
+                        
                         // Screen Vision Context Button
                         Button(action: {
                             BoringSoundEngine.shared.playTap()
@@ -1228,7 +1278,7 @@ public struct NotchGlassIslandView: View {
                             Image(systemName: "camera.viewfinder")
                                 .font(.system(size: 11))
                                 .foregroundColor(Color.white.opacity(0.75))
-                                .help("Scan & understand what's on my screen")
+                                .help("Scan & understand full screen")
                         }
                         .buttonStyle(.plain)
                         
@@ -1273,6 +1323,11 @@ public struct NotchGlassIslandView: View {
                             .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
                     )
                     
+                    // Circle to Ask / Lasso Selection Preview Card
+                    if let crop = appState.currentCropResult {
+                        circleCropPreviewCard(crop)
+                    }
+                    
                     // Active Spoken / Answer Bubble (if present)
                     if !appState.currentAgentReply.isEmpty {
                         HStack {
@@ -1307,6 +1362,42 @@ public struct NotchGlassIslandView: View {
                         .padding(8)
                         .background(Color.white.opacity(0.06))
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+
+                    // Proactive Local Brain Suggestions Strip
+                    if !appState.llmSuggestions.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "brain.head.profile")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.yellow.opacity(0.85))
+                                ForEach(appState.llmSuggestions) { suggestion in
+                                    Button(action: {
+                                        BoringSoundEngine.shared.playTap()
+                                        appState.submitTypedPrompt(suggestion.prompt)
+                                    }) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: suggestion.isAction ? "bolt.fill" : "sparkles")
+                                                .font(.system(size: 8.5))
+                                            Text(suggestion.title)
+                                                .font(.system(size: 10, weight: .semibold))
+                                        }
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(suggestion.isAction ? Color.blue.opacity(0.26) : Color.white.opacity(0.11))
+                                        .clipShape(Capsule())
+                                        .overlay(
+                                            Capsule()
+                                                .stroke(suggestion.isAction ? Color.blue.opacity(0.45) : Color.white.opacity(0.18), lineWidth: 0.6)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help(suggestion.prompt)
+                                }
+                            }
+                            .padding(.vertical, 1)
+                        }
                     }
                     
                     // Scrollable Persistent Chat Conversation History (for taller heights)
@@ -1375,30 +1466,148 @@ public struct NotchGlassIslandView: View {
         }
     }
     
+    // MARK: - Circle to Ask Crop Preview Card
+    @ViewBuilder
+    private func circleCropPreviewCard(_ crop: ScreenCropResult) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
+                if let pngData = crop.capturedImagePNGData, let nsImage = NSImage(data: pngData) {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 58, height: 42)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color.cyan.opacity(0.45), lineWidth: 1)
+                        )
+                }
+                
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 5) {
+                        Text(crop.toolUsed.rawValue.uppercased())
+                            .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                            .foregroundColor(.cyan)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Color.cyan.opacity(0.18))
+                            .cornerRadius(4)
+                        
+                        if let appName = crop.sourceAppName, !appName.isEmpty {
+                            Text(appName)
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(Color.white.opacity(0.7))
+                                .lineLimit(1)
+                        }
+                        
+                        if crop.redactedItemsCount > 0 {
+                            Text("\(crop.redactedItemsCount) REDACTED")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(.orange)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(Color.orange.opacity(0.18))
+                                .cornerRadius(4)
+                        }
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            BoringSoundEngine.shared.playTap()
+                            appState.clearCircleSelection()
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(Color.white.opacity(0.5))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Clear selected region")
+                    }
+                    
+                    Text(crop.extractedOCRText.isEmpty ? "Visual region captured (\(Int(crop.boundingBox.width))×\(Int(crop.boundingBox.height)) px)" : crop.extractedOCRText)
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundColor(Color.white.opacity(0.85))
+                        .lineLimit(2)
+                }
+            }
+            
+            HStack(spacing: 6) {
+                ForEach(["Explain this", "Summarize", "Fix / Answer"], id: \.self) { chipTitle in
+                    Button(action: {
+                        appState.submitTypedPrompt(chipTitle)
+                    }) {
+                        Text(chipTitle)
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.cyan.opacity(0.20))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color.cyan.opacity(0.35), lineWidth: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                Spacer()
+                
+                Button(action: {
+                    appState.triggerCircleToAsk()
+                }) {
+                    Text("Re-circle")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.65))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(8)
+        .background(Color.cyan.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.cyan.opacity(0.28), lineWidth: 0.75)
+        )
+    }
+    
     // MARK: - Action Approval Card
     @ViewBuilder
     private func actionApprovalCard(_ action: AgentAction) -> some View {
+        let tier = PermissionTier(from: action.riskLevel)
+        let tierColor: Color = tier == .consequential
+            ? Color(red: 0.92, green: 0.34, blue: 0.28)
+            : (tier == .reversible ? Color(red: 0.25, green: 0.56, blue: 0.98) : Color(red: 0.15, green: 0.65, blue: 0.35))
+
         HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(Color(red: 0.15, green: 0.65, blue: 0.35))
+                    .fill(tierColor)
                     .frame(width: 34, height: 34)
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 16))
+                Image(systemName: action.appIcon.isEmpty ? "bolt.shield.fill" : action.appIcon)
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.white)
             }
             
-            VStack(alignment: .leading, spacing: 3) {
-                Text(action.title)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(action.title)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+
+                    Text(tier.rawValue)
+                        .font(.system(size: 8.5, weight: .bold))
+                        .foregroundColor(tierColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(tierColor.opacity(0.16))
+                        .clipShape(Capsule())
+                }
                 
                 if let sub = action.subtitle {
                     Text(sub)
                         .font(.system(size: 10))
-                        .foregroundColor(Color.white.opacity(0.7))
-                        .lineLimit(1)
+                        .foregroundColor(Color.white.opacity(0.75))
+                        .lineLimit(2)
                 }
             }
             
@@ -1410,7 +1619,7 @@ public struct NotchGlassIslandView: View {
                 }) {
                     Text("Cancel")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.7))
+                        .foregroundColor(Color.white.opacity(0.75))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .background(Color.white.opacity(0.12))
@@ -1437,7 +1646,7 @@ public struct NotchGlassIslandView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                .stroke(tierColor.opacity(0.35), lineWidth: 0.75)
         )
     }
     

@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Phase 0 — Foundations] - 2026-11-11
+
+### Added
+- **MCP-Compatible Tool Registry & Permission Tiers** (`PermissionTier.swift`, `ToolRegistry.swift`, `MCPClientAdapter.swift`, Windows `ToolRegistry.cs`): Registered core abilities and app integrations with JSON Schema definitions, MCP `tools/list` export, JSON-RPC 2.0 `initialize`/`tools/list`/`tools/call` client discovery, and `READ_ONLY` / `REVERSIBLE` / `CONSEQUENTIAL` tiers.
+- **Real Consequential Action Gate in Notch UI** (`ToolApprovalCoordinator.swift`, `AppState.swift`, `NotchGlassIslandView.swift`): Replaced the legacy stub in `approveCurrentAction()` with an async continuation gate (`ToolApprovalPresenting`) wired to the Notch Approval Card with tier badges, redacted parameter previews, and Cancel/Approve actions.
+- **Typed System Event Bus** (`EventBus.swift`, Windows `EventBus.cs`): Thread-safe pub/sub event bus (`SystemEventKind`, `VoiceEvent`, `AsyncStream` & filtered subscriber tokens, 200-event ring buffer) with automatic payload secret scrubbing.
+- **Encrypted Per-Account Semantic Memory Store** (`MemoryStore.swift`, `LocalEmbeddingProvider.swift`, Windows `SemanticMemoryStore.cs`): Short-term turns, long-term facts/preferences/projects/people, and user profile encrypted at rest per account via Keychain-bound AES-256 (macOS) / PBKDF2-AES (Windows) with local deterministic semantic embeddings (and optional local Ollama `/api/embeddings`).
+- **Centralized Secret Redaction** (`SecretRedactor.swift`, Windows `SecretRedactor.cs`): Extended credential/token/webhook scrubbing across `EncryptedChatHistoryManager`, `VoiceOSTelemetry`, `EventBus`, and `MemoryStore`.
+- **Automated Phase 0 Tests**: Added `Suite 33` in `Tests/core/test_core.swift` and `Suite 10` in `windows/tests/VoiceAI.Core.Tests/TestRunner.cs`.
+
+---
+
 ## [1.0.0] - 2026-11-06
 
 ### Added

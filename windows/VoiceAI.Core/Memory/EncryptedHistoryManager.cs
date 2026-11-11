@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using VoiceAI.Core.Security;
 
 namespace VoiceAI.Core.Memory
 {
@@ -34,16 +35,7 @@ namespace VoiceAI.Core.Memory
 
         public string RedactSecrets(string text)
         {
-            if (string.IsNullOrEmpty(text)) return text;
-
-            // Redact OpenAI keys (sk-...)
-            string redacted = Regex.Replace(text, @"sk-[A-Za-z0-9_-]{20,}", "[REDACTED_API_KEY]");
-            // Redact Anthropic keys (sk-ant-...)
-            redacted = Regex.Replace(redacted, @"sk-ant-[A-Za-z0-9_-]{20,}", "[REDACTED_API_KEY]");
-            // Redact Google AI keys (AIzaSy...)
-            redacted = Regex.Replace(redacted, @"AIzaSy[A-Za-z0-9_-]{20,}", "[REDACTED_API_KEY]");
-
-            return redacted;
+            return SecretRedactor.Redact(text);
         }
 
         public void AppendMessage(string accountId, string role, string content)

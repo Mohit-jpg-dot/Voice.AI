@@ -686,6 +686,157 @@ assertEqual(streamMsg.deltaText, "Hello VoiceOS", "StreamMessageSchema serializa
 let screenContext = ScreenshotContextSchema(screenWidth: 1920, screenHeight: 1080, activeApplicationName: "Safari", base64JPEGData: "test_b64")
 assertEqual(screenContext.activeApplicationName, "Safari", "ScreenshotContextSchema context parity")
 
+// Test Suite 32: Unified Voice App Integrations (Email, WhatsApp, Slack, Discord, YouTube, Notion, Notes, Terminal)
+print("\n[Suite 32] Unified App Integrations & Permission Gating")
+assertEqual(AgentToolParser.parse(query: "draft an email to boss about quarterly report"), .appIntegration(app: "mail", operation: "draft", params: ["recipient": "boss", "subject": "quarterly report", "body": "", "query": "draft an email to boss about quarterly report"]), "Parsed Email draft intent")
+assertEqual(AgentToolParser.parse(query: "check my unread emails"), .appIntegration(app: "mail", operation: "check_inbox", params: [:]), "Parsed Email check_inbox intent")
+assertEqual(AgentToolParser.parse(query: "reply to this email saying thanks"), .appIntegration(app: "mail", operation: "reply", params: ["recipient": "", "body": "thanks", "query": ""]), "Parsed Email reply intent")
+assertEqual(AgentToolParser.parse(query: "send slack message to #engineering saying build passed"), .appIntegration(app: "slack", operation: "send", params: ["recipient": "#engineering", "body": "build passed"]), "Parsed Slack send intent")
+assertEqual(AgentToolParser.parse(query: "draft discord message to #general saying hopping on"), .appIntegration(app: "discord", operation: "draft", params: ["recipient": "#general", "body": "hopping on"]), "Parsed Discord draft intent")
+assertEqual(AgentToolParser.parse(query: "mute youtube"), .appIntegration(app: "youtube", operation: "mute", params: [:]), "Parsed YouTube mute intent")
+assertEqual(AgentToolParser.parse(query: "create notion page titled Roadmap with ship voice"), .appIntegration(app: "notion", operation: "create_page", params: ["title": "Roadmap", "body": "ship voice"]), "Parsed Notion create_page intent")
+assertEqual(AgentToolParser.parse(query: "add call dentist to my Tasks note"), .appIntegration(app: "notes", operation: "append", params: ["title": "Tasks", "body": "call dentist"]), "Parsed Apple Notes append intent")
+assertEqual(AgentToolParser.parse(query: "read terminal output"), .appIntegration(app: "terminal", operation: "read_output", params: [:]), "Parsed Terminal read_output intent")
+
+let mailRes = await AppIntegrationEngine.shared.execute(app: "mail", operation: "draft", params: ["recipient": "team@example.com", "subject": "Sync", "body": "Ready"])
+assertTrue(mailRes.success, "Email integration draft succeeds")
+let waRes = await AppIntegrationEngine.shared.execute(app: "whatsapp", operation: "draft", params: ["recipient": "Rahul", "body": "On my way"])
+assertTrue(waRes.success, "WhatsApp integration draft succeeds")
+let discordRes = await AppIntegrationEngine.shared.execute(app: "discord", operation: "draft", params: ["recipient": "#general", "body": "Hello"])
+assertTrue(discordRes.success, "Discord integration draft succeeds")
+let ytRes = await AppIntegrationEngine.shared.execute(app: "youtube", operation: "forward", params: [:])
+assertTrue(ytRes.success, "YouTube integration forward succeeds")
+let notionRes = await AppIntegrationEngine.shared.execute(app: "notion", operation: "create_page", params: ["title": "Ideas", "body": "Voice OS"])
+assertTrue(notionRes.success, "Notion integration create_page succeeds")
+let notesRes = await AppIntegrationEngine.shared.execute(app: "notes", operation: "append", params: ["title": "Tasks", "body": "Buy coffee"])
+assertTrue(notesRes.success, "Apple Notes integration append succeeds")
+let termRes = await AppIntegrationEngine.shared.execute(app: "terminal", operation: "run_in_window", params: ["command": "ls -la"])
+assertTrue(termRes.success, "Terminal integration run_in_window succeeds")
+
+// Verify integration enable/disable toggle gates execution
+let wasSlackEnabled = AppIntegrationEngine.shared.isAppIntegrated("slack")
+AppIntegrationEngine.shared.setAppIntegrated("slack", enabled: false)
+let blockedSlack = await AppIntegrationEngine.shared.execute(app: "slack", operation: "send", params: ["recipient": "#general", "body": "hello"])
+assertEqual(blockedSlack.success, false, "Disabled Slack integration blocks voice execution")
+assertTrue(blockedSlack.summary.contains("disabled"), "Disabled integration explains how to enable")
+AppIntegrationEngine.shared.setAppIntegrated("slack", enabled: wasSlackEnabled)
+
+// Test Suite 33: Phase 0 Foundations — ToolRegistry (MCP), EventBus, MemoryStore, Permission Tiers & SecretRedactor
+print("\n[Suite 33] Phase 0 Foundations (ToolRegistry, EventBus, MemoryStore, Permissions & Redaction)")
+
+// 1. SecretRedactor across OpenAI, Anthropic, GitHub, Notion, Slack, Webhooks & Bearer tokens
+let rawSecretText = "openai=sk-abcdefghijklmnopqrstuvwxyz123456 claude=sk-ant-api03-secretkey987654321 gh=ghp_1234567890abcdefghij123456 notion=ntn_secret12345678901234 webhook=https://hooks.slack.com/services/T000/B000/XXXX header='Bearer mysecretjwt12345'"
+let scrubbed = SecretRedactor.redact(rawSecretText)
+assertTrue(!scrubbed.contains("sk-abcdefghijklmnopqrstuvwxyz"), "Redacted OpenAI key")
+assertTrue(!scrubbed.contains("sk-ant-api03"), "Redacted Anthropic key")
+assertTrue(!scrubbed.contains("ghp_1234567890"), "Redacted GitHub PAT")
+assertTrue(!scrubbed.contains("ntn_secret123456"), "Redacted Notion token")
+assertTrue(!scrubbed.contains("hooks.slack.com/services/T000"), "Redacted Slack webhook")
+assertTrue(!scrubbed.contains("mysecretjwt12345"), "Redacted Bearer token")
+
+// 2. EventBus pub/sub + filtered delivery + payload redaction
+let bus = EventBus()
+var receivedBatteryEvents: [VoiceEvent] = []
+let subId = bus.subscribe(matching: .batteryChanged) { evt in
+    receivedBatteryEvents.append(evt)
+}
+bus.publish(VoiceEvent(kind: .memoryUpdated, source: "test", payload: ["note": "ignore"]))
+bus.publish(VoiceEvent(kind: .batteryChanged, source: "PowerMonitor", severity: .warning, payload: ["level": "15%", "token": "secret_value_should_redact"]))
+assertEqual(receivedBatteryEvents.count, 1, "EventBus delivered filtered batteryChanged event only")
+assertEqual(receivedBatteryEvents.first?.payload["token"], "[REDACTED_API_KEY]", "EventBus redacted sensitive payload key")
+bus.unsubscribe(subId)
+bus.publish(VoiceEvent(kind: .batteryChanged, source: "PowerMonitor", payload: ["level": "10%"]))
+assertEqual(receivedBatteryEvents.count, 1, "EventBus stopped delivering after unsubscribe")
+
+// 3. ToolRegistry (Built-in + MCP Discovery + Permission Tier Gating)
+let registry = ToolRegistry.shared
+let mcpSchemaList = registry.exportMCPToolsList()
+assertTrue(mcpSchemaList.count >= 14, "ToolRegistry exports MCP tools/list schemas (\(mcpSchemaList.count))")
+assertEqual(registry.tool(named: "math_evaluate")?.permissionTier, .readOnly, "math_evaluate assigned READ_ONLY tier")
+assertEqual(registry.tool(named: "mail_draft")?.permissionTier, .reversible, "mail_draft assigned REVERSIBLE tier")
+assertEqual(registry.tool(named: "mail_send")?.permissionTier, .consequential, "mail_send assigned CONSEQUENTIAL tier")
+
+let mathInvoke = await registry.invoke(name: "math_evaluate", arguments: ["expression": "12 * 12"])
+assertTrue(mathInvoke.success && mathInvoke.summary.contains("144"), "READ_ONLY tool executes without approval interruption")
+
+let deniedSend = await registry.invoke(
+    name: "mail_send",
+    arguments: ["recipient": "alice@example.com", "body": "Ship it"],
+    bypassApproval: false,
+    customApprovalHandler: { action in
+        return action.riskLevel == .high ? false : true
+    }
+)
+assertEqual(deniedSend.success, false, "CONSEQUENTIAL tool blocked when Approval Card denied")
+assertEqual(deniedSend.wasApproved, false, "Denied result records wasApproved == false")
+
+let approvedSend = await registry.invoke(
+    name: "mail_send",
+    arguments: ["recipient": "alice@example.com", "subject": "Phase 0", "body": "Ship it"],
+    bypassApproval: false,
+    customApprovalHandler: { action in
+        return action.riskLevel == .high && action.payload["permission_tier"] == "CONSEQUENTIAL"
+    }
+)
+assertTrue(approvedSend.success && approvedSend.wasApproved, "CONSEQUENTIAL tool executes after explicit Approval Card approval")
+
+// 4. MCP Client Adapter registration & tools/call execution
+let mcpConfig = MCPServerConfig(
+    id: "local_repo_mcp",
+    name: "Repo MCP",
+    endpointURL: URL(string: "http://127.0.0.1:8787/mcp")!
+)
+MCPClientAdapter.shared.setTransportOverride { _, payload, _ in
+    let method = (payload["method"] as? String) ?? ""
+    if method == "tools/call" {
+        return ["jsonrpc": "2.0", "id": "1", "result": ["content": [["type": "text", "text": "3 open PRs"]]]]
+    }
+    return ["jsonrpc": "2.0", "id": "1", "result": ["status": "ok"]]
+}
+let mcpRegistered = try await MCPClientAdapter.shared.connectAndRegisterServer(
+    config: mcpConfig,
+    preloadedTools: [
+        MCPToolDefinition(name: "list_prs", description: "Read open PRs", inputSchema: ["repo": "String"], isDestructive: false),
+        MCPToolDefinition(name: "merge_pr", description: "Merge PR", inputSchema: ["id": "String"], isDestructive: true)
+    ]
+)
+assertEqual(mcpRegistered.count, 2, "MCPClientAdapter registered 2 remote MCP tools")
+assertEqual(registry.tool(named: "mcp.local_repo_mcp.list_prs")?.permissionTier, .readOnly, "Non-destructive MCP tool mapped to READ_ONLY")
+assertEqual(registry.tool(named: "mcp.local_repo_mcp.merge_pr")?.permissionTier, .consequential, "Destructive MCP tool mapped to CONSEQUENTIAL")
+let mcpReadCall = await registry.invoke(name: "mcp.local_repo_mcp.list_prs", arguments: ["repo": "Voice.AI"])
+assertTrue(mcpReadCall.success && mcpReadCall.summary.contains("3 open PRs"), "MCP tools/call executed via ToolRegistry")
+MCPClientAdapter.shared.setTransportOverride(nil)
+registry.unregisterMCPServer(serverId: "local_repo_mcp")
+
+// 5. Encrypted Per-Account Semantic MemoryStore
+let acctA = "phase0_acctA_" + UUID().uuidString
+let acctB = "phase0_acctB_" + UUID().uuidString
+let memStore = MemoryStore(accountId: acctA)
+await memStore.remember(content: "My favorite Swift concurrency pattern is actors with Sendable structs and secret sk-1234567890abcdefghijklmnop", scope: .longTerm, kind: .preference, tags: ["swift"])
+await memStore.remember(content: "Current focus: Voice.AI JARVIS Phase 0 foundation", scope: .longTerm, kind: .project, tags: ["project"])
+await memStore.remember(content: "User asked about battery threshold", scope: .shortTerm, kind: .turn, tags: ["turn"])
+memStore.updateUserProfile { p in
+    p.displayName = "Mohit"
+    p.preferredLanguage = "hinglish"
+}
+
+let semanticHits = await memStore.searchSemantic(query: "Swift actors Sendable", scope: .longTerm, limit: 3)
+assertTrue(!semanticHits.isEmpty && semanticHits[0].item.content.contains("actors"), "Semantic search retrieves relevant encrypted memory")
+assertTrue(!semanticHits[0].item.content.contains("sk-1234567890"), "MemoryStore scrubbed API key before saving")
+assertEqual(memStore.shortTermContext(limit: 5).count, 1, "Short-term scope stores conversation turns separately")
+assertEqual(memStore.userProfile().displayName, "Mohit", "UserProfile persisted per account")
+
+// Reload same account from disk ciphertext & confirm isolation from acctB
+let memReloadedA = MemoryStore(accountId: acctA)
+assertEqual(memReloadedA.allItems(scope: .longTerm).count, 2, "Encrypted long-term memories reload from per-account storage")
+let memStoreB = MemoryStore(accountId: acctB)
+assertEqual(memStoreB.allItems(scope: nil).count, 0, "Zero cross-account memory leakage between acctA and acctB")
+
+let forgotCount = await memReloadedA.forget(matching: "Phase 0")
+assertEqual(forgotCount, 1, "MemoryStore.forget removes matching entry cleanly")
+memStore.clearAccountMemory(accountId: acctA)
+memStoreB.clearAccountMemory(accountId: acctB)
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

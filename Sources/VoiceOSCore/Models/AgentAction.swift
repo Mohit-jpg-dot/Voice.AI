@@ -94,14 +94,24 @@ public struct ConnectedApp: Identifiable, Codable, Sendable, Equatable {
     public let iconName: String
     public let iconColor: String
     public var isConnected: Bool
+    public var category: String
 
-    public init(id: String, name: String, description: String, iconName: String, iconColor: String, isConnected: Bool) {
+    public init(
+        id: String,
+        name: String,
+        description: String,
+        iconName: String,
+        iconColor: String,
+        isConnected: Bool,
+        category: String = "Connected Apps"
+    ) {
         self.id = id
         self.name = name
         self.description = description
         self.iconName = iconName
         self.iconColor = iconColor
         self.isConnected = isConnected
+        self.category = category
     }
 }
 

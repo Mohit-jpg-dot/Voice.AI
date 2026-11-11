@@ -201,29 +201,41 @@ public struct AppIntegrationsGridView: View {
             
             // Row 4
             AppIntegrationItem(
+                id: "whatsapp",
+                name: "WhatsApp",
+                iconSystemName: "message.fill",
+                gradientColors: [Color(red: 0.14, green: 0.82, blue: 0.40), Color(red: 0.08, green: 0.65, blue: 0.30)],
+                appBundleOrName: "WhatsApp"
+            ),
+            AppIntegrationItem(
+                id: "discord",
+                name: "Discord",
+                iconSystemName: "bubble.left.and.bubble.right.fill",
+                gradientColors: [Color(red: 0.34, green: 0.40, blue: 0.95), Color(red: 0.25, green: 0.28, blue: 0.78)],
+                appBundleOrName: "Discord"
+            ),
+            AppIntegrationItem(
+                id: "youtube",
+                name: "YouTube",
+                iconSystemName: "play.rectangle.fill",
+                gradientColors: [Color(red: 0.95, green: 0.12, blue: 0.12), Color(red: 0.75, green: 0.05, blue: 0.08)],
+                appBundleOrName: "YouTube"
+            ),
+            AppIntegrationItem(
+                id: "terminal",
+                name: "Terminal",
+                iconSystemName: "terminal.fill",
+                gradientColors: [Color(white: 0.16), Color(white: 0.08)],
+                iconColor: .white,
+                appBundleOrName: "Terminal"
+            ),
+            AppIntegrationItem(
                 id: "obsidian",
                 name: "Obsidian",
                 iconSystemName: "suit.diamond.fill",
                 gradientColors: [Color(red: 0.45, green: 0.22, blue: 0.78), Color(red: 0.32, green: 0.12, blue: 0.60)],
                 iconColor: Color(red: 0.80, green: 0.60, blue: 1.0),
                 appBundleOrName: "Obsidian"
-            ),
-            AppIntegrationItem(
-                id: "canvas",
-                name: "Canvas",
-                iconSystemName: "circle.grid.cross.fill",
-                gradientColors: [Color(red: 0.85, green: 0.15, blue: 0.20), Color(red: 0.65, green: 0.08, blue: 0.12)],
-                appBundleOrName: "Google Chrome"
-            ),
-            AppIntegrationItem(
-                id: "twitter",
-                name: "X (Twitter)",
-                iconSystemName: "xmark",
-                isCustomIcon: true,
-                customLetter: "𝕏",
-                gradientColors: [Color(white: 0.05), Color(white: 0.00)],
-                iconColor: .white,
-                appBundleOrName: "Safari"
             ),
             AppIntegrationItem(
                 id: "your_own",
@@ -350,7 +362,11 @@ public struct AppIntegrationsGridView: View {
         }
         
         Task {
-            _ = await AgentActionDispatcher.shared.dispatch(transcript: "open \(app.appBundleOrName)")
+            if app.id == "youtube" {
+                _ = await AgentActionDispatcher.shared.dispatch(transcript: "open YouTube on Safari")
+            } else {
+                _ = await AgentActionDispatcher.shared.dispatch(transcript: "open \(app.appBundleOrName)")
+            }
             await MainActor.run {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                     withAnimation {

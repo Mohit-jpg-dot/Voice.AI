@@ -310,16 +310,7 @@ public final class EncryptedChatHistoryManager: @unchecked Sendable {
     // MARK: - Redaction Engine
     
     public func redactSecrets(_ text: String) -> String {
-        var str = text
-        // Redact OpenAI Keys
-        str = str.replacingOccurrences(of: "sk-[A-Za-z0-9_-]{20,}", with: "[REDACTED_API_KEY]", options: .regularExpression)
-        // Redact Anthropic Keys
-        str = str.replacingOccurrences(of: "sk-ant-[A-Za-z0-9_-]{20,}", with: "[REDACTED_API_KEY]", options: .regularExpression)
-        // Redact Bearer tokens
-        str = str.replacingOccurrences(of: "Bearer\\s+[A-Za-z0-9._~+/-]+", with: "Bearer [REDACTED_TOKEN]", options: .regularExpression)
-        // Redact Credit card numbers
-        str = str.replacingOccurrences(of: "\\b(?:\\d[ -]*?){13,16}\\b", with: "[REDACTED_CARD]", options: .regularExpression)
-        return str
+        return SecretRedactor.redact(text)
     }
     
     private func generateTitle(from prompt: String) -> String {

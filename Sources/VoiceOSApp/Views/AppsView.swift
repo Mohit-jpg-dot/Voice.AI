@@ -5,13 +5,22 @@ import AppKit
 public struct AppsView: View {
     @ObservedObject var appState: AppState
     @State private var buildPrompt: String = ""
-    @State private var selectedSubtab: String = "Connected Apps"
+    @State private var selectedSubtab: String = "All Apps"
     @State private var actionMessage: String? = nil
+    @State private var configuringApp: ConnectedApp? = nil
     
-    let subtabs = ["Connected Apps", "System Integrations", "Developer Tools"]
+    let subtabs = ["All Apps", "Connected Apps", "System Integrations", "Developer Tools"]
     
     public init(appState: AppState) {
         self.appState = appState
+    }
+
+    private var filteredAppIndices: [Int] {
+        appState.connectedApps.indices.filter { idx in
+            let app = appState.connectedApps[idx]
+            if selectedSubtab == "All Apps" { return true }
+            return app.category == selectedSubtab
+        }
     }
     
     private func launchApp(named name: String) {
@@ -259,7 +268,9 @@ public struct AppsView: View {
                 
                 // Grid of Connected Apps (Modern Sleek macOS Cards)
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
-                    ForEach($appState.connectedApps) { $app in
+                    ForEach(filteredAppIndices, id: \.self) { idx in
+                        let appBinding = $appState.connectedApps[idx]
+                        let app = appState.connectedApps[idx]
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(alignment: .center, spacing: 12) {
                                 // App Squircle Icon
@@ -282,12 +293,12 @@ public struct AppsView: View {
                                     Text(app.description)
                                         .font(.system(size: 11, weight: .regular))
                                         .foregroundColor(DesignTokens.Colors.textSecondary)
-                                        .lineLimit(1)
+                                        .lineLimit(2)
                                 }
                                 
                                 Spacer()
                                 
-                                Toggle("", isOn: $app.isConnected)
+                                Toggle("", isOn: appBinding.isConnected)
                                     .labelsHidden()
                                     .toggleStyle(SwitchToggleStyle(tint: DesignTokens.Colors.accentGreen))
                             }
@@ -298,12 +309,12 @@ public struct AppsView: View {
                             // App Action Buttons & Status
                             HStack(spacing: 8) {
                                 Button(action: {
-                                    launchApp(named: app.name)
+                                    launchApp(named: app.id == "mail" ? "Mail" : (app.id == "youtube" ? "Safari" : app.name))
                                 }) {
                                     HStack(spacing: 5) {
                                         Image(systemName: "arrow.up.forward.app")
                                             .font(.system(size: 10, weight: .semibold))
-                                        Text("Launch App")
+                                        Text("Launch")
                                             .font(.system(size: 11, weight: .semibold))
                                     }
                                     .foregroundColor(DesignTokens.Colors.accentBlue)
@@ -317,6 +328,27 @@ public struct AppsView: View {
                                     )
                                 }
                                 .buttonStyle(.plain)
+
+                                Button(action: {
+                                    configuringApp = app
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "slider.horizontal.3")
+                                            .font(.system(size: 10, weight: .semibold))
+                                        Text("Configure")
+                                            .font(.system(size: 11, weight: .semibold))
+                                    }
+                                    .foregroundColor(DesignTokens.Colors.textSecondary)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 4)
+                                    .background(DesignTokens.Colors.inputBackground)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .stroke(DesignTokens.Colors.cardBorder, lineWidth: 0.5)
+                                    )
+                                }
+                                .buttonStyle(.plain)
                                 
                                 Spacer()
                                 
@@ -325,7 +357,7 @@ public struct AppsView: View {
                                         .fill(app.isConnected ? DesignTokens.Colors.accentGreen : DesignTokens.Colors.textMuted)
                                         .frame(width: 5, height: 5)
                                     
-                                    Text(app.isConnected ? "Automated" : "Disabled")
+                                    Text(app.isConnected ? "Integrated" : "Paused")
                                         .font(.system(size: 10, weight: .medium))
                                         .foregroundColor(app.isConnected ? DesignTokens.Colors.accentGreen : DesignTokens.Colors.textMuted)
                                 }
@@ -342,6 +374,254 @@ public struct AppsView: View {
                 }
             }
             .padding(22)
+        }
+        .sheet(item: $configuringApp) { app in
+            AppIntegrationConfigSheet(
+                app: app,
+                isEnabled: Binding(
+                    get: {
+                        appState.connectedApps.first(where: { $0.id == app.id })?.isConnected ?? true
+                    },
+                    set: { newVal in
+                        if let i = appState.connectedApps.firstIndex(where: { $0.id == app.id }) {
+                            appState.connectedApps[i].isConnected = newVal
+                        }
+                    }
+                ),
+                onRunCommand: { sample in
+                    configuringApp = nil
+                    appState.submitTypedPrompt(sample)
+                }
+            )
+        }
+    }
+}
+
+private struct AppIntegrationConfigSheet: View {
+    let app: ConnectedApp
+    @Binding var isEnabled: Bool
+    let onRunCommand: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var settings = AppIntegrationEngine.shared.currentSettings()
+
+    private var sampleCommands: [String] {
+        switch app.id {
+        case "mail":
+            return [
+                "Check my unread emails",
+                "Draft an email to boss about weekly project update",
+                "Reply to this email saying thanks, I will review it today",
+                "Send email to team@acme.com saying standup moved to 11 AM"
+            ]
+        case "whatsapp":
+            return [
+                "Open WhatsApp",
+                "Draft whatsapp message to Rahul saying running 10 mins late",
+                "Send whatsapp message to Mom saying reached safely",
+                "Read my WhatsApp screen"
+            ]
+        case "slack":
+            return [
+                "Open #general in Slack",
+                "Draft slack message to #engineering saying PR is ready",
+                "Send slack message to #updates saying build passed",
+                "Summarize this Slack channel"
+            ]
+        case "discord":
+            return [
+                "Open Discord",
+                "Draft discord message to #general saying hopping on in 5",
+                "Send discord message to #voice saying stream started"
+            ]
+        case "youtube":
+            return [
+                "Search Swift concurrency tutorial on YouTube",
+                "Pause YouTube",
+                "Fast forward 10 seconds",
+                "Mute YouTube",
+                "Summarize this YouTube video"
+            ]
+        case "notion":
+            return [
+                "Create Notion page titled Sprint Notes with review API",
+                "Search Roadmap in Notion",
+                "Append ship voice integrations to Notion"
+            ]
+        case "notes":
+            return [
+                "Create a note Buy coffee and oat milk",
+                "Add call dentist to my Tasks note",
+                "Read my Tasks note",
+                "List my notes"
+            ]
+        case "terminal":
+            return [
+                "Run command in terminal git status",
+                "Open terminal and run ls -la",
+                "Read terminal output"
+            ]
+        default:
+            return ["Open \(app.name)"]
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color(hex: app.iconColor))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: app.iconName)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.name)
+                        .font(.system(size: 16, weight: .bold))
+                    Text(app.description)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("Integrated", isOn: $isEnabled)
+                    .toggleStyle(.switch)
+            }
+
+            Divider()
+
+            // App-specific configuration controls
+            if app.id == "mail" {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Email Client Backend")
+                        .font(.system(size: 12, weight: .semibold))
+                    Picker("", selection: $settings.emailClientMode) {
+                        Text("Auto (Apple Mail + Gmail fallback)").tag("auto")
+                        Text("Apple Mail App").tag("apple_mail")
+                        Text("Gmail in Browser").tag("gmail")
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+
+                    Text("Optional Email Signature")
+                        .font(.system(size: 12, weight: .semibold))
+                    TextField("Sent with Voice.AI", text: $settings.emailSignature)
+                        .textFieldStyle(.roundedBorder)
+                }
+            } else if app.id == "slack" {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Slack Incoming Webhook URL (Optional — enables instant background send)")
+                        .font(.system(size: 12, weight: .semibold))
+                    TextField("https://hooks.slack.com/services/...", text: $settings.slackWebhookURL)
+                        .textFieldStyle(.roundedBorder)
+                }
+            } else if app.id == "discord" {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Discord Channel Webhook URL (Optional — enables instant background send)")
+                        .font(.system(size: 12, weight: .semibold))
+                    TextField("https://discord.com/api/webhooks/...", text: $settings.discordWebhookURL)
+                        .textFieldStyle(.roundedBorder)
+                }
+            } else if app.id == "notion" {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Notion Internal Integration Token (Optional — enables REST API page creation)")
+                        .font(.system(size: 12, weight: .semibold))
+                    SecureField("secret_...", text: $settings.notionToken)
+                        .textFieldStyle(.roundedBorder)
+                    Text("Default Parent Page ID (32-char UUID from Notion URL)")
+                        .font(.system(size: 12, weight: .semibold))
+                    TextField("Optional Notion Page ID", text: $settings.notionParentPageId)
+                        .textFieldStyle(.roundedBorder)
+                }
+            } else if app.id == "youtube" || app.id == "safari" || app.id == "chrome" {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Preferred Browser for Web / YouTube Automation")
+                        .font(.system(size: 12, weight: .semibold))
+                    Picker("", selection: $settings.youtubePreferredBrowser) {
+                        Text("Safari").tag("Safari")
+                        Text("Google Chrome").tag("Google Chrome")
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                }
+            } else if app.id == "notes" {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Default Apple Notes Folder")
+                        .font(.system(size: 12, weight: .semibold))
+                    TextField("Notes", text: $settings.notesDefaultFolder)
+                        .textFieldStyle(.roundedBorder)
+                }
+            } else if app.id == "terminal" {
+                Toggle("Run commands inside visible Terminal.app window by default", isOn: $settings.terminalOpenWindowByDefault)
+                    .font(.system(size: 12, weight: .medium))
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Try Voice / Click to Run")
+                    .font(.system(size: 12, weight: .semibold))
+                ForEach(sampleCommands, id: \.self) { sample in
+                    Button(action: {
+                        saveSettings()
+                        onRunCommand(sample)
+                    }) {
+                        HStack {
+                            Image(systemName: "mic.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(DesignTokens.Colors.accentBlue)
+                            Text("\"\(sample)\"")
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.primary.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Spacer()
+
+            HStack {
+                Spacer()
+                Button("Close") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button("Save Settings") {
+                    saveSettings()
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(20)
+        .frame(width: 480, height: 470)
+    }
+
+    private func saveSettings() {
+        let updated = settings
+        AppIntegrationEngine.shared.updateSettings { current in
+            current.emailClientMode = updated.emailClientMode
+            current.emailSignature = updated.emailSignature
+            current.slackWebhookURL = updated.slackWebhookURL
+            current.discordWebhookURL = updated.discordWebhookURL
+            current.notionToken = updated.notionToken
+            current.notionParentPageId = updated.notionParentPageId
+            current.youtubePreferredBrowser = updated.youtubePreferredBrowser
+            current.notesDefaultFolder = updated.notesDefaultFolder
+            current.terminalOpenWindowByDefault = updated.terminalOpenWindowByDefault
         }
     }
 }

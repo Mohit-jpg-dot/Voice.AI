@@ -41,20 +41,21 @@ public final class VoiceOSTelemetry: @unchecked Sendable {
     }
     
     public func addSentryBreadcrumb(category: String, message: String, data: [String: Any]? = nil) {
+        let scrubbedMessage = SecretRedactor.redact(message)
         lock.lock()
         defer { lock.unlock() }
         
         let crumb: [String: Any] = [
             "timestamp": ISO8601DateFormatter().string(from: Date()),
             "category": category,
-            "message": message,
+            "message": scrubbedMessage,
             "data": data ?? [:]
         ]
         breadcrumbs.append(crumb)
         if breadcrumbs.count > 100 {
             breadcrumbs.removeFirst()
         }
-        log("[\(category)] \(message)", level: "debug")
+        log("[\(category)] \(scrubbedMessage)", level: "debug")
     }
     
     public func captureSentryMessage(_ message: String, level: String = "info") {
@@ -114,7 +115,8 @@ public final class VoiceOSTelemetry: @unchecked Sendable {
     
     private func log(_ message: String, level: String) {
         let timestamp = ISO8601DateFormatter().string(from: Date())
-        let formatted = "[\(timestamp)] [\(level.uppercased())] \(message)\n"
+        let scrubbed = SecretRedactor.redact(message)
+        let formatted = "[\(timestamp)] [\(level.uppercased())] \(scrubbed)\n"
         
         #if DEBUG
         print(formatted, terminator: "")

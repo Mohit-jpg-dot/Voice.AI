@@ -1335,6 +1335,75 @@ ModelRouter.shared.ollamaChatModel = savedOllamaModel
 ModelRouter.shared.cloudProvider = savedCloudProvider
 UserDefaults.standard.set(savedMode.rawValue, forKey: "voiceos.brain.model_mode")
 
+// =========================================================================
+// [Suite 39] Computer-Use See-Decide-Act Operator Loop
+// =========================================================================
+print("\n[Suite 39] Computer-Use See-Decide-Act Operator Loop")
+
+// 1. Multi-step open-ended completion
+let multiStepRes = await ComputerUseOperator.shared.runAgentTask(
+    goal: "open Notes and type hello",
+    maxSteps: 10,
+    decisionProvider: { _, step, _, _, _ in
+        if step == 1 { return ComputerUseAction(operation: .openApp, app: "Notes") }
+        if step == 2 { return ComputerUseAction(operation: .write, content: "hello") }
+        return ComputerUseAction(operation: .done, summary: "Opened Notes and typed hello.")
+    }
+)
+assertTrue(multiStepRes.success && multiStepRes.summary.contains("typed hello"), "See-Decide-Act loop completes multi-step goal cleanly")
+
+// 2. DPI scaling & corner failsafe geometry
+let retinaPoint = ComputerUseOperator.dpiAwareScreenPoint(
+    normalizedX: 0.5,
+    normalizedY: 0.25,
+    displayBounds: CGRect(x: 100, y: 0, width: 1512, height: 982)
+)
+assertEqual(Int(retinaPoint.x), 856, "DPI-aware point calculation handles multi-monitor offset and logical width")
+assertTrue(ComputerUseOperator.isCursorInFailsafeCorner(CGPoint(x: 1, y: 1), displayBounds: CGRect(x: 0, y: 0, width: 1440, height: 900)),
+           "Corner failsafe triggers at (1, 1)")
+
+// 3. Risky action confirmation gate (delete / send / pay / shutdown)
+let riskyActionRes = await ComputerUseOperator.shared.runAgentTask(
+    goal: "delete everything on my desktop",
+    maxSteps: 5,
+    confirm: { _ in false },
+    decisionProvider: { _, _, _, _, _ in
+        ComputerUseAction(operation: .click, x: 0.4, y: 0.4, label: "Delete Permanently")
+    }
+)
+assertTrue(!riskyActionRes.success && riskyActionRes.summary == "Cancelled.", "Destructive/risky action blocks cleanly when confirmation is denied")
+
+// 4. Mid-task stop signal (Esc / spoken 'stop')
+let stopSig = ComputerUseStopSignal()
+let stoppedRes = await ComputerUseOperator.shared.runAgentTask(
+    goal: "click the blue button",
+    maxSteps: 5,
+    stopSignal: stopSig,
+    decisionProvider: { _, step, _, _, _ in
+        if step == 1 {
+            stopSig.cancel()
+        }
+        return ComputerUseAction(operation: .click, x: 0.5, y: 0.5, label: "Blue Button")
+    }
+)
+assertTrue(!stoppedRes.success && stoppedRes.summary == "Stopped.", "Stop signal halts loop within one step")
+
+// 5. Step-limit bounding (no endless loops)
+let boundedRes = await ComputerUseOperator.shared.runAgentTask(
+    goal: "impossible task",
+    maxSteps: 3,
+    decisionProvider: { _, _, _, _, _ in
+        ComputerUseAction(operation: .wait, seconds: 0.1)
+    }
+)
+assertTrue(!boundedRes.success && boundedRes.summary.contains("3-step limit"), "Hard step limit terminates unfinishable tasks cleanly")
+
+// 6. Routing check: open-ended UI goal vs simple command
+assertTrue(AutonomousAgentExecutor.isLikelyOpenEndedComputerUseGoal("click the blue submit button"),
+           "Open-ended screen interaction routes to Computer-Use Operator")
+assertTrue(!AutonomousAgentExecutor.isLikelyOpenEndedComputerUseGoal("set volume to 30"),
+           "Simple direct system command stays on fast deterministic handler")
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

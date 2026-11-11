@@ -78,6 +78,7 @@ public final class HotkeyManager: @unchecked Sendable {
     public var onKeyReleased: (@Sendable (KeyEventResult) -> Void)?
     public var onCircleToAskTriggered: (@Sendable () -> Void)?
     public var onClipboardDictationTriggered: (@Sendable () -> Void)?
+    public var onEscapeStopTriggered: (@Sendable () -> Void)?
 
     public init() {}
 
@@ -183,6 +184,13 @@ public final class HotkeyManager: @unchecked Sendable {
             if flags == [.command, .shift] && event.keyCode == 8 { // Cmd+Shift+C
                 DispatchQueue.main.async {
                     self.onCircleToAskTriggered?()
+                }
+                return true
+            }
+            if event.keyCode == 53 && ComputerUseOperator.shared.isRunning { // Esc kill switch
+                DispatchQueue.main.async {
+                    ComputerUseOperator.shared.stopActiveRun()
+                    self.onEscapeStopTriggered?()
                 }
                 return true
             }

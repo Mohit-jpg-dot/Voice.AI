@@ -167,6 +167,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             }
         }
 
+        hk.onEscapeStopTriggered = { [weak self] in
+            DispatchQueue.main.async {
+                ComputerUseOperator.shared.stopActiveRun()
+                self?.appState.currentExecutionTask?.cancel()
+                self?.appState.executionState = .completed("Stopped.")
+            }
+        }
+
         hk.startGlobalEventMonitoring()
     }
     

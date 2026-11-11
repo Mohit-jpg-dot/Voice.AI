@@ -187,6 +187,19 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
     ) async -> AutonomousExecutionResult {
         let trimmed = taskDescription.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
 
+        let stopCheck = trimmed.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        if (stopCheck == "stop" || stopCheck == "stop agent" || stopCheck == "ruko" || stopCheck == "ruk jao") &&
+           ComputerUseOperator.shared.isRunning {
+            ComputerUseOperator.shared.stopActiveRun()
+            return AutonomousExecutionResult(
+                success: true,
+                summary: "Stopped.",
+                targetAppName: "Computer Use",
+                targetURL: nil,
+                executedSteps: ["Spoken stop keyword halted active computer-use loop"]
+            )
+        }
+
         if PersonaManager.shared.evaluateSafetyGuardrail(userInput: trimmed) {
             return AutonomousExecutionResult(
                 success: true,
@@ -362,6 +375,16 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                     targetAppName: dispatchResult.appName,
                     targetURL: dispatchResult.deepLinkURL,
                     executedSteps: ["Executed native macOS task", dispatchResult.summary]
+                )
+            }
+
+            // 1c. Open-Ended Screen / Vision Computer-Use Operator Loop (Control key Agent Mode)
+            if triggerMode == .agent && Self.isLikelyOpenEndedComputerUseGoal(trimmed) {
+                onProgress?("Starting visual computer-use loop...")
+                return await ComputerUseOperator.shared.runAgentTask(
+                    goal: trimmed,
+                    maxSteps: 15,
+                    onProgress: onProgress
                 )
             }
 
@@ -1221,5 +1244,16 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         }
 
         return nil
+    }
+
+    public static func isLikelyOpenEndedComputerUseGoal(_ utterance: String) -> Bool {
+        let lower = utterance.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !lower.isEmpty else { return false }
+        let markers = [
+            "click the ", "click on ", "press the ", "on screen", "operate the screen",
+            "computer use", "find the cheapest", "scroll down and", "fill out", "select the button",
+            "complete this form", "open settings button", "click start"
+        ]
+        return markers.contains { lower.contains($0) }
     }
 }

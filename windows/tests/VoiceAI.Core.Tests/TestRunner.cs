@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using VoiceAI.Core.Agents;
 using VoiceAI.Core.Brain;
 using VoiceAI.Core.Companion;
+using VoiceAI.Core.ComputerUse;
 using VoiceAI.Core.Engineering;
 using VoiceAI.Core.Events;
 using VoiceAI.Core.Grammar;
@@ -73,6 +74,7 @@ namespace VoiceAI.Core.Tests
             await TestPhase1JarvisFeel();
             await TestPhase2ProactiveAssistant();
             await TestPhase3Advanced();
+            await TestComputerUseOperatorLoop();
 
             Console.WriteLine("\n=================================================================");
             Console.WriteLine($"Test Run Completed: {_passed} PASSED, {_failed} FAILED");
@@ -567,6 +569,41 @@ namespace VoiceAI.Core.Tests
             var call = await ToolRegistry.Shared.InvokeAsync("plugin.win_plug.ping", new Dictionary<string, string> { ["input"] = "OK" });
             AssertTrue(call.Success && call.Summary.Contains("Pong OK"), "User plugin tool executes cleanly via ToolRegistry");
             UserPluginLoader.Shared.Uninstall("win_plug");
+        }
+
+        // -------------------------------------------------------------
+        // Suite 14: Computer-Use See-Decide-Act Loop (DPI, Risk Gate, Stop, Step Limit)
+        // -------------------------------------------------------------
+        private static async Task TestComputerUseOperatorLoop()
+        {
+            Console.WriteLine("\n[Suite 14] Computer-Use See-Decide-Act Loop");
+
+            var pt = ComputerUseLoopEngine.ToPhysicalScreenPoint(0.5, 0.5, 1920, 1080, 1.5);
+            AssertTrue(pt.X == 640 && pt.Y == 360, "ComputerUseLoopEngine adjusts physical click coordinates for 150% DPI scaling");
+
+            var doneRes = await ComputerUseLoopEngine.Shared.RunAgentTaskAsync(
+                "open notepad and type hello",
+                (step, _) => Task.FromResult(step switch
+                {
+                    1 => new ComputerUseAction(ComputerUseOperation.OpenApp, Label: "Notepad"),
+                    2 => new ComputerUseAction(ComputerUseOperation.Write, Content: "hello"),
+                    _ => new ComputerUseAction(ComputerUseOperation.Done, Summary: "Notepad opened and hello typed.")
+                }));
+            AssertTrue(doneRes.Success && doneRes.StepsExecuted == 2, "ComputerUseLoopEngine runs multi-step sequence until Done");
+
+            var riskyDenied = await ComputerUseLoopEngine.Shared.RunAgentTaskAsync(
+                "delete desktop files",
+                (_, _) => Task.FromResult(new ComputerUseAction(ComputerUseOperation.Click, Label: "Delete")),
+                confirm: _ => Task.FromResult(false));
+            AssertTrue(!riskyDenied.Success && riskyDenied.Summary == "Cancelled.", "ComputerUseLoopEngine blocks risky action unless confirmed");
+
+            var cts = new System.Threading.CancellationTokenSource();
+            cts.Cancel();
+            var cancelled = await ComputerUseLoopEngine.Shared.RunAgentTaskAsync(
+                "click button",
+                (_, _) => Task.FromResult(new ComputerUseAction(ComputerUseOperation.Click)),
+                cancellationToken: cts.Token);
+            AssertTrue(!cancelled.Success && cancelled.Summary == "Stopped.", "ComputerUseLoopEngine honors stop cancellation token immediately");
         }
     }
 }

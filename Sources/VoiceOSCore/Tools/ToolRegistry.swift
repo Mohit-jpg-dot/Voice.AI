@@ -863,6 +863,25 @@ public final class ToolRegistry: ToolRegistryProtocol, @unchecked Sendable {
             }
             return ToolInvocationResult(success: false, summary: "Could not interpret model switch target from '\(cmd)'.")
         })
+
+        register(RegisteredTool(
+            name: "computer_use_operate",
+            appName: "Computer Use",
+            description: "Run an iterative See-Decide-Act multimodal screen control loop for open-ended UI tasks (max 15 steps; gates risky actions with Approval Cards).",
+            inputSchema: RegisteredToolSchema(
+                properties: [
+                    "goal": ToolSchemaProperty(description: "Spoken user goal to execute on screen"),
+                    "max_steps": ToolSchemaProperty(description: "Maximum loop steps (default 15)")
+                ],
+                required: ["goal"]
+            ),
+            permissionTier: .reversible
+        ) { args in
+            let goal = args["goal"] ?? ""
+            let steps = Int(args["max_steps"] ?? "15") ?? 15
+            let res = await ComputerUseOperator.shared.runAgentTask(goal: goal, maxSteps: steps)
+            return ToolInvocationResult(success: res.success, summary: res.summary)
+        })
     }
 
     private func registerIntegrationTool(

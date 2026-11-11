@@ -200,6 +200,11 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             )
         }
 
+        if triggerMode == .agent,
+           let firewallResult = await CommandSafetyFirewall.shared.enforce(command: taskDescription) {
+            return firewallResult
+        }
+
         if PersonaManager.shared.evaluateSafetyGuardrail(userInput: trimmed) {
             return AutonomousExecutionResult(
                 success: true,

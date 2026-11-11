@@ -1285,6 +1285,56 @@ if let prev = savedClipboard {
     NSPasteboard.general.setString(prev, forType: .string)
 }
 
+// =========================================================================
+// [Suite 38] Voice-Controlled Automatic AI Model & Tier Switching
+// =========================================================================
+print("\n[Suite 38] Voice-Controlled Automatic AI Model & Tier Switching")
+
+let savedMode = ModelRouter.shared.currentMode
+let savedOllamaModel = ModelRouter.shared.ollamaChatModel
+let savedCloudProvider = ModelRouter.shared.cloudProvider
+
+let installedMocks = [
+    OllamaModelInfo(name: "llama3.2:3b", size: 2_000_000_000, parameterSize: "3.2B"),
+    OllamaModelInfo(name: "llama3.1:8b", size: 4_700_000_000, parameterSize: "8B"),
+    OllamaModelInfo(name: "qwen2.5:14b", size: 9_000_000_000, parameterSize: "14B"),
+    OllamaModelInfo(name: "llava:7b", size: 4_500_000_000, parameterSize: "7B")
+]
+
+ModelRouter.shared.ollamaChatModel = "llama3.1:8b"
+UserDefaults.standard.set(ModelMode.local.rawValue, forKey: "voiceos.brain.model_mode")
+
+let toSmaller = await ModelRouter.shared.switchModelByVoice("go to the smaller local model", availableLocalModels: installedMocks)
+assertTrue(toSmaller != nil && toSmaller?.mode == .local && toSmaller?.selectedModelId == "llama3.2:3b",
+           "Switches down from 8B to smaller installed 3B local model cleanly")
+assertEqual(ModelRouter.shared.ollamaChatModel, "llama3.2:3b", "Persisted smaller local model 'llama3.2:3b'")
+
+let toLarger = await ModelRouter.shared.switchModelByVoice("switch back to larger model", availableLocalModels: installedMocks)
+assertTrue(toLarger != nil && toLarger?.mode == .local && toLarger?.selectedModelId == "qwen2.5:14b",
+           "Upgrades cleanly to largest installed local chat model (ignoring llava vision tag)")
+assertEqual(ModelRouter.shared.ollamaChatModel, "qwen2.5:14b", "Persisted larger local model")
+
+let toNamed = await ModelRouter.shared.switchModelByVoice("switch to llama 8b model", availableLocalModels: installedMocks)
+assertEqual(toNamed?.selectedModelId, "llama3.1:8b", "Selects specifically named installed local 8B model")
+
+let toPaidMoney = await ModelRouter.shared.switchModelByVoice("go to money model", availableLocalModels: installedMocks)
+assertTrue(toPaidMoney != nil && toPaidMoney?.mode == .cloud, "Recognizes 'money/paid model' and switches to Cloud mode")
+
+let toClaude = await ModelRouter.shared.switchModelByVoice("switch to Claude model", availableLocalModels: installedMocks)
+assertTrue(toClaude?.mode == .cloud && ModelRouter.shared.cloudProvider == "claude", "Switches to Anthropic Claude provider by voice")
+
+let toChatGPT = await ModelRouter.shared.switchModelByVoice("use ChatGPT model", availableLocalModels: installedMocks)
+assertTrue(toChatGPT?.mode == .cloud && ModelRouter.shared.cloudProvider == "openai", "Switches to OpenAI ChatGPT provider by voice")
+
+let execSwitch = await autonomousExecutor.planAndExecute(taskDescription: "go to your local model")
+assertTrue(execSwitch.success && execSwitch.targetAppName == "AI Brain" && ModelRouter.shared.currentMode == .local,
+           "AutonomousAgentExecutor routes 'go to your local model' directly to ModelRouter without launching wrong apps")
+
+// Restore original ModelRouter config
+ModelRouter.shared.ollamaChatModel = savedOllamaModel
+ModelRouter.shared.cloudProvider = savedCloudProvider
+UserDefaults.standard.set(savedMode.rawValue, forKey: "voiceos.brain.model_mode")
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

@@ -137,6 +137,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     @Published public var pairedCompanionDevices: [PairedCompanionDevice] = []
     @Published public var installedUserPlugins: [ExternalPluginManifest] = []
     @Published public var lastCopiedDictation: String = ""
+    @Published public var activeBrainStatusLabel: String = "\(ModelRouter.shared.currentMode.rawValue) • \(ModelRouter.shared.ollamaChatModel)"
     public var onWriteToClipboard: (@Sendable (String) -> Void)? = nil
     
     public enum NavTab: String, CaseIterable, Identifiable, Sendable {
@@ -291,6 +292,13 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         EventBus.shared.subscribe(matching: .custom("rag_folder_indexed")) { [weak self] _ in
             DispatchQueue.main.async {
                 self?.ragIndexedFolders = LocalKnowledgeStore.shared.configuredFolders()
+            }
+        }
+        EventBus.shared.subscribe(matching: .custom("model_switched")) { [weak self] evt in
+            let mode = evt.payload["mode"] ?? ""
+            let model = evt.payload["model"] ?? ""
+            DispatchQueue.main.async {
+                self?.activeBrainStatusLabel = "\(mode) • \(model)"
             }
         }
         let env = ProcessInfo.processInfo.environment

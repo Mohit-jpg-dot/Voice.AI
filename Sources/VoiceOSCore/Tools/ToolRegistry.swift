@@ -842,6 +842,27 @@ public final class ToolRegistry: ToolRegistryProtocol, @unchecked Sendable {
             let res = await LocalCameraVisionService.shared.executeGestureAction(kind)
             return ToolInvocationResult(success: res.success, summary: res.summary)
         })
+
+        register(RegisteredTool(
+            name: "brain_switch_model",
+            appName: "AI Brain Router",
+            description: "Switch between local Ollama model sizes (smaller 3B / larger 8B+) or paid Cloud models (Claude / ChatGPT).",
+            inputSchema: RegisteredToolSchema(
+                properties: ["command": ToolSchemaProperty(description: "Target model or tier instruction, e.g. 'smaller local model', 'larger model', 'paid claude model'")],
+                required: ["command"]
+            ),
+            permissionTier: .reversible
+        ) { args in
+            let cmd = args["command"] ?? "local model"
+            if let switched = await ModelRouter.shared.switchModelByVoice(cmd) {
+                return ToolInvocationResult(
+                    success: true,
+                    summary: switched.summary,
+                    data: ["mode": switched.mode.rawValue, "provider": switched.providerName, "model": switched.selectedModelId]
+                )
+            }
+            return ToolInvocationResult(success: false, summary: "Could not interpret model switch target from '\(cmd)'.")
+        })
     }
 
     private func registerIntegrationTool(

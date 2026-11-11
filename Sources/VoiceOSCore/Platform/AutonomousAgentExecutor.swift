@@ -213,6 +213,22 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             await MemoryStore.shared.remember(content: "Ran routine '\(matchedRoutine.name)'", scope: .shortTerm, kind: .turn, tags: ["routine"])
             return routineRes
         }
+
+        // -------------------------------------------------------------
+        // Step -0.4: Voice-Controlled Automatic AI Model / Tier Switching
+        // -------------------------------------------------------------
+        if let modelSwitch = await ModelRouter.shared.switchModelByVoice(trimmed) {
+            let lang = PersonaManager.shared.detectedLanguageCode(for: trimmed)
+            let reply = PersonaManager.shared.formatResponse(modelSwitch.summary, language: lang)
+            await MemoryStore.shared.remember(content: "Switched AI brain: \(modelSwitch.summary)", scope: .shortTerm, kind: .turn, tags: ["model_switch"])
+            return AutonomousExecutionResult(
+                success: true,
+                summary: reply,
+                targetAppName: "AI Brain",
+                targetURL: nil,
+                executedSteps: ["Switched to \(modelSwitch.mode.rawValue): \(modelSwitch.selectedModelId)"]
+            )
+        }
         
         // -------------------------------------------------------------
         // Step -0.25: Phase 2 Voice Commands (Proactive, Calendar/Mail/Messages, RAG, Smart Home, Health)

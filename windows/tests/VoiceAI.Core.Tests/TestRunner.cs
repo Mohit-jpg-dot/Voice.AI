@@ -1,11 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using VoiceAI.Core.Agents;
 using VoiceAI.Core.Brain;
+using VoiceAI.Core.Companion;
+using VoiceAI.Core.Engineering;
 using VoiceAI.Core.Events;
 using VoiceAI.Core.Grammar;
 using VoiceAI.Core.Health;
 using VoiceAI.Core.Knowledge;
+using VoiceAI.Core.Marketplace;
 using VoiceAI.Core.Math;
 using VoiceAI.Core.Memory;
 using VoiceAI.Core.Proactive;
@@ -68,6 +72,7 @@ namespace VoiceAI.Core.Tests
             await TestPhase0Foundations();
             await TestPhase1JarvisFeel();
             await TestPhase2ProactiveAssistant();
+            await TestPhase3Advanced();
 
             Console.WriteLine("\n=================================================================");
             Console.WriteLine($"Test Run Completed: {_passed} PASSED, {_failed} FAILED");
@@ -521,6 +526,47 @@ namespace VoiceAI.Core.Tests
             AssertTrue(parsed == 3 && digest.TotalSteps == 3500 && digest.Warnings.Count >= 2,
                 "HealthInsightsEngine parses Apple Health export XML and raises trend warnings");
             health.ClearData();
+        }
+
+        // -------------------------------------------------------------
+        // Suite 13: Phase 3 Advanced (Iron Legion, CAD/Physics, Security, Companion, Plugins)
+        // -------------------------------------------------------------
+        private static async Task TestPhase3Advanced()
+        {
+            Console.WriteLine("\n[Suite 13] Phase 3 Advanced (Iron Legion, CAD/Physics, Security, Companion & Plugins)");
+
+            // 1. IronLegionCoordinator
+            var legion = await IronLegionCoordinator.Shared.DispatchAsync("Inspect VoiceAI architecture");
+            AssertEqual(legion.Workers.Count, 3, "IronLegionCoordinator executes 3 parallel Research/Code/Summarize workers");
+
+            // 2. EngineeringStudioEngine (CAD & Physics)
+            string scad = EngineeringStudioEngine.Shared.GenerateCadCode("bracket", CadBackend.OpenScad, 60, 40, 10);
+            AssertTrue(scad.Contains("OpenSCAD") && scad.Contains("cube"), "EngineeringStudioEngine generates parametric OpenSCAD code");
+            var proj = EngineeringStudioEngine.Shared.SimulateProjectile(20, 45);
+            AssertTrue(proj.Metrics["range_m"] > 40.0, "EngineeringStudioEngine computes accurate projectile range");
+
+            // 3. CyberDefenseEngine
+            CyberDefenseEngine.Shared.SeedBaselineMacs(new[] { "aa:bb:cc:dd:ee:01" });
+            var findings = CyberDefenseEngine.Shared.AnalyzeSnapshot("ncat :4444 LISTEN", "192.168.1.50 11:22:33:44:55:66");
+            AssertTrue(findings.Count >= 2, "CyberDefenseEngine flags risky listener port 4444/ncat and new LAN MAC");
+
+            // 4. PhoneCompanionCoordinator
+            string pin = PhoneCompanionCoordinator.Shared.BeginPairing();
+            var paired = PhoneCompanionCoordinator.Shared.CompletePairing("Windows Companion Phone", pin);
+            AssertTrue(paired.Device != null && paired.Token != null, "PhoneCompanionCoordinator completes PIN pairing");
+            bool resolved = false;
+            PhoneCompanionCoordinator.Shared.EnqueueApproval("win_req_1", "Allow Lockdown?", ok => resolved = ok);
+            AssertTrue(PhoneCompanionCoordinator.Shared.RespondToApproval("win_req_1", paired.Device!.Id, paired.Token!, true) && resolved,
+                "PhoneCompanionCoordinator authenticates and resolves remote approval");
+
+            // 5. UserPluginLoader
+            string manifestJson = "{\"Id\":\"win_plug\",\"Name\":\"Win Plug\",\"Version\":\"1.0\",\"Tools\":[{\"Name\":\"ping\",\"Description\":\"Ping tool\",\"PermissionTier\":\"READ_ONLY\",\"ResponseTemplate\":\"Pong {{input}}\"}]}";
+            var added = UserPluginLoader.Shared.InstallFromJson(manifestJson);
+            AssertTrue(added.Count == 1 && ToolRegistry.Shared.GetTool("plugin.win_plug.ping") != null,
+                "UserPluginLoader dynamically registers external JSON plugin into ToolRegistry");
+            var call = await ToolRegistry.Shared.InvokeAsync("plugin.win_plug.ping", new Dictionary<string, string> { ["input"] = "OK" });
+            AssertTrue(call.Success && call.Summary.Contains("Pong OK"), "User plugin tool executes cleanly via ToolRegistry");
+            UserPluginLoader.Shared.Uninstall("win_plug");
         }
     }
 }

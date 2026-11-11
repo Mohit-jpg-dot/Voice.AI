@@ -1122,6 +1122,114 @@ let digest = healthMgr.computeDigest()
 assertTrue(digest.totalSteps == 4200 && digest.trendWarnings.count >= 2, "HealthInsightsManager computes metrics and detects elevated HR & sleep deficit warnings")
 healthMgr.clearAllData()
 
+// =========================================================================
+// [Suite 36] Phase 3: Advanced (Iron Legion, CAD/Physics/Hologram, Cyber Defense, Camera Vision, Phone Companion, Plugins & Scope)
+// =========================================================================
+print("\n[Suite 36] Phase 3: Advanced (Iron Legion, CAD/Physics, Security, Camera, Companion & Plugins)")
+
+// 1. Iron Legion Parallel Subagents (live in CodingAgentManager)
+let preAgentsCount = CodingAgentManager.shared.activeAgents.count
+let legionRes = await IronLegionCoordinator.shared.dispatchParallelMission(goal: "Inspect Voice.AI Phase 3")
+assertEqual(legionRes.workerResults.count, 3, "Iron Legion executes parallel Research, Code, and Summarize workers")
+assertTrue(CodingAgentManager.shared.activeAgents.count >= preAgentsCount + 3, "Iron Legion workers appear live in CodingAgentManager / Agents tab")
+
+// 2. Engineering CAD, Physics Simulation & 3D Hologram HTML
+let cadRes = EngineeringStudioEngine.shared.generateCAD(shape: .gear, backend: .openscad, widthMM: 80, heightMM: 80, depthMM: 12)
+assertTrue(cadRes.sourceCode.contains("teeth") && cadRes.hologramHTML.contains("<canvas") && cadRes.hologramHTML.contains("HOLOGRAM"), "EngineeringStudio generates valid OpenSCAD gear & offline 3D Hologram HTML")
+
+let cadQueryRes = EngineeringStudioEngine.shared.generateCAD(shape: .bracket, backend: .cadquery)
+assertTrue(cadQueryRes.sourceCode.contains("cadquery"), "EngineeringStudio also supports CadQuery Python script generation")
+
+let projSim = EngineeringStudioEngine.shared.simulateProjectile(velocityMS: 20, angleDegrees: 45, gravity: 9.81)
+assertTrue((projSim.metrics["range_m"] ?? 0) > 40.0 && projSim.trajectoryPoints.count > 5, "Physics simulator computes accurate projectile trajectory")
+
+// 3. Cyber Defense Anomaly Detection & CONSEQUENTIAL Lockdown
+let cyberMon = CyberDefenseMonitor(loadPersisted: false)
+cyberMon.seedBaselineMACs(["aa:bb:cc:dd:ee:01"])
+let cyberReport = cyberMon.analyzeSnapshot(
+    listeningPortsOutput: "ncat 999 root 3u IPv4 0t0 TCP *:4444 (LISTEN)",
+    arpOutput: "? (192.168.1.50) at 11:22:33:44:55:66 on en0"
+)
+assertTrue(cyberReport.findings.count >= 2, "CyberDefenseMonitor detects high-risk listener port 4444/ncat and new LAN MAC device")
+
+let lockdownDenied = await registry.invoke(
+    name: "security_lockdown",
+    arguments: ["reason": "test"],
+    bypassApproval: false,
+    customApprovalHandler: { _ in false }
+)
+assertTrue(!lockdownDenied.success && lockdownDenied.requiresApproval, "Lockdown command strictly blocked unless approved via Notch Approval Card")
+
+let lockdownApproved = await registry.invoke(
+    name: "security_lockdown",
+    arguments: ["reason": "emergency"],
+    bypassApproval: false,
+    customApprovalHandler: { _ in true }
+)
+assertTrue(lockdownApproved.success && lockdownApproved.wasApproved && lockdownApproved.summary.contains("Lockdown"), "Lockdown executes cleanly after explicit CONSEQUENTIAL approval")
+
+// 4. Opt-In Local Camera Vision (Objects, Gestures & Separate Face Opt-In)
+let camSvc = LocalCameraVisionService(
+    faceStorageURL: FileManager.default.temporaryDirectory.appendingPathComponent("face_test_\(UUID().uuidString).json"),
+    loadPersisted: false
+)
+assertEqual(camSvc.isCameraOptedIn(), false, "Camera Vision is opt-in and disabled by default")
+assertEqual(camSvc.enrollFaceTemplate(label: "Mohit", featureSignature: "sig_001"), false, "Face recognition blocked until both Camera and explicit Face opt-in enabled")
+
+camSvc.setCameraOptedIn(true)
+let frameAnalysis = await camSvc.detectObjects(in: nil, mockLabels: ["laptop", "coffee_mug"])
+assertTrue(frameAnalysis.detectedObjects.contains("laptop") && frameAnalysis.privacyNotice.contains("on-device"), "Camera Vision detects objects cleanly with local privacy notice")
+let gestureAct = await camSvc.executeGestureAction(.openPalm)
+assertTrue(gestureAct.success && gestureAct.summary.contains("Pause"), "Hand gesture control dispatches reversible media pause action")
+
+camSvc.setFaceRecognitionEnabled(true)
+assertTrue(camSvc.enrollFaceTemplate(label: "Mohit", featureSignature: "sig_001"), "Enrolls hashed local face template when explicitly opted in")
+assertEqual(camSvc.recognizeFace(featureSignature: "sig_001"), "Mohit", "Recognizes matching hashed local face template offline")
+camSvc.wipeFaceTemplates()
+assertEqual(camSvc.enrolledFaces().count, 0, "Wipes stored local face templates on request")
+
+// 5. Phone Remote Companion (Pairing PIN, Auth Token, Dictation & Approval Response)
+let companion = PhoneCompanionService(loadPersisted: false)
+let pairingChallenge = companion.beginPairing()
+assertEqual(pairingChallenge.code.count, 6, "Phone Companion generates 6-digit pairing PIN")
+let paired = companion.completePairing(deviceName: "Pixel Companion", code: pairingChallenge.code)
+assertTrue(paired != nil, "Pairing PIN produces authenticated device & bearer token")
+if let p = paired {
+    let dictateRes = await companion.submitRemoteDictation(deviceId: p.device.id, token: p.token, transcript: "what is 15 * 4")
+    assertTrue(dictateRes.success && dictateRes.reply.contains("60"), "Phone Companion forwards authenticated remote dictation cleanly")
+
+    final class RemoteApprovalBox: @unchecked Sendable {
+        var resolved: Bool? = nil
+    }
+    let approvalBox = RemoteApprovalBox()
+    companion.enqueueApprovalPrompt(id: "req_123", title: "Unlock Door?", subtitle: "CONSEQUENTIAL", appName: "Smart Home") { ok in
+        approvalBox.resolved = ok
+    }
+    assertEqual(companion.pendingApprovals().count, 1, "Phone Companion queues live approval notification")
+    assertTrue(companion.respondToApproval(requestId: "req_123", deviceId: p.device.id, token: p.token, approved: true), "Phone Companion resolves approval request")
+    assertEqual(approvalBox.resolved, true, "Remote companion approval response delivered cleanly")
+    companion.unpairDevice(id: p.device.id)
+}
+
+// 6. Runtime User Plugin & MCP Loader + Out-of-Scope Enforcement
+let pluginMgr = UserPluginManager(loadPersisted: false)
+let pluginManifest = ExternalPluginManifest(
+    id: "custom_greeter",
+    name: "Custom Greeter",
+    declarativeTools: [
+        DeclarativePluginToolSpec(name: "greet", description: "Greet user", permissionTier: "REVERSIBLE", responseTemplate: "Hello from plugin, {{input}}!")
+    ]
+)
+let installedTools = await pluginMgr.installPlugin(manifest: pluginManifest)
+assertTrue(installedTools.contains("plugin.custom_greeter.greet"), "UserPluginManager installs external declarative tool into ToolRegistry at runtime")
+let pluginCall = await registry.invoke(name: "plugin.custom_greeter.greet", arguments: ["input": "JARVIS"])
+assertTrue(pluginCall.success && pluginCall.summary.contains("Hello from plugin, JARVIS!"), "User-installed plugin executes cleanly via ToolRegistry")
+pluginMgr.uninstallPlugin(id: "custom_greeter")
+assertTrue(registry.tool(named: "plugin.custom_greeter.greet") == nil, "Uninstalled plugin tool cleanly removed from ToolRegistry")
+
+let prohibitedNames = ["suit_control", "flight_control", "weapons_fire", "satellite_scan"]
+assertTrue(prohibitedNames.allSatisfy { registry.tool(named: $0) == nil }, "Out-of-scope suit/flight/weapons/satellite capabilities remain excluded")
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

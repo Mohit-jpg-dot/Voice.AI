@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Phase 3 — Advanced] - 2026-11-11
+
+### Added
+- **Iron Legion Mode** (`IronLegionCoordinator.swift`, `IronLegionCoordinating`, Windows `IronLegionCoordinator.cs`, `NotchGlassIslandView.swift`): Spawns and coordinates parallel `Research`, `Code`, and `Summarize` subagents streaming live into `CodingAgentManager` and the Notch **Agents** tab (`iron_legion_dispatch`).
+- **Engineering Studio: CAD, Physics & 3D Hologram Viewer** (`EngineeringStudioEngine.swift`, `HologramViewerView.swift`, Windows `EngineeringStudioEngine.cs`): Generates parametric OpenSCAD (`.scad`) and CadQuery (`.py`) scripts, runs deterministic projectile/harmonic/thermal physics sims, and renders offline `WKWebView` 3D wireframe holograms in **Settings → Lab & Security**.
+- **Cyber Defense & Emergency Lockdown** (`CyberDefenseMonitor.swift`, Windows `CyberDefenseEngine.cs`): Scans listening ports/processes & ARP LAN neighbors for new devices (`security_anomaly_scan`), and gates Emergency Lockdown (lock screen, mute mic, disable Wi-Fi) strictly at `CONSEQUENTIAL` tier (`security_lockdown`).
+- **Opt-In Local-Only Camera Vision & Gestures** (`LocalCameraVisionService.swift`): Strictly opt-in (`isCameraOptedIn == false` by default) on-device Apple Vision object detection, reversible hand gesture controls, and separate explicit opt-in hashed local face templates with one-click wipe.
+- **Phone Remote Companion** (`PhoneCompanionService.swift`, Windows `PhoneCompanionCoordinator.cs`, `KeychainService.swift`): Completed 6-digit PIN pairing, Keychain bearer tokens, authenticated remote dictation relay, live `EventBus` approval notifications/resolution, and optional LAN HTTP bridge.
+- **Runtime Plugin & MCP Loader** (`UserPluginManager.swift`, Windows `UserPluginLoader.cs`): Loads external JSON plugin manifests (`~/.voiceos/plugins/*.json`) and MCP servers dynamically into `ToolRegistry` without modifying core code.
+- **Automated Phase 3 Tests**: Added `Suite 36` in `Tests/core/test_core.swift` and `Suite 13` in `windows/tests/VoiceAI.Core.Tests/TestRunner.cs` (including out-of-scope verification).
+
+---
+
 ## [Phase 2 — Proactive Assistant] - 2026-11-11
 
 ### Added

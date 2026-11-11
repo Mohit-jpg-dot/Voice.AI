@@ -1142,6 +1142,68 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             )
         }
 
+        // 7. Phase 3: Iron Legion Parallel Subagents, CAD/Physics, Security & Lockdown
+        if lower.contains("iron legion") || lower.contains("parallel agent") || lower.contains("agents chala") {
+            let goal = trimmed
+                .replacingOccurrences(of: "iron legion", with: "", options: .caseInsensitive)
+                .replacingOccurrences(of: "parallel agents", with: "", options: .caseInsensitive)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let res = await ToolRegistry.shared.invoke(name: "iron_legion_dispatch", arguments: ["goal": goal.isEmpty ? trimmed : goal])
+            return AutonomousExecutionResult(
+                success: res.success,
+                summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                targetAppName: "Iron Legion",
+                targetURL: nil,
+                executedSteps: ["Spawned parallel Research, Code & Summarize subagents"]
+            )
+        }
+
+        if lower.contains("generate cad") || lower.contains("openscad") || lower.contains("cadquery") || lower.contains("cad banao") || lower.contains("hologram") {
+            let backend = lower.contains("cadquery") ? "cadquery" : "openscad"
+            let res = await ToolRegistry.shared.invoke(name: "engineering_generate_cad", arguments: ["shape": trimmed, "backend": backend])
+            return AutonomousExecutionResult(
+                success: res.success,
+                summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                targetAppName: "Engineering Studio",
+                targetURL: nil,
+                executedSteps: ["Generated parametric \(backend) model & 3D Hologram"]
+            )
+        }
+
+        if lower.contains("physics sim") || lower.contains("projectile") || lower.contains("harmonic oscillator") || lower.contains("thermal sim") {
+            let simType = lower.contains("spring") || lower.contains("harmonic") ? "spring" : (lower.contains("thermal") ? "thermal" : "projectile")
+            let res = await ToolRegistry.shared.invoke(name: "engineering_physics_sim", arguments: ["type": simType])
+            return AutonomousExecutionResult(
+                success: res.success,
+                summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                targetAppName: "Engineering Studio",
+                targetURL: nil,
+                executedSteps: ["Executed deterministic physics simulation"]
+            )
+        }
+
+        if lower.contains("lockdown") || lower.contains("suraksha lockdown") {
+            let res = await ToolRegistry.shared.invoke(name: "security_lockdown", arguments: ["reason": trimmed])
+            return AutonomousExecutionResult(
+                success: res.success,
+                summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                targetAppName: "Cyber Defense",
+                targetURL: nil,
+                executedSteps: ["Security Lockdown [CONSEQUENTIAL]: Approval Gate"]
+            )
+        }
+
+        if lower.contains("security scan") || lower.contains("network anomal") || lower.contains("suraksha scan") {
+            let res = await ToolRegistry.shared.invoke(name: "security_anomaly_scan", arguments: [:])
+            return AutonomousExecutionResult(
+                success: res.success,
+                summary: PersonaManager.shared.formatResponse(res.summary, language: lang),
+                targetAppName: "Cyber Defense",
+                targetURL: nil,
+                executedSteps: ["Scanned local ports & LAN ARP baseline"]
+            )
+        }
+
         return nil
     }
 }

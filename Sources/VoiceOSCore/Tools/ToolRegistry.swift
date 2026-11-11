@@ -739,6 +739,109 @@ public final class ToolRegistry: ToolRegistryProtocol, @unchecked Sendable {
             )
             return ToolInvocationResult(success: true, summary: "Added health reminder: \(reminder.title) (\(reminder.scheduleText)).")
         })
+
+        // Phase 3 Tools: Iron Legion, Engineering CAD & Physics, Cyber Defense & Lockdown, Camera Vision
+        register(RegisteredTool(
+            name: "iron_legion_dispatch",
+            appName: "Iron Legion",
+            description: "Spawn and coordinate parallel Research, Code, and Summarize subagents shown live in the Agents tab.",
+            inputSchema: RegisteredToolSchema(
+                properties: ["goal": ToolSchemaProperty(description: "Mission goal for parallel subagents")],
+                required: ["goal"]
+            ),
+            permissionTier: .reversible
+        ) { args in
+            let mission = await IronLegionCoordinator.shared.dispatchParallelMission(goal: args["goal"] ?? "Analyze workspace")
+            return ToolInvocationResult(
+                success: true,
+                summary: mission.unifiedSummary,
+                data: ["workers": "\(mission.workerResults.count)", "duration_ms": "\(mission.totalDurationMs)"]
+            )
+        })
+
+        register(RegisteredTool(
+            name: "engineering_generate_cad",
+            appName: "Engineering Studio",
+            description: "Generate OpenSCAD or CadQuery parametric CAD code plus a 3D wireframe hologram HTML scene.",
+            inputSchema: RegisteredToolSchema(
+                properties: [
+                    "shape": ToolSchemaProperty(description: "bracket, gear, enclosure, or heatsink"),
+                    "backend": ToolSchemaProperty(description: "openscad or cadquery")
+                ]
+            ),
+            permissionTier: .reversible
+        ) { args in
+            let shape = EngineeringStudioEngine.shared.inferShape(from: args["shape"] ?? "bracket")
+            let backend: CADBackend = (args["backend"] ?? "").lowercased().contains("cadquery") ? .cadquery : .openscad
+            let res = EngineeringStudioEngine.shared.generateCAD(shape: shape, backend: backend)
+            return ToolInvocationResult(
+                success: true,
+                summary: "Generated \(res.title) CAD model & 3D Hologram view.",
+                data: ["code": res.sourceCode, "hologram_html": res.hologramHTML]
+            )
+        })
+
+        register(RegisteredTool(
+            name: "engineering_physics_sim",
+            appName: "Engineering Studio",
+            description: "Run deterministic projectile kinematics, spring-harmonic, or steady-state thermal simulations.",
+            inputSchema: RegisteredToolSchema(
+                properties: [
+                    "type": ToolSchemaProperty(description: "projectile, spring, or thermal"),
+                    "value": ToolSchemaProperty(description: "Initial velocity (m/s), mass (kg), or power (W)")
+                ]
+            ),
+            permissionTier: .readOnly
+        ) { args in
+            let kind = (args["type"] ?? "projectile").lowercased()
+            let val = Double(args["value"] ?? "") ?? (kind == "thermal" ? 45.0 : 25.0)
+            let sim: PhysicsSimulationResult
+            if kind == "spring" {
+                sim = EngineeringStudioEngine.shared.simulateSpringHarmonic(massKg: val, springConstantNM: 40.0)
+            } else if kind == "thermal" {
+                sim = EngineeringStudioEngine.shared.simulateThermal(powerWatts: val)
+            } else {
+                sim = EngineeringStudioEngine.shared.simulateProjectile(velocityMS: val, angleDegrees: 45.0)
+            }
+            return ToolInvocationResult(success: true, summary: "\(sim.simulationType): \(sim.summary)")
+        })
+
+        register(RegisteredTool(
+            name: "security_anomaly_scan",
+            appName: "Cyber Defense",
+            description: "Scan local listeners/processes and ARP table for suspicious ports or new LAN devices.",
+            inputSchema: RegisteredToolSchema(properties: [:]),
+            permissionTier: .readOnly
+        ) { _ in
+            let report = await CyberDefenseMonitor.shared.runLiveAnomalyScan()
+            return ToolInvocationResult(success: true, summary: report.summary, data: ["findings": "\(report.findings.count)"])
+        })
+
+        register(RegisteredTool(
+            name: "security_lockdown",
+            appName: "Cyber Defense",
+            description: "Emergency Lockdown: locks screen, mutes microphone, and disables Wi-Fi. Strictly requires Approval Card confirmation.",
+            inputSchema: RegisteredToolSchema(properties: ["reason": ToolSchemaProperty(description: "Optional security reason")]),
+            permissionTier: .consequential
+        ) { _ in
+            let report = await CyberDefenseMonitor.shared.executeLockdown()
+            return ToolInvocationResult(success: report.success, summary: report.summary)
+        })
+
+        register(RegisteredTool(
+            name: "camera_gesture_control",
+            appName: "Local Camera Vision",
+            description: "Execute an opt-in local hand gesture action (thumbs_up, thumbs_down, open_palm, pinch).",
+            inputSchema: RegisteredToolSchema(
+                properties: ["gesture": ToolSchemaProperty(description: "thumbs_up, thumbs_down, open_palm, or pinch")],
+                required: ["gesture"]
+            ),
+            permissionTier: .reversible
+        ) { args in
+            let kind = HandGestureKind(rawValue: (args["gesture"] ?? "open_palm").lowercased()) ?? .openPalm
+            let res = await LocalCameraVisionService.shared.executeGestureAction(kind)
+            return ToolInvocationResult(success: res.success, summary: res.summary)
+        })
     }
 
     private func registerIntegrationTool(

@@ -1992,6 +1992,24 @@ public struct NotchGlassIslandView: View {
                         .padding(.vertical, 2.5)
                         .background(Color.cyan.opacity(0.15))
                         .clipShape(Capsule())
+
+                    Button(action: {
+                        appState.launchIronLegionMission(goal: "Analyze repository & summarize status")
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "bolt.horizontal.circle.fill")
+                                .font(.system(size: 9))
+                            Text("Iron Legion")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2.5)
+                        .background(Color.cyan)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Spawn parallel Research, Code & Summarize subagents")
                 }
             }
             .padding(.horizontal, 2)

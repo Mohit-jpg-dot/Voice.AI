@@ -28,6 +28,7 @@ public final class KeychainService: @unchecked Sendable {
         case googleSearchEngineId = "google_search_engine_id"
         case homeAssistantToken = "home_assistant_token"
         case mqttPassword = "mqtt_password"
+        case companionSharedSecret = "companion_shared_secret"
     }
     
     public func set(_ value: String, for key: Key) {

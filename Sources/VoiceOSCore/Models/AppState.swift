@@ -130,6 +130,12 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     @Published public var proactiveAlerts: [ProactiveAlert] = []
     @Published public var ragIndexedFolders: [String] = []
     @Published public var smartHomeDevices: [SmartHomeDevice] = []
+
+    // Phase 3: Hologram 3D CAD Preview, Security Scan, Companion & User Plugins
+    @Published public var latestHologramHTML: String? = nil
+    @Published public var latestSecurityReport: SecurityScanReport? = nil
+    @Published public var pairedCompanionDevices: [PairedCompanionDevice] = []
+    @Published public var installedUserPlugins: [ExternalPluginManifest] = []
     
     public enum NavTab: String, CaseIterable, Identifiable, Sendable {
         case dashboard = "Dashboard"
@@ -644,6 +650,29 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                 self.smartHomeDevices = SmartHomeManager.shared.allDevices()
             }
         }
+    }
+
+    public func refreshPhase3State() {
+        self.pairedCompanionDevices = PhoneCompanionService.shared.pairedDevices()
+        self.installedUserPlugins = UserPluginManager.shared.installedPlugins()
+    }
+
+    public func launchIronLegionMission(goal: String) {
+        let clean = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        self.activeNotchTab = .tasks
+        Task {
+            let res = await IronLegionCoordinator.shared.dispatchParallelMission(goal: clean)
+            await MainActor.run {
+                self.currentAgentReply = res.unifiedSummary
+            }
+        }
+    }
+
+    public func generateHologramCAD(shape: CADShapeKind, backend: CADBackend) {
+        let cad = EngineeringStudioEngine.shared.generateCAD(shape: shape, backend: backend)
+        self.latestHologramHTML = cad.hologramHTML
+        self.currentAgentReply = "Generated \(cad.title):\n\(cad.sourceCode)"
     }
 
     private func setupVoicePipelineBindings() {

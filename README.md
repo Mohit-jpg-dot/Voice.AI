@@ -65,12 +65,16 @@ We believe in 100% honesty with no fake claims. Below is the exact breakdown of 
 │ VLM Screen Understanding & "Circle to Ask"      │ ✅ WORKING NOW (macOS Native) │
 │ Smart Home (HA / HomeKit / MQTT) (Phase 2)      │ ✅ WORKING NOW (macOS & .NET) │
 │ Opt-In Apple Health Import & Warnings (Phase 2) │ ✅ WORKING NOW (macOS & .NET) │
+│ Iron Legion Parallel Subagents (Phase 3)        │ ✅ WORKING NOW (macOS & .NET) │
+│ Engineering CAD, Physics & 3D Hologram (Ph. 3)  │ ✅ WORKING NOW (macOS & .NET) │
+│ Cyber Defense Scan & Lockdown Gate (Phase 3)    │ ✅ WORKING NOW (macOS & .NET) │
+│ Opt-In Local Camera & Gesture Vision (Phase 3)  │ ✅ WORKING NOW (macOS Native) │
+│ Phone Remote Companion & Approval Bridge (Ph. 3)│ ✅ WORKING NOW (macOS & .NET) │
+│ Runtime Plugin & MCP Manifest Loader (Phase 3)  │ ✅ WORKING NOW (macOS & .NET) │
 ├─────────────────────────────────────────────────┼───────────────────────────────┤
-│ Iron Legion Multi-Agent & CAD/3D (Phase 3)      │ 🚧 PLANNED (Phase 3)          │
 │ Windows 10/11 WinUI 3 Native GUI Shell          │ 🚧 UNDER ACTIVE DEVELOPMENT   │
 │ In-App 1-Click Offline Model Downloader (Ollama)│ 🚧 UNDER ACTIVE DEVELOPMENT   │
 │ Deep In-Browser DOM Video Element Scraping      │ 🚧 UNDER ACTIVE DEVELOPMENT   │
-│ Phone Remote Companion & Approval Bridge        │ 🚧 UNDER ACTIVE DEVELOPMENT   │
 └─────────────────────────────────────────────────┴───────────────────────────────┘
 ```
 
@@ -248,6 +252,7 @@ cd Voice.AI
 - [Cross-Platform Architecture Specification](docs/architecture-cross-platform.md)
 - [Phase 1: JARVIS Feel Architecture](docs/phase-1-jarvis-feel.md)
 - [Phase 2: Proactive Assistant Architecture](docs/phase-2-proactive-assistant.md)
+- [Phase 3: Advanced Capabilities Architecture](docs/phase-3-advanced.md)
 - [Free & Offline Setup Guide (Windows)](docs/setup-free-offline-windows.md)
 - [Windows Platform Parity & Test Report](docs/test-report-windows.md)
 - [Windows Developer Toolchain Setup](docs/windows-dev-setup.md)

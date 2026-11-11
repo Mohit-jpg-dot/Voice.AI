@@ -7,6 +7,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
     case voice = "Voice & Wake-Word"
     case jarvis = "JARVIS & Routines"
     case proactive = "Proactive & Home"
+    case advanced = "Lab & Security"
     case brain = "AI Brain & Models"
     case permissions = "System Access"
     case account = "Account & Privacy"
@@ -19,6 +20,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
         case .voice: return "waveform.badge.mic"
         case .jarvis: return "sparkles"
         case .proactive: return "bolt.shield.fill"
+        case .advanced: return "cube.transparent"
         case .brain: return "brain.head.profile"
         case .permissions: return "hand.raised.fill"
         case .account: return "person.crop.circle.badge.checkmark"
@@ -67,6 +69,22 @@ public struct SettingsView: View {
     @State private var healthSummaryText: String = HealthInsightsManager.shared.computeDigest().summaryText
     @State private var healthReminderTitle: String = ""
     @State private var healthReminderSchedule: String = "Daily 09:00"
+
+    // Phase 3: Iron Legion, CAD/3D Hologram, Cyber Defense, Camera Vision, Companion & Plugins
+    @State private var legionMissionInput: String = "Audit module architecture"
+    @State private var cadShapeChoice: CADShapeKind = .bracket
+    @State private var cadBackendChoice: CADBackend = .openscad
+    @State private var generatedCADResult: CADGenerationResult = EngineeringStudioEngine.shared.generateCAD(shape: .bracket, backend: .openscad)
+    @State private var physicsSummary: String = ""
+    @State private var securityReportSummary: String = "Not scanned yet."
+    @State private var cameraOptIn: Bool = LocalCameraVisionService.shared.isCameraOptedIn()
+    @State private var faceRecOptIn: Bool = LocalCameraVisionService.shared.isFaceRecognitionEnabled()
+    @State private var activePairingPIN: String = ""
+    @State private var pairingDeviceNameInput: String = "iPhone"
+    @State private var companionPinInput: String = ""
+    @State private var companionStatusBanner: String = ""
+    @State private var newPluginName: String = ""
+    @State private var newPluginReplyTemplate: String = ""
     
     // Account Authentication State
     @State private var authIsLoginMode: Bool = true
@@ -177,6 +195,8 @@ public struct SettingsView: View {
                         jarvisSettingsTab
                     case .proactive:
                         proactiveSettingsTab
+                    case .advanced:
+                        advancedLabSettingsTab
                     case .brain:
                         aiBrainSettingsTab
                     case .permissions:
@@ -202,6 +222,9 @@ public struct SettingsView: View {
             ragChunkCount = LocalKnowledgeStore.shared.totalIndexedChunks()
             healthOptInToggle = HealthInsightsManager.shared.isOptedIn()
             healthSummaryText = HealthInsightsManager.shared.computeDigest().summaryText
+            appState.refreshPhase3State()
+            cameraOptIn = LocalCameraVisionService.shared.isCameraOptedIn()
+            faceRecOptIn = LocalCameraVisionService.shared.isFaceRecognitionEnabled()
         }
         .background(DesignTokens.Monochrome.windowBg)
         .sheet(isPresented: $showingModelSetupSheet) {
@@ -1936,6 +1959,260 @@ public struct SettingsView: View {
                                 healthReminderTitle = ""
                             }
                             .font(.system(size: 11, weight: .semibold))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var advancedLabSettingsTab: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            settingsCard(title: "Iron Legion Parallel Subagents", icon: "cpu.fill") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Spawn parallel Research, Code, and Summarize subagents tracked live in the Notch Agents tab.")
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textMuted)
+                    HStack(spacing: 8) {
+                        TextField("Mission goal...", text: $legionMissionInput)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Launch Iron Legion") {
+                            appState.launchIronLegionMission(goal: legionMissionInput)
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(6)
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            settingsCard(title: "Engineering Studio: CAD, Physics & 3D Hologram", icon: "cube.transparent") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Picker("Shape", selection: $cadShapeChoice) {
+                            ForEach(CADShapeKind.allCases, id: \.self) { shape in
+                                Text(shape.rawValue.capitalized).tag(shape)
+                            }
+                        }
+                        .frame(width: 150)
+
+                        Picker("CAD Backend", selection: $cadBackendChoice) {
+                            ForEach(CADBackend.allCases, id: \.self) { backend in
+                                Text(backend.rawValue).tag(backend)
+                            }
+                        }
+                        .frame(width: 150)
+
+                        Button("Generate CAD & Hologram") {
+                            generatedCADResult = EngineeringStudioEngine.shared.generateCAD(
+                                shape: cadShapeChoice,
+                                backend: cadBackendChoice
+                            )
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(6)
+                        .buttonStyle(.plain)
+
+                        Button("Run Physics Sim") {
+                            let sim = EngineeringStudioEngine.shared.simulateProjectile(velocityMS: 24, angleDegrees: 45)
+                            physicsSummary = sim.summary
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                    }
+
+                    HologramViewerView(htmlString: generatedCADResult.hologramHTML)
+                        .frame(height: 180)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.cyan.opacity(0.4), lineWidth: 1))
+
+                    Text(generatedCADResult.sourceCode)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(DesignTokens.Monochrome.surfaceElevated)
+                        .cornerRadius(6)
+
+                    if !physicsSummary.isEmpty {
+                        Text(physicsSummary)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.cyan)
+                    }
+                }
+            }
+
+            settingsCard(title: "Cyber Defense & Lockdown Guardrail", icon: "shield.lefthalf.filled") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(securityReportSummary)
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textSecondary)
+
+                    HStack(spacing: 10) {
+                        Button("Run Port & LAN Scan") {
+                            Task {
+                                let rep = await CyberDefenseMonitor.shared.runLiveAnomalyScan()
+                                await MainActor.run {
+                                    securityReportSummary = rep.summary
+                                    appState.latestSecurityReport = rep
+                                }
+                            }
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+
+                        Button("Emergency Lockdown (CONSEQUENTIAL)") {
+                            Task {
+                                _ = await ToolRegistry.shared.invoke(name: "security_lockdown", arguments: ["reason": "User UI trigger"])
+                            }
+                        }
+                        .font(.system(size: 11, weight: .bold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.red.opacity(0.18))
+                        .foregroundColor(.red)
+                        .cornerRadius(6)
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            settingsCard(title: "Local Camera Vision (Opt-In, On-Device Only)", icon: "camera.metering.center.weighted") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(LocalCameraVisionService.privacyNotice)
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textMuted)
+
+                    Toggle("Enable Opt-In Camera Object Detection & Hand Gestures", isOn: $cameraOptIn)
+                        .font(.system(size: 12, weight: .semibold))
+                        .onChange(of: cameraOptIn) { _, enabled in
+                            LocalCameraVisionService.shared.setCameraOptedIn(enabled)
+                            faceRecOptIn = LocalCameraVisionService.shared.isFaceRecognitionEnabled()
+                        }
+
+                    if cameraOptIn {
+                        Toggle("Enable Local Face Recognition (Explicit Opt-In; Hashed Templates Only)", isOn: $faceRecOptIn)
+                            .font(.system(size: 11))
+                            .onChange(of: faceRecOptIn) { _, enabled in
+                                LocalCameraVisionService.shared.setFaceRecognitionEnabled(enabled)
+                            }
+                        Button("Wipe Stored Face Templates") {
+                            LocalCameraVisionService.shared.wipeFaceTemplates()
+                        }
+                        .font(.system(size: 11))
+                        .foregroundColor(.orange)
+                    }
+                }
+            }
+
+            settingsCard(title: "Phone Remote Companion & Approval Bridge", icon: "iphone.radiowaves.left.and.right") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Button("Generate Pairing PIN") {
+                            let challenge = PhoneCompanionService.shared.beginPairing()
+                            activePairingPIN = challenge.code
+                            companionStatusBanner = "Enter PIN \(challenge.code) to pair a companion device (expires in 5 min)."
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+
+                        if !activePairingPIN.isEmpty {
+                            Text("PIN: \(activePairingPIN)")
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .foregroundColor(.blue)
+                        }
+                    }
+
+                    HStack(spacing: 8) {
+                        TextField("Device Name", text: $pairingDeviceNameInput)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 140)
+                        TextField("6-digit PIN", text: $companionPinInput)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                        Button("Complete Pair") {
+                            if let paired = PhoneCompanionService.shared.completePairing(deviceName: pairingDeviceNameInput, code: companionPinInput) {
+                                companionStatusBanner = "Paired '\(paired.device.deviceName)' securely via Keychain."
+                                appState.refreshPhase3State()
+                            } else {
+                                companionStatusBanner = "Invalid or expired PIN."
+                            }
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                    }
+
+                    if !companionStatusBanner.isEmpty {
+                        Text(companionStatusBanner)
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.blue)
+                    }
+
+                    ForEach(appState.pairedCompanionDevices) { dev in
+                        HStack {
+                            Text(dev.deviceName)
+                                .font(.system(size: 11, weight: .semibold))
+                            Spacer()
+                            Button("Unpair") {
+                                PhoneCompanionService.shared.unpairDevice(id: dev.id)
+                                appState.refreshPhase3State()
+                            }
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.red)
+                        }
+                    }
+                }
+            }
+
+            settingsCard(title: "External Plugin & MCP Loader", icon: "puzzlepiece.extension.fill") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        TextField("Plugin Tool Name (e.g. standup_note)", text: $newPluginName)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("Reply Template ({{input}})", text: $newPluginReplyTemplate)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Install Plugin") {
+                            let cleanName = newPluginName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: " ", with: "_")
+                            guard !cleanName.isEmpty, !newPluginReplyTemplate.isEmpty else { return }
+                            let manifest = ExternalPluginManifest(
+                                id: "user_\(cleanName)",
+                                name: cleanName.capitalized,
+                                declarativeTools: [
+                                    DeclarativePluginToolSpec(
+                                        name: cleanName,
+                                        description: "User-defined declarative plugin tool",
+                                        permissionTier: "REVERSIBLE",
+                                        responseTemplate: newPluginReplyTemplate
+                                    )
+                                ]
+                            )
+                            Task {
+                                _ = await UserPluginManager.shared.installPlugin(manifest: manifest)
+                                await MainActor.run {
+                                    appState.refreshPhase3State()
+                                    newPluginName = ""
+                                    newPluginReplyTemplate = ""
+                                }
+                            }
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                    }
+
+                    ForEach(appState.installedUserPlugins) { plugin in
+                        HStack {
+                            Text("\(plugin.name) (\(plugin.declarativeTools.count) tool(s))")
+                                .font(.system(size: 11))
+                            Spacer()
+                            Button("Uninstall") {
+                                UserPluginManager.shared.uninstallPlugin(id: plugin.id)
+                                appState.refreshPhase3State()
+                            }
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.red)
                         }
                     }
                 }

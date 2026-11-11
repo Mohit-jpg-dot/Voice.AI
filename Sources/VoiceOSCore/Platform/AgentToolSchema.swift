@@ -445,6 +445,13 @@ public enum AgentToolParser {
             return .uiType(text: formatted)
         }
 
+        if lower.contains("downloads folder") || lower == "open downloads" || lower == "show downloads" {
+            return .openUrl(url: URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads").absoluteString, inBrowser: "Finder")
+        }
+        if lower.contains("documents folder") || lower == "open documents" || lower == "show documents" {
+            return .openUrl(url: URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Documents").absoluteString, inBrowser: "Finder")
+        }
+
         // 5. Open Application Intent (PRIORITIZED BEFORE MEDIA TO PREVENT 'spotify kholo' -> media_play)
         if let appName = extractAppToOpen(from: normalized) {
             return .openApp(name: appName)

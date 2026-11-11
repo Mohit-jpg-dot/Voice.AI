@@ -274,6 +274,15 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         }
 
         // -------------------------------------------------------------
+        // Step -1.2: Section 5 Sandboxed File & Folder Operations (+ Undo / Confirmed Delete)
+        // -------------------------------------------------------------
+        if triggerMode == .agent,
+           let fileResult = await SandboxFileManagerEngine.shared.handleFileCommand(trimmed) {
+            ConversationSessionContext.shared.recordReply(fileResult.summary, forCommand: trimmed)
+            return fileResult
+        }
+
+        // -------------------------------------------------------------
         // Step -1: Remember / Forget / Recall Long-Term Memory Voice Commands
         // -------------------------------------------------------------
         if let memoryResult = await handleMemoryVoiceCommandIfPresent(trimmed) {

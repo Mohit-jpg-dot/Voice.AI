@@ -17,6 +17,7 @@ public struct NotchGlassIslandView: View {
     @State private var newMemoryText: String = ""
     @State private var memoryTabFilter: String = "Long-Term"
     @State private var semanticMemoryMatches: [StructuredMemoryItem] = []
+    @State private var liveTelemetry: LiveHostTelemetrySnapshot = LiveHostTelemetrySnapshot.capture()
     
     public init(appState: AppState) {
         self.appState = appState
@@ -54,8 +55,8 @@ public struct NotchGlassIslandView: View {
         if !isOpen {
             if case .voiceCompact = appState.islandState {
                 let count = appState.currentTranscript.count
-                let width: CGFloat = count > 60 ? 560.0 : 480.0
-                let height: CGFloat = count > 60 ? 125.0 : 96.0
+                let width: CGFloat = count > 60 ? 480.0 : (count > 0 ? 430.0 : 370.0)
+                let height: CGFloat = count > 80 ? 122.0 : (count > 0 ? 100.0 : 78.0)
                 return (width, height)
             }
             if appState.isNotchMediaDisplayEnabled, let media = appState.currentMedia, media.isPlaying {
@@ -92,24 +93,24 @@ public struct NotchGlassIslandView: View {
             let cropOffset: CGFloat = (appState.currentCropResult != nil) ? 118.0 : 0.0
             let suggestionOffset: CGFloat = !appState.llmSuggestions.isEmpty ? 36.0 : 0.0
             
-            // Adaptive height based on active response length
+            // Adapt height smoothly so long text keeps comfortable room while staying freely scrollable
             let reply = appState.currentAgentReply
             if !reply.isEmpty {
                 let count = reply.count
                 let width: CGFloat = max(540.0, min(650.0, CGFloat(count) * 1.5 + 420.0))
                 let height: CGFloat
                 if count <= 65 {
-                    height = 145.0
+                    height = 170.0
                 } else if count <= 160 {
-                    height = 190.0
+                    height = 215.0
                 } else if count <= 300 {
-                    height = 250.0
+                    height = 275.0
                 } else if count <= 550 {
-                    height = 330.0
+                    height = 350.0
                 } else {
-                    height = 440.0
+                    height = 460.0
                 }
-                return (width, min(520.0, height + mediaOffset + cropOffset + suggestionOffset))
+                return (width, min(560.0, height + mediaOffset + cropOffset + suggestionOffset))
             }
             
             if appState.currentCropResult != nil {
@@ -200,11 +201,7 @@ public struct NotchGlassIslandView: View {
             .background(
                 Group {
                     if isOpen || appState.isCurrentlyListening {
-                        // Black and transparent liquid dark glass aesthetic (matches reference images)
-                        ZStack {
-                            VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-                            Color.black.opacity(0.97)
-                        }
+                        Color.black
                     } else if let media = appState.currentMedia, media.isPlaying {
                         Color.black.opacity(0.95)
                     } else {
@@ -294,6 +291,12 @@ public struct NotchGlassIslandView: View {
         }
         .onAppear {
             appState.dynamicNotchSize = CGSize(width: currentWidth, height: currentHeight)
+            liveTelemetry = LiveHostTelemetrySnapshot.capture()
+        }
+        .onReceive(Timer.publish(every: 3.0, on: .main, in: .common).autoconnect()) { _ in
+            if isOpen || isHovering {
+                liveTelemetry = LiveHostTelemetrySnapshot.capture()
+            }
         }
         .onChange(of: currentWidth) { _, newWidth in
             appState.dynamicNotchSize = CGSize(width: newWidth, height: currentHeight)
@@ -309,6 +312,10 @@ public struct NotchGlassIslandView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     isFieldFocused = true
                 }
+            } else if case .resting = newState {
+                isFieldFocused = false
+                isHovering = false
+                hoverTask?.cancel()
             }
         }
     }
@@ -319,6 +326,7 @@ public struct NotchGlassIslandView: View {
         
         if hovering {
             isHovering = true
+            appState.isHoveringPill = true
             guard !isOpen, !appState.isPinned, appState.islandState != .circleToAskActive else { return }
             
             // Dwell Delay (200ms) strictly on hardware notch touch prevents swift cursor sweep opens
@@ -345,6 +353,7 @@ public struct NotchGlassIslandView: View {
                 
                 await MainActor.run {
                     self.isHovering = false
+                    self.appState.isHoveringPill = false
                     
                     // Do not auto-close if pinned, typing, or actively using Circle to Ask
                     guard !self.appState.isPinned, !self.appState.isTypingFocused else { return }
@@ -394,52 +403,38 @@ public struct NotchGlassIslandView: View {
         .buttonStyle(.plain)
     }
     
-    // MARK: - Live Voice Activity Listening Notch View
+    // MARK: - Minimalist Notch Listening UI
     private var liveActivityWings: some View {
-        VStack(spacing: 5) {
-            // Top Status Bar: Mode, Recording indicator, Frequency Visualizer, Stop button
+        VStack(alignment: .leading, spacing: 6) {
+            // Minimal single-row status header safely below hardware notch
             HStack(alignment: .center, spacing: 8) {
-                // Left: Glowing Pulsing Red Dot + Mode Tag
-                HStack(spacing: 5) {
+                HStack(spacing: 6) {
                     Circle()
-                        .fill(Color.red)
-                        .frame(width: 7, height: 7)
-                        .scaleEffect(isVoiceActive ? 1.25 : 1.0)
-                        .animation(.easeInOut(duration: 0.6).repeatForever(), value: isVoiceActive)
-                    
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 9.5, weight: .bold))
-                        .foregroundColor(.white)
-                    
-                    Text(listeningModeTitle)
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(Color.white.opacity(0.90))
+                        .fill(appState.executionState == .transcribing ? Color.cyan : Color.white)
+                        .frame(width: 6, height: 6)
+                        .opacity(isVoiceActive ? 1.0 : 0.45)
+                        .scaleEffect(isVoiceActive ? 1.2 : 0.9)
+                        .animation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true), value: isVoiceActive)
+
+                    Text(appState.executionState == .transcribing ? "Processing" : "Listening")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.68))
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3.5)
-                .background(Color.white.opacity(0.12))
-                .clipShape(Capsule())
-                
+
                 Spacer()
-                
-                // Right: Jumping Frequency Waveform
+
+                // Subtle Minimalist Waveform
                 HStack(spacing: 2.5) {
-                    ForEach(0..<min(8, appState.audioLevels.count), id: \.self) { idx in
+                    ForEach(0..<min(6, appState.audioLevels.count), id: \.self) { idx in
                         RoundedRectangle(cornerRadius: 1.5)
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color(red: 0.2, green: 0.85, blue: 0.5), Color.cyan],
-                                    startPoint: .bottom,
-                                    endPoint: .top
-                                )
-                            )
-                            .frame(width: 2.5, height: max(6, appState.audioLevels[idx] * 20))
+                            .fill(Color.white.opacity(0.85))
+                            .frame(width: 2, height: max(4, appState.audioLevels[idx] * 14))
                             .animation(.easeOut(duration: 0.08), value: appState.audioLevels[idx])
                     }
                 }
                 .padding(.trailing, 4)
-                
-                // Stop Button
+
+                // Minimal Stop Button
                 Button(action: {
                     BoringSoundEngine.shared.playTap()
                     appState.stopVoice()
@@ -447,55 +442,43 @@ public struct NotchGlassIslandView: View {
                         appState.islandState = .resting
                     }
                 }) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.white.opacity(0.18))
-                            .frame(width: 20, height: 20)
-                        RoundedRectangle(cornerRadius: 1.5)
-                            .fill(Color.white)
-                            .frame(width: 6, height: 6)
-                    }
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8.5, weight: .bold))
+                        .foregroundColor(Color.white.opacity(0.75))
+                        .frame(width: 18, height: 18)
+                        .background(Color.white.opacity(0.12))
+                        .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .help("Cancel / Stop Listening")
+                .help("Stop Listening")
             }
-            .padding(.horizontal, 14)
-            .padding(.top, max(physicalNotchHeight + 4.0, 36.0))
-            
-            // Bottom Content: Live Speech Transcript (PROMINENT, CRISP, VISIBLE)
-            HStack {
-                if appState.executionState == .transcribing && appState.currentTranscript.isEmpty {
-                    Text("Transcribing speech...")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(Color.cyan.opacity(0.85))
-                } else if appState.currentTranscript.isEmpty {
-                    Text("Listening... Speak your command or dictation")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.55))
-                        .italic()
-                } else {
-                    Text(appState.currentTranscript)
-                        .font(.system(size: 13.5, weight: .semibold))
-                        .foregroundColor(.white)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 26)
+            .padding(.top, max(physicalNotchHeight + 2.0, 34.0))
+
+            // Clean live transcript directly on pure black notch surface (zero clipping)
+            if !appState.currentTranscript.isEmpty {
+                ScrollViewReader { scrollProxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        Text(appState.currentTranscript)
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundColor(.white)
+                            .lineSpacing(2.5)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .id("liveTranscriptBottom")
+                    }
+                    .frame(maxHeight: 54)
+                    .onChange(of: appState.currentTranscript) { _, _ in
+                        scrollProxy.scrollTo("liveTranscriptBottom", anchor: .bottom)
+                    }
                 }
-                Spacer(minLength: 0)
+                .padding(.horizontal, 26)
+                .padding(.bottom, 10)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.white.opacity(0.08))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.white.opacity(0.14), lineWidth: 0.5)
-            )
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
         }
         .frame(width: currentWidth, height: currentHeight, alignment: .top)
+        .background(Color.black)
     }
     
     private var listeningModeTitle: String {
@@ -536,13 +519,17 @@ public struct NotchGlassIslandView: View {
                 Spacer(minLength: 0)
                     .frame(width: physicalNotchWidth)
                 
-                // Right Wing: EQ Bars + Play/Pause Button (placed safely to the right of the notch)
+                // Right Wing: Real-Time Animated EQ Bars + Play/Pause Button
                 HStack(spacing: 5) {
-                    HStack(spacing: 2) {
-                        ForEach(0..<4, id: \.self) { idx in
-                            RoundedRectangle(cornerRadius: 1)
-                                .fill(media.source == .spotify ? Color(red: 0.11, green: 0.85, blue: 0.4) : Color.red)
-                                .frame(width: 2, height: CGFloat(media.isPlaying ? [7, 13, 5, 11][idx] : 3))
+                    TimelineView(.animation(minimumInterval: 0.18, paused: !media.isPlaying)) { timeline in
+                        let step = Int(timeline.date.timeIntervalSinceReferenceDate * 5.0)
+                        HStack(spacing: 2) {
+                            ForEach(0..<4, id: \.self) { idx in
+                                let wave = 5 + ((step + idx * 3) % 9)
+                                RoundedRectangle(cornerRadius: 1)
+                                    .fill(media.source == .spotify ? Color(red: 0.11, green: 0.85, blue: 0.4) : Color.red)
+                                    .frame(width: 2, height: CGFloat(media.isPlaying ? wave : 3))
+                            }
                         }
                     }
                     
@@ -598,12 +585,16 @@ public struct NotchGlassIslandView: View {
                 
                 Spacer()
                 
-                // Live EQ Visualizer
-                HStack(spacing: 2) {
-                    ForEach(0..<5, id: \.self) { idx in
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(media.source == .spotify ? Color(red: 0.11, green: 0.85, blue: 0.4) : Color.red)
-                            .frame(width: 2, height: CGFloat(media.isPlaying ? [8, 14, 5, 12, 7][idx] : 3))
+                // Real-Time EQ Visualizer
+                TimelineView(.animation(minimumInterval: 0.18, paused: !media.isPlaying)) { timeline in
+                    let step = Int(timeline.date.timeIntervalSinceReferenceDate * 5.0)
+                    HStack(spacing: 2) {
+                        ForEach(0..<5, id: \.self) { idx in
+                            let wave = 5 + ((step + idx * 2) % 10)
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(media.source == .spotify ? Color(red: 0.11, green: 0.85, blue: 0.4) : Color.red)
+                                .frame(width: 2, height: CGFloat(media.isPlaying ? wave : 3))
+                        }
                     }
                 }
                 .padding(.trailing, 8)
@@ -893,7 +884,7 @@ public struct NotchGlassIslandView: View {
         VStack(spacing: 6) {
             // Top Header Row: 4 glowing dots (left) and circular stop button (right)
             HStack(alignment: .center) {
-                // Left: 4 glowing dots to expand into full panel or switch tabs
+                // Left: 4 glowing dots + Expand label
                 Button(action: {
                     BoringSoundEngine.shared.playTap()
                     withAnimation(NotchAnimations.openSpring) {
@@ -901,12 +892,17 @@ public struct NotchGlassIslandView: View {
                         appState.isCompactResponseMode = false
                     }
                 }) {
-                    HStack(spacing: 3.5) {
-                        ForEach(0..<4, id: \.self) { _ in
-                            Circle()
-                                .fill(Color.white.opacity(0.85))
-                                .frame(width: 3.5, height: 3.5)
+                    HStack(spacing: 4) {
+                        HStack(spacing: 3.5) {
+                            ForEach(0..<4, id: \.self) { _ in
+                                Circle()
+                                    .fill(Color.white.opacity(0.85))
+                                    .frame(width: 3.5, height: 3.5)
+                            }
                         }
+                        Text("Expand")
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundColor(Color.white.opacity(0.65))
                     }
                     .padding(.horizontal, 6)
                     .padding(.vertical, 4)
@@ -916,7 +912,7 @@ public struct NotchGlassIslandView: View {
                 .help("Expand panel")
                 
                 Spacer()
-                
+
                 // Right: Dark circular stop button with white square inside
                 Button(action: {
                     BoringSoundEngine.shared.playTap()
@@ -945,9 +941,9 @@ public struct NotchGlassIslandView: View {
             .padding(.horizontal, 14)
             .padding(.top, max(physicalNotchHeight + 4.0, 36.0))
             
-            // Bottom Capsule: Translucent smoky dark glass pill with the text and interactive source link
+            // Bottom Capsule: Freely Scrollable Translucent Dark Glass Pill
             VStack(spacing: 8) {
-                ScrollView(.vertical, showsIndicators: false) {
+                ScrollView(.vertical, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(cleanedAnswerText)
                             .font(.system(size: cleanedAnswerText.count > 100 ? 13.5 : 14.5, weight: .regular))
@@ -955,6 +951,7 @@ public struct NotchGlassIslandView: View {
                             .lineSpacing(3.5)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
                         
                         // Clickable Source Button (Opens real search/wikipedia in default browser)
                         if let url = activeSourceURL {
@@ -992,7 +989,7 @@ public struct NotchGlassIslandView: View {
                     .padding(.horizontal, 18)
                     .padding(.vertical, 12)
                 }
-                .frame(maxHeight: currentHeight - (physicalNotchHeight > 30 ? 68 : 56))
+                .frame(maxHeight: max(76, currentHeight - (physicalNotchHeight > 30 ? 74 : 62)))
             }
             .background(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -1013,17 +1010,33 @@ public struct NotchGlassIslandView: View {
             )
             .padding(.horizontal, 10)
             .padding(.bottom, 8)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                withAnimation(NotchAnimations.openSpring) {
-                    isCompactMode = false
-                    appState.isCompactResponseMode = false
-                }
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
     
+    private var liveCompactTelemetryPill: some View {
+        HStack(spacing: 6) {
+            Text("\(liveTelemetry.ramUsagePercent)% RAM")
+            if let bat = liveTelemetry.batteryPercent {
+                Text("•")
+                Text("\(bat)%\(liveTelemetry.isCharging ? "⚡" : "")")
+            }
+            Text("•")
+            Text(liveTelemetry.activeAIMode)
+            if liveTelemetry.computerAudioEnabled {
+                Text("•")
+                Text("Audio ON")
+                    .foregroundColor(.purple)
+            }
+        }
+        .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+        .foregroundColor(Color.white.opacity(0.62))
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2.5)
+        .background(Color.white.opacity(0.07))
+        .clipShape(Capsule())
+    }
+
     private var activeSourceURL: URL? {
         if let targetURL = appState.latestAutonomousResult?.targetURL {
             return targetURL
@@ -1091,7 +1104,10 @@ public struct NotchGlassIslandView: View {
         if let lastMsg = appState.chatMessages.last {
             return lastMsg.text
         }
-        return "How are you being made?"
+        if let lastResult = appState.latestAutonomousResult, !lastResult.summary.isEmpty {
+            return lastResult.summary
+        }
+        return "Ready for your command..."
     }
     
     // MARK: - Open Notch Content (Dynamically sized)
@@ -1100,7 +1116,7 @@ public struct NotchGlassIslandView: View {
             // 1. Triptych Header Row
             triptychHeader
                 .frame(height: 32)
-            
+
             // 2. Now Playing Mini Bar (if playing Spotify, YouTube, or Apple Music)
             if appState.isNotchMediaDisplayEnabled, let media = appState.currentMedia {
                 nowPlayingBar(media: media)
@@ -1129,8 +1145,8 @@ public struct NotchGlassIslandView: View {
     
     // MARK: - Triptych Header Row
     private var triptychHeader: some View {
-        HStack(spacing: 0) {
-            // Left: Tab Capsule Switcher
+        HStack(spacing: 6) {
+            // Left: Tab Capsule Switcher (full labels never truncate)
             HStack(spacing: 2) {
                 ForEach(AppState.NotchTab.allCases) { tab in
                     Button(action: {
@@ -1146,6 +1162,7 @@ public struct NotchGlassIslandView: View {
                                 .font(.system(size: 10, weight: .semibold))
                             Text(tab.rawValue)
                                 .font(.system(size: 11, weight: .bold))
+                                .fixedSize(horizontal: true, vertical: false)
                             if tab == .tasks && CodingAgentManager.shared.pendingInputCount > 0 {
                                 Circle()
                                     .fill(Color.orange)
@@ -1172,35 +1189,12 @@ public struct NotchGlassIslandView: View {
             
             Spacer(minLength: 8)
             
-            // Center: Black Hardware Mask Spacer
-            Rectangle()
-                .fill(Color.black)
-                .frame(width: min(physicalNotchWidth, currentWidth * 0.28))
-                .mask {
-                    NotchShape(topCornerRadius: 4, bottomCornerRadius: 8)
-                }
-            
-            Spacer(minLength: 8)
-            
-            // Right: Action Buttons
+            // Right: Essential Clean Action Controls
             HStack(spacing: 6) {
-                // Minimize to Compact Pill (Image 1 style)
-                HoverActionButton(icon: "arrow.down.right.and.arrow.up.left", tooltip: "Compact Pill") {
-                    withAnimation(NotchAnimations.openSpring) {
-                        isCompactMode = true
-                        appState.isCompactResponseMode = true
-                    }
-                }
-                
-                // Circle-to-Ask (Camera/Screenshot)
-                HoverActionButton(icon: "camera.viewfinder", tooltip: "Circle to Ask") {
-                    appState.triggerCircleToAsk()
-                }
-                
                 // Pin Notch Toggle
                 HoverActionButton(
                     icon: appState.isPinned ? "pin.fill" : "pin",
-                    iconColor: appState.isPinned ? Color.orange : Color.white.opacity(0.7)
+                    iconColor: appState.isPinned ? Color.orange : Color.white.opacity(0.75)
                 ) {
                     appState.togglePin()
                 }
@@ -1265,27 +1259,15 @@ public struct NotchGlassIslandView: View {
                                 .help("Circle / Lasso anything on screen to Ask (⌘⇧C)")
                         }
                         .buttonStyle(.plain)
-
-                        // Brain Think & Suggest Button
-                        Button(action: {
-                            BoringSoundEngine.shared.playTap()
-                            appState.triggerBrainThinkAndSuggest()
-                        }) {
-                            Image(systemName: "lightbulb.max.fill")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(Color.yellow.opacity(0.92))
-                                .help("Brain Suggest: let local Ollama LLM analyze your screen & suggest actions")
-                        }
-                        .buttonStyle(.plain)
                         
-                        // Screen Vision Context Button
+                        // Camera / Screen Vision Context Button
                         Button(action: {
                             BoringSoundEngine.shared.playTap()
                             appState.triggerScreenVision()
                         }) {
                             Image(systemName: "camera.viewfinder")
                                 .font(.system(size: 11))
-                                .foregroundColor(Color.white.opacity(0.75))
+                                .foregroundColor(Color.white.opacity(0.80))
                                 .help("Scan & understand full screen")
                         }
                         .buttonStyle(.plain)
@@ -1311,13 +1293,13 @@ public struct NotchGlassIslandView: View {
                         }
                         .buttonStyle(.plain)
                         
-                        // Clear History Button
+                        // Delete / Clear History Button
                         Button(action: {
                             appState.clearChatHistory()
                         }) {
                             Image(systemName: "trash")
                                 .font(.system(size: 10))
-                                .foregroundColor(Color.white.opacity(0.4))
+                                .foregroundColor(Color.white.opacity(0.55))
                                 .help("Clear chat memory")
                         }
                         .buttonStyle(.plain)
@@ -1331,188 +1313,86 @@ public struct NotchGlassIslandView: View {
                             .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
                     )
                     
-                    // Proactive Alert Strip (Dismissable, Rate-Limited)
-                    if let topAlert = appState.proactiveAlerts.first {
-                        HStack(spacing: 8) {
-                            Image(systemName: topAlert.severity == .critical ? "exclamationmark.triangle.fill" : "bell.badge.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(topAlert.severity == .critical ? .red : .orange)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(topAlert.title)
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.white)
-                                Text(topAlert.message)
-                                    .font(.system(size: 9.5))
-                                    .foregroundColor(.white.opacity(0.8))
-                                    .lineLimit(1)
-                            }
-                            Spacer()
-                            if let suggested = topAlert.suggestedPrompt {
-                                Button("Check") {
-                                    appState.submitTypedPrompt(suggested)
-                                }
-                                .font(.system(size: 9.5, weight: .semibold))
-                                .foregroundColor(.black)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(Color.orange)
-                                .clipShape(Capsule())
-                                .buttonStyle(.plain)
-                            }
-                            Button(action: {
-                                appState.dismissProactiveAlert(id: topAlert.id)
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(7)
-                        .background(Color.orange.opacity(0.14))
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(Color.orange.opacity(0.35), lineWidth: 0.6)
-                        )
-                    }
-
-                    // Circle to Ask / Lasso Selection Preview Card
-                    if let crop = appState.currentCropResult {
-                        circleCropPreviewCard(crop)
-                    }
-                    
-                    // Active Spoken / Answer Bubble (if present)
-                    if !appState.currentAgentReply.isEmpty {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 9))
-                                        .foregroundColor(Color.green)
-                                    Text("Latest Response")
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundColor(Color.white.opacity(0.6))
-                                    Spacer()
-                                    Button(action: {
-                                        NSPasteboard.general.clearContents()
-                                        NSPasteboard.general.setString(appState.currentAgentReply, forType: .string)
-                                        BoringSoundEngine.shared.playTap()
-                                    }) {
-                                        Image(systemName: "doc.on.doc")
-                                            .font(.system(size: 8))
-                                            .foregroundColor(Color.white.opacity(0.6))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                Text(appState.currentAgentReply)
-                                    .font(.system(size: 11.5, weight: .medium))
-                                    .foregroundColor(.white)
-                                    .lineSpacing(2.5)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            Spacer()
-                        }
-                        .padding(8)
-                        .background(Color.white.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    }
-
-                    // Proactive Local Brain Suggestions Strip
-                    if !appState.llmSuggestions.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "brain.head.profile")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundColor(.yellow.opacity(0.85))
-                                ForEach(appState.llmSuggestions) { suggestion in
-                                    Button(action: {
-                                        BoringSoundEngine.shared.playTap()
-                                        appState.submitTypedPrompt(suggestion.prompt)
-                                    }) {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: suggestion.isAction ? "bolt.fill" : "sparkles")
-                                                .font(.system(size: 8.5))
-                                            Text(suggestion.title)
-                                                .font(.system(size: 10, weight: .semibold))
-                                        }
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(suggestion.isAction ? Color.blue.opacity(0.26) : Color.white.opacity(0.11))
-                                        .clipShape(Capsule())
-                                        .overlay(
-                                            Capsule()
-                                                .stroke(suggestion.isAction ? Color.blue.opacity(0.45) : Color.white.opacity(0.18), lineWidth: 0.6)
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-                                    .help(suggestion.prompt)
-                                }
-                            }
-                            .padding(.vertical, 1)
-                        }
-                    }
-                    
-                    // Scrollable Persistent Chat Conversation History (for taller heights)
-                    if currentHeight > 180 && !appState.chatMessages.isEmpty {
-                        ScrollViewReader { proxy in
-                            ScrollView(.vertical, showsIndicators: false) {
-                                LazyVStack(spacing: 6) {
-                                    ForEach(appState.chatMessages) { message in
-                                        chatMessageBubble(message)
-                                            .id(message.id)
-                                    }
-                                }
-                                .padding(.horizontal, 2)
-                                .padding(.vertical, 2)
-                            }
-                            .frame(maxHeight: currentHeight - 160)
-                            .onChange(of: appState.chatMessages.count) { _, _ in
-                                if let lastID = appState.chatMessages.last?.id {
-                                    withAnimation {
-                                        proxy.scrollTo(lastID, anchor: .bottom)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Redirect / Browser Action Bar
-                    if appState.isAwaitingRedirectConfirmation, let result = appState.latestAutonomousResult {
-                        HStack(spacing: 8) {
-                            if let _ = result.targetURL {
-                                Button(action: {
-                                    appState.confirmRedirect()
-                                }) {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "arrow.up.right.square.fill")
-                                            .font(.system(size: 10, weight: .semibold))
-                                        Text("Open in \(result.targetAppName)")
-                                            .font(.system(size: 10, weight: .semibold))
-                                    }
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(DesignTokens.Gradients.brand)
-                                    .clipShape(Capsule())
-                                    .shadow(color: DesignTokens.Colors.accentBlue.opacity(0.3), radius: 4, y: 1)
-                                }
-                                .buttonStyle(.plain)
+                    ScrollView(.vertical, showsIndicators: true) {
+                        VStack(spacing: 8) {
+                            // Circle to Ask / Lasso Selection Preview Card
+                            if let crop = appState.currentCropResult {
+                                circleCropPreviewCard(crop)
                             }
                             
-                            Button(action: {
-                                appState.dismissRedirect()
-                            }) {
-                                Text("Dismiss")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(Color.white.opacity(0.70))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.white.opacity(0.10))
-                                    .clipShape(Capsule())
+                            // Only the Latest Response (pure black background, no questions or previous history)
+                            let displayedReply: String = {
+                                if !appState.currentAgentReply.isEmpty {
+                                    return appState.currentAgentReply
+                                }
+                                return appState.chatMessages.last(where: { $0.role == "assistant" })?.text ?? ""
+                            }()
+                            if !displayedReply.isEmpty {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 4) {
+                                        Spacer()
+                                        Button(action: {
+                                            NSPasteboard.general.clearContents()
+                                            NSPasteboard.general.setString(displayedReply, forType: .string)
+                                            BoringSoundEngine.shared.playTap()
+                                        }) {
+                                            Image(systemName: "doc.on.doc")
+                                                .font(.system(size: 9))
+                                                .foregroundColor(Color.white.opacity(0.55))
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Copy response")
+                                    }
+                                    Text(displayedReply)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(.white)
+                                        .lineSpacing(3)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .textSelection(.enabled)
+                                }
+                                .padding(10)
+                                .background(Color.black)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             }
-                            .buttonStyle(.plain)
+                            
+                            // Redirect / Browser Action Bar
+                            if appState.isAwaitingRedirectConfirmation, let result = appState.latestAutonomousResult {
+                                HStack(spacing: 8) {
+                                    if let _ = result.targetURL {
+                                        Button(action: {
+                                            appState.confirmRedirect()
+                                        }) {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "arrow.up.right.square.fill")
+                                                    .font(.system(size: 10, weight: .semibold))
+                                                Text("Open in \(result.targetAppName)")
+                                                    .font(.system(size: 10, weight: .semibold))
+                                            }
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 4)
+                                            .background(DesignTokens.Gradients.brand)
+                                            .clipShape(Capsule())
+                                            .shadow(color: DesignTokens.Colors.accentBlue.opacity(0.3), radius: 4, y: 1)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    
+                                    Button(action: {
+                                        appState.dismissRedirect()
+                                    }) {
+                                        Text("Dismiss")
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundColor(Color.white.opacity(0.70))
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(Color.white.opacity(0.10))
+                                            .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
                         }
                     }
                 }
@@ -1958,13 +1838,13 @@ public struct NotchGlassIslandView: View {
     // MARK: - Active Coding Agents & Background Workflows Monitor
     private var tasksTabView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Header Bar with Agent & Task Counts
+            // Header Bar with Real Active Agent Count
             HStack(spacing: 8) {
                 Image(systemName: "cpu.fill")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.cyan)
                 
-                Text("Active Coding Agents")
+                Text("Active Agents")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.white)
                 
@@ -1989,40 +1869,39 @@ public struct NotchGlassIslandView: View {
                         .clipShape(Capsule())
                     }
                     
-                    Text("\(activeCount) Running")
+                    Text("\(activeCount) Active")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(Color.cyan)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2.5)
                         .background(Color.cyan.opacity(0.15))
                         .clipShape(Capsule())
-
-                    Button(action: {
-                        appState.launchIronLegionMission(goal: "Analyze repository & summarize status")
-                    }) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "bolt.horizontal.circle.fill")
-                                .font(.system(size: 9))
-                            Text("Iron Legion")
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2.5)
-                        .background(Color.cyan)
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Spawn parallel Research, Code & Summarize subagents")
                 }
             }
             .padding(.horizontal, 2)
             
-            // Scrollable List of Active Coding Agents
-            ScrollView(.vertical, showsIndicators: false) {
+                            // Scrollable List of Active Real Agents
+            ScrollView(.vertical, showsIndicators: true) {
                 LazyVStack(spacing: 8) {
-                    ForEach(appState.activeCodingAgents) { agent in
-                        codingAgentCard(agent)
+                    if appState.activeCodingAgents.isEmpty && appState.latestAutonomousResult == nil {
+                        VStack(spacing: 6) {
+                            Image(systemName: "cpu")
+                                .font(.system(size: 20))
+                                .foregroundColor(Color.white.opacity(0.35))
+                            Text("No active agents running")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color.white.opacity(0.65))
+                            Text("Spawn a real task by voice or via Ask to monitor live execution here.")
+                                .font(.system(size: 9.5))
+                                .foregroundColor(Color.white.opacity(0.45))
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 28)
+                    } else {
+                        ForEach(appState.activeCodingAgents) { agent in
+                            codingAgentCard(agent)
+                        }
                     }
                     
                     // Legacy autonomous result fallback (if any)

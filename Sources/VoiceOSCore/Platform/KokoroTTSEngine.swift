@@ -59,6 +59,7 @@ public final class KokoroTTSEngine: NSObject, TTSServiceProtocol, @unchecked Sen
     
     private var audioPlayer: AVAudioPlayer?
     private var playbackCompletion: (@Sendable (Bool) -> Void)?
+    private var speechSequence: UInt64 = 0
     private let lock = NSLock()
     private let workerLock = NSLock()
     private var workerProcess: Process?
@@ -156,6 +157,7 @@ public final class KokoroTTSEngine: NSObject, TTSServiceProtocol, @unchecked Sen
     
     public func stop() {
         lock.lock()
+        speechSequence &+= 1
         let player = audioPlayer
         audioPlayer = nil
         let cb = playbackCompletion
@@ -174,6 +176,11 @@ public final class KokoroTTSEngine: NSObject, TTSServiceProtocol, @unchecked Sen
             completion?(false)
             return
         }
+
+        let targetSeq = lock.withLock { () -> UInt64 in
+            speechSequence &+= 1
+            return speechSequence
+        }
         
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self = self else {
@@ -187,17 +194,23 @@ public final class KokoroTTSEngine: NSObject, TTSServiceProtocol, @unchecked Sen
                 completion?(false)
                 return
             }
+
+            let isStillValid: Bool = self.lock.withLock { self.speechSequence == targetSeq }
+            guard isStillValid else {
+                completion?(false)
+                return
+            }
             
             // 1. Try kokoro-tts local server on port 8880
             if let audioData = await self.synthesizeViaServer(text: text, voice: resolvedVoice, speed: speed) {
-                await self.playAudioData(audioData, completion: completion)
+                await self.playAudioData(audioData, expectedSequence: targetSeq, completion: completion)
                 return
             }
             
             // 2. Try Python kokoro_onnx runtime if installed
             if let py = diag.pythonPath,
                let wavData = self.synthesizeViaPython(pythonPath: py, text: text, voice: resolvedVoice, speed: speed) {
-                await self.playAudioData(wavData, completion: completion)
+                await self.playAudioData(wavData, expectedSequence: targetSeq, completion: completion)
                 return
             }
             
@@ -205,13 +218,23 @@ public final class KokoroTTSEngine: NSObject, TTSServiceProtocol, @unchecked Sen
         }
     }
     
-    private func playAudioData(_ data: Data, completion: (@Sendable (Bool) -> Void)?) async {
+    private func playAudioData(_ data: Data, expectedSequence: UInt64, completion: (@Sendable (Bool) -> Void)?) async {
         await MainActor.run {
+            let valid = self.lock.withLock { self.speechSequence == expectedSequence }
+            guard valid else {
+                completion?(false)
+                return
+            }
             do {
                 let player = try AVAudioPlayer(data: data)
                 player.delegate = self
                 player.prepareToPlay()
                 self.lock.lock()
+                guard self.speechSequence == expectedSequence else {
+                    self.lock.unlock()
+                    completion?(false)
+                    return
+                }
                 self.audioPlayer = player
                 self.playbackCompletion = completion
                 self.lock.unlock()

@@ -99,6 +99,37 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
                 }
             }
             .store(in: &cancellables)
+        
+        // Automatically start/recover hands-free ambient listener when user returns from granting Privacy permissions
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                if self.appState.isTheVoiceModeEnabled && !TheVoiceAmbientListener.shared.isListening {
+                    TheVoiceAmbientListener.shared.startAmbientListening()
+                }
+            }
+            .store(in: &cancellables)
+
+        // Handle "quit yourself" voice command: shut down Ollama + terminate Voice.AI cleanly
+        EventBus.shared.subscribe(matching: .custom("app_self_quit_requested")) { evt in
+            guard ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] != "1" else { return }
+            let quitOllama = (evt.payload["quit_ollama"] != "false")
+            DispatchQueue.main.async {
+                TheVoiceAmbientListener.shared.stopAmbientListening()
+                ComputerAudioListenerService.shared.isEnabled = false
+                DispatchQueue.global(qos: .userInitiated).async {
+                    if quitOllama {
+                        ModelLifecycleManager.shared.shutdownOllamaAndUnloadModels()
+                    } else {
+                        ModelLifecycleManager.shared.offloadAllModelsImmediately()
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                        NSApp.terminate(nil)
+                    }
+                }
+            }
+        }
     }
 
     private func triggerProactiveGreeting() {
@@ -218,6 +249,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         toggleHistoryItem.keyEquivalentModifierMask = [.command]
         toggleHistoryItem.target = self
         menu.addItem(toggleHistoryItem)
+
+        let alwaysListenItem = NSMenuItem(title: "24/7 Always-On Listening Mode", action: #selector(toggleAlwaysOnListening(_:)), keyEquivalent: "")
+        alwaysListenItem.target = self
+        alwaysListenItem.state = appState.isAlwaysOnListeningMode ? .on : .off
+        menu.addItem(alwaysListenItem)
+
+        let computerAudioItem = NSMenuItem(title: "Listen to Computer Audio (YouTube / Media)", action: #selector(toggleComputerAudioListening(_:)), keyEquivalent: "")
+        computerAudioItem.target = self
+        computerAudioItem.state = appState.isComputerAudioListeningEnabled ? .on : .off
+        menu.addItem(computerAudioItem)
         
         let circleItem = NSMenuItem(title: "Circle to Ask (Lasso)", action: #selector(triggerCircleToAskFromMenu), keyEquivalent: "C")
         circleItem.keyEquivalentModifierMask = [.command, .shift]
@@ -288,6 +329,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
     @objc private func toggleFloatingOrb() {
         appState.isFloatingOrbVisible.toggle()
+    }
+
+    @objc private func toggleAlwaysOnListening(_ sender: NSMenuItem) {
+        appState.isAlwaysOnListeningMode.toggle()
+        sender.state = appState.isAlwaysOnListeningMode ? .on : .off
+    }
+
+    @objc private func toggleComputerAudioListening(_ sender: NSMenuItem) {
+        appState.isComputerAudioListeningEnabled.toggle()
+        sender.state = appState.isComputerAudioListeningEnabled ? .on : .off
     }
 
     @objc private func toggleHistorySidebar() {

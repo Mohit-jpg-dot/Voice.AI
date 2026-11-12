@@ -116,6 +116,218 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         return resp.text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Captures the full display, analyzes it via active VLM/OCR, and stores the screenshot context
+    /// in `ConversationSessionContext.shared` so the user can ask hands-free follow-up questions by voice.
+    public func captureAndAnalyzeScreenSavingContext(
+        question: String,
+        sourceLabel: String = "Full Screen"
+    ) async -> (summary: String, provider: String, appName: String) {
+        let captured = await ScreenVisionService.shared.captureFullScreenWithImage()
+        let appName = captured.analysis.activeAppTitle ?? "Active App"
+        let llmResult = await analyzeScreenWithActiveModel(
+            pngData: captured.pngData,
+            ocrText: captured.analysis.fullText,
+            appName: appName,
+            sourceLabel: sourceLabel,
+            question: question
+        )
+        let summary = llmResult?.summary ?? captured.analysis.summary
+        let provider = llmResult?.usedProvider ?? "Screen Vision"
+
+        ConversationSessionContext.shared.setLastScreenContext(
+            ConversationSessionContext.CapturedScreenContext(
+                pngData: captured.pngData,
+                ocrText: captured.analysis.fullText,
+                appName: appName,
+                initialSummary: summary,
+                capturedAt: Date()
+            )
+        )
+        ConversationSessionContext.shared.recordReply(summary, forCommand: question)
+        return (summary, provider, appName)
+    }
+
+    private func isScreenFollowUpQuery(_ lower: String) -> Bool {
+        let explicitRefs = [
+            "on it", "in it", "on the screen", "on my screen", "the screenshot", "from the screenshot",
+            "in the screenshot", "that screenshot", "that image", "this image", "from that image",
+            "what does it say", "what is it saying", "what's it saying", "whats it saying",
+            "read that", "explain this", "explain that", "summarize this", "summarize that",
+            "what's wrong", "whats wrong", "that error", "the error", "this error",
+            "what should i do", "what button", "based on that", "based on what you see", "tell me more about"
+        ]
+        if explicitRefs.contains(where: { lower.contains($0) }) {
+            return true
+        }
+        return false
+    }
+
+    private func handleScreenContextFollowUpIfRelevant(_ query: String) async -> AutonomousExecutionResult? {
+        let lower = query.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if lower == "forget the screen" || lower == "clear screen context" || lower == "forget screenshot" {
+            ConversationSessionContext.shared.clearLastScreenContext()
+            return AutonomousExecutionResult(
+                success: true,
+                summary: "Cleared the stored screenshot context.",
+                targetAppName: "Screen Vision",
+                executedSteps: ["Cleared stored screen context"]
+            )
+        }
+        if lower == "refresh screen" || lower == "take another screenshot" || lower == "look at my screen again" || lower == "check my screen again" {
+            let captured = await captureAndAnalyzeScreenSavingContext(question: "Summarize what is currently visible on the screen.")
+            return AutonomousExecutionResult(
+                success: true,
+                summary: captured.summary,
+                targetAppName: captured.provider,
+                executedSteps: ["Re-captured screen and updated stored context"]
+            )
+        }
+
+        guard let saved = ConversationSessionContext.shared.lastScreenContext() else { return nil }
+
+        // Allow explicit references anywhere within 15 minutes, OR short conversational follow-up questions within 90s
+        let age = Date().timeIntervalSince(saved.capturedAt)
+        let isQuestion = lower.hasSuffix("?") || ["what", "why", "how", "which", "where", "who", "explain", "summarize", "is there", "does it", "can i", "should i", "tell me"].contains(where: { lower.hasPrefix($0 + " ") })
+        let unrelatedExternal = lower.contains("weather") || lower.contains("capital of") || lower.contains("google ") ||
+                                lower.contains("youtube") || lower.contains("spotify") || lower.contains("timer") ||
+                                lower.contains("alarm") || lower.contains("volume") || lower.hasPrefix("open ")
+        let shouldUseSavedScreen = isScreenFollowUpQuery(lower) || (age <= 90 && isQuestion && !unrelatedExternal)
+        guard shouldUseSavedScreen else { return nil }
+
+        let llm = await analyzeScreenWithActiveModel(
+            pngData: saved.pngData,
+            ocrText: saved.ocrText,
+            appName: saved.appName,
+            sourceLabel: "Stored Screenshot Context",
+            question: query
+        )
+        let answer: String
+        if let text = llm?.summary, !text.isEmpty {
+            answer = text
+        } else if !saved.ocrText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let excerpt = saved.ocrText.split(separator: "\n").prefix(6).joined(separator: " • ")
+            answer = "From the saved \(saved.appName) screenshot: \(excerpt)"
+        } else {
+            answer = "From the saved \(saved.appName) screenshot: \(saved.initialSummary)"
+        }
+        ConversationSessionContext.shared.recordReply(answer, forCommand: query)
+        return AutonomousExecutionResult(
+            success: true,
+            summary: answer,
+            targetAppName: llm?.usedProvider ?? "Saved Screen Context",
+            executedSteps: ["Answered voice follow-up from stored screenshot context (\(saved.appName))"]
+        )
+    }
+
+    public static func isSelfQuitCommand(_ query: String) -> Bool {
+        let lower = query
+            .replacingOccurrences(of: "[,.!?'\"]", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !lower.isEmpty else { return false }
+
+        let phrases = [
+            "quit yourself",
+            "quit urself",
+            "shut yourself down",
+            "shutdown yourself",
+            "close yourself",
+            "exit yourself",
+            "turn yourself off",
+            "power off yourself",
+            "terminate yourself",
+            "kill yourself",
+            "quit voice ai",
+            "quit voiceai",
+            "exit voice ai",
+            "close voice ai",
+            "quit jarvis",
+            "exit jarvis",
+            "close jarvis"
+        ]
+        return phrases.contains(where: { lower.contains($0) })
+    }
+
+    private func handleComputerAudioQuestion(_ query: String) async -> AutonomousExecutionResult {
+        let enabled = ComputerAudioListenerService.shared.isEnabled
+        let context = ComputerAudioListenerService.shared.capturedContext(maxAgeSeconds: 600)
+        let mediaSummary: String = {
+            if let item = context.nowPlaying {
+                let channel = item.artistOrChannel.isEmpty ? "" : " (\(item.artistOrChannel))"
+                return "Currently playing via \(item.source.rawValue): \(item.title)\(channel)."
+            }
+            return ""
+        }()
+
+        if !enabled && context.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let prefix = mediaSummary.isEmpty ? "" : "\(mediaSummary) "
+            let msg = "\(prefix)Computer audio listening is off so I ignore background videos. Say 'listen to the things my computer is making' first, and I'll listen and summarize what's playing."
+            ConversationSessionContext.shared.recordReply(msg, forCommand: query)
+            return AutonomousExecutionResult(
+                success: true,
+                summary: msg,
+                targetAppName: "Computer Audio",
+                executedSteps: ["Explained how to enable on-demand computer audio listening"]
+            )
+        }
+
+        let cleanTranscript = context.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanTranscript.isEmpty {
+            let permNote = (Bundle.main.bundleIdentifier != nil && !CGPreflightScreenCaptureAccess())
+                ? " Make sure Screen & System Audio Recording permission is enabled for Voice.AI in System Settings."
+                : ""
+            let msg = mediaSummary.isEmpty
+                ? "I'm listening to your computer audio, but haven't heard clear speech from playback yet.\(permNote)"
+                : "\(mediaSummary) I'm listening to your computer audio, though no spoken dialogue has been transcribed yet.\(permNote)"
+            ConversationSessionContext.shared.recordReply(msg, forCommand: query)
+            return AutonomousExecutionResult(
+                success: true,
+                summary: msg,
+                targetAppName: "Computer Audio",
+                executedSteps: ["Checked captured computer audio buffer"]
+            )
+        }
+
+        if ModelRouter.shared.currentMode != .googleSearch,
+           let model = try? ModelRouter.shared.resolveChatModel() {
+            let sysPrompt = "You are Voice.AI. Answer concisely in 1-3 clear spoken sentences based ONLY on the captured computer audio transcript and active media info below."
+            let userPrompt = """
+            \(mediaSummary)
+            Recent captured computer audio transcript:
+            \(cleanTranscript.suffix(2400))
+
+            User question: \(query)
+            """
+            if let answer = try? await generateChatResponse(
+                model: model,
+                systemPrompt: sysPrompt,
+                userPrompt: userPrompt,
+                onPartialReply: nil
+            ), !answer.isEmpty {
+                ConversationSessionContext.shared.recordReply(answer, forCommand: query)
+                return AutonomousExecutionResult(
+                    success: true,
+                    summary: answer,
+                    targetAppName: "Computer Audio",
+                    executedSteps: ["Summarized captured computer audio via \(model.providerName)"]
+                )
+            }
+        }
+
+        let excerpt = String(cleanTranscript.suffix(420))
+        let fallback = mediaSummary.isEmpty
+            ? "Here's what your computer recently said: \(excerpt)"
+            : "\(mediaSummary) Recent audio: \(excerpt)"
+        ConversationSessionContext.shared.recordReply(fallback, forCommand: query)
+        return AutonomousExecutionResult(
+            success: true,
+            summary: fallback,
+            targetAppName: "Computer Audio",
+            executedSteps: ["Returned captured computer audio transcript"]
+        )
+    }
+
     private func isLikelyPureConversation(raw: String, trimmed: String) -> Bool {
         let lower = trimmed.lowercased()
         let actionKeywords = [
@@ -163,7 +375,7 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             }
         }
 
-        // Also ensure no play_music system command executes unless user asked for music
+        // Also ensure no play_music or dark_mode system command executes ungrounded
         for step in plan.steps where step.action == "system_command" {
             let p = step.param.lowercased()
             if p == "play" || p.hasPrefix("play_music") || p.hasPrefix("play ") {
@@ -173,6 +385,12 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                                      lower.range(of: "\\bplay\\b", options: .regularExpression) != nil ||
                                      lower.contains("chalao") || lower.contains("bajao")
                 if !mediaRequested { return false }
+            }
+            if p.contains("dark_mode") {
+                let themeRequested = lower.contains("dark") || lower.contains("light mode") ||
+                                     lower.contains("night mode") || lower.contains("appearance") ||
+                                     lower.contains("theme")
+                if !themeRequested { return false }
             }
         }
         return true
@@ -185,7 +403,35 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         onPartialReply: (@Sendable (String) -> Void)? = nil,
         onProgress: (@Sendable (String) -> Void)? = nil
     ) async -> AutonomousExecutionResult {
-        let trimmed = taskDescription.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        let result = await executePlanCore(
+            taskDescription: taskDescription,
+            triggerMode: triggerMode,
+            screenCrop: screenCrop,
+            onPartialReply: onPartialReply,
+            onProgress: onProgress
+        )
+        let cleanedInput = AgentToolParser.stripCasualPrefix(taskDescription)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanedInput.isEmpty && !result.summary.isEmpty && !Self.isSelfQuitCommand(cleanedInput) {
+            await MemoryStore.shared.recordConversationExchange(
+                userText: cleanedInput,
+                assistantText: result.summary,
+                timestamp: Date(),
+                sourceTag: result.targetAppName
+            )
+        }
+        return result
+    }
+
+    private func executePlanCore(
+        taskDescription: String,
+        triggerMode: VoiceTriggerMode = .agent,
+        screenCrop: ScreenCropResult? = nil,
+        onPartialReply: (@Sendable (String) -> Void)? = nil,
+        onProgress: (@Sendable (String) -> Void)? = nil
+    ) async -> AutonomousExecutionResult {
+        let strippedCasual = AgentToolParser.stripCasualPrefix(taskDescription)
+        let trimmed = strippedCasual.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
 
         let stopCheck = trimmed.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
         if (stopCheck == "stop" || stopCheck == "stop agent" || stopCheck == "ruko" || stopCheck == "ruk jao") &&
@@ -263,6 +509,27 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             }
         }
 
+        if AppState.isSilenceAndCollapseCommand(trimmed) {
+            SpeechPipelineEngine.shared.bargeIn()
+            if ComputerUseOperator.shared.isRunning {
+                ComputerUseOperator.shared.stopActiveRun()
+            }
+            _ = PersonaManager.shared.evaluateSafetyGuardrail(userInput: "shut up")
+            EventBus.shared.publish(VoiceEvent(
+                kind: .custom("notch_collapse_requested"),
+                source: "AutonomousAgentExecutor",
+                severity: .info,
+                payload: ["reason": "silence_collapse"]
+            ))
+            return AutonomousExecutionResult(
+                success: true,
+                summary: "Silenced and collapsed notch.",
+                targetAppName: "System",
+                targetURL: nil,
+                executedSteps: ["Silenced TTS and collapsed open hover pill"]
+            )
+        }
+
         if PersonaManager.shared.evaluateSafetyGuardrail(userInput: trimmed) {
             return AutonomousExecutionResult(
                 success: true,
@@ -271,6 +538,86 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 targetURL: nil,
                 executedSteps: ["Adjusted tone via persona safety guardrail"]
             )
+        }
+
+        // -------------------------------------------------------------
+        // Step -1.45: Self-Quit Voice.AI & Automatically Shut Down Ollama
+        // -------------------------------------------------------------
+        if Self.isSelfQuitCommand(trimmed) {
+            EventBus.shared.publish(VoiceEvent(
+                kind: .custom("app_self_quit_requested"),
+                source: "AutonomousAgentExecutor",
+                severity: .info,
+                payload: ["quit_ollama": "true"]
+            ))
+            let msg = "Quitting Voice.AI and shutting down Ollama now. Goodbye."
+            ConversationSessionContext.shared.recordReply(msg, forCommand: trimmed)
+            return AutonomousExecutionResult(
+                success: true,
+                summary: msg,
+                targetAppName: AppBrand.name,
+                targetURL: nil,
+                executedSteps: ["Triggered self-quit", "Scheduled Ollama shutdown"]
+            )
+        }
+
+        // -------------------------------------------------------------
+        // Step -1.4: Voice Toggle for 24/7 Continuous Listening Mode & Computer Audio Mode
+        // -------------------------------------------------------------
+        if triggerMode == .agent {
+            if let toggleComputerAudio = ComputerAudioListenerService.parseListeningToggleCommand(trimmed) {
+                ComputerAudioListenerService.shared.isEnabled = toggleComputerAudio
+                if toggleComputerAudio && !TheVoiceAmbientListener.shared.isTheVoiceModeEnabled {
+                    TheVoiceAmbientListener.shared.isTheVoiceModeEnabled = true
+                }
+                let msg: String
+                if toggleComputerAudio {
+                    let needsPerm = (Bundle.main.bundleIdentifier != nil && !CGPreflightScreenCaptureAccess())
+                    msg = needsPerm
+                        ? "Computer audio listening is on. Allow Screen and System Audio Recording for Voice.AI in System Settings so I can capture internal playback."
+                        : "Got it, I'm now listening to what your computer is playing. Ask me anytime to summarize or explain it."
+                } else {
+                    msg = "Stopped listening to computer audio. I will ignore background videos and system playback now."
+                }
+                ConversationSessionContext.shared.recordReply(msg, forCommand: trimmed)
+                return AutonomousExecutionResult(
+                    success: true,
+                    summary: msg,
+                    targetAppName: "Computer Audio",
+                    executedSteps: [toggleComputerAudio ? "Enabled computer audio listening mode" : "Disabled computer audio listening mode"]
+                )
+            }
+
+            if ComputerAudioListenerService.isComputerAudioQuestion(trimmed) {
+                return await handleComputerAudioQuestion(trimmed)
+            }
+
+            let lm = trimmed.lowercased()
+            let mentions24x7OrBroMode =
+                lm.contains("24/7") || lm.contains("24 7") || lm.contains("24x7") || lm.contains("24-7") ||
+                lm.contains("24 by 7") || lm.contains("twenty four seven") || lm.contains("twenty-four seven") ||
+                lm.contains("24 hours") || lm.contains("always listen") || lm.contains("always-on listen") ||
+                lm.contains("continuous listen") || lm.contains("listening mode") ||
+                lm.contains("bro mode") || lm.contains("free talk") || lm.contains("keep listening")
+            let wantsModeOff =
+                lm.contains("turn off") || lm.contains("switch off") || lm.contains("disable") ||
+                lm.contains("stop ") || lm.contains("exit ") || lm.contains("deactivate") ||
+                lm.contains("mode off") || lm.contains("band") || lm.contains("wake word only") || lm.contains("wake-word only")
+            if lm.contains("wake word only") || lm.contains("wake-word only") || (mentions24x7OrBroMode && wantsModeOff) {
+                TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode = false
+                EventBus.shared.publish(VoiceEvent(kind: .custom("listening_mode_changed"), source: "AutonomousAgentExecutor", severity: .info, payload: ["always_on": "false"]))
+                let msg = "Switched back to wake-word mode."
+                ConversationSessionContext.shared.recordReply(msg, forCommand: trimmed)
+                return AutonomousExecutionResult(success: true, summary: msg, targetAppName: AppBrand.name, executedSteps: ["Switched to wake-word-only listening mode"])
+            }
+            if mentions24x7OrBroMode {
+                TheVoiceAmbientListener.shared.isTheVoiceModeEnabled = true
+                TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode = true
+                EventBus.shared.publish(VoiceEvent(kind: .custom("listening_mode_changed"), source: "AutonomousAgentExecutor", severity: .info, payload: ["always_on": "true"]))
+                let msg = "24/7 continuous listening (Bro mode) is on. Speak anytime when you need me."
+                ConversationSessionContext.shared.recordReply(msg, forCommand: trimmed)
+                return AutonomousExecutionResult(success: true, summary: msg, targetAppName: AppBrand.name, executedSteps: ["Enabled 24/7 always-on listening mode"])
+            }
         }
 
         // -------------------------------------------------------------
@@ -476,7 +823,37 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 )
             }
 
-            // 1c. Open-Ended Screen / Vision Computer-Use Operator Loop (Control key Agent Mode)
+            // 1b. Direct Voice Follow-up on Stored Screenshot Context (NO pill click required)
+            if let screenFollowUp = await handleScreenContextFollowUpIfRelevant(trimmed) {
+                LocalMemoryManager.shared.remember(content: "\(trimmed) -> \(screenFollowUp.summary)", category: "task", tags: ["Screen Context"])
+                return screenFollowUp
+            }
+
+            // 1c. Casual Demonstrative Action ("open this up", "do this") -> resolve active screen/file/link or Computer-Use
+            if qLower == "open this up" || qLower == "open this" || qLower == "do this" {
+                if let savedItem = ConversationSessionContext.shared.searchResult(atOneBasedIndex: 1) {
+                    return AutonomousExecutionResult(
+                        success: true,
+                        summary: "Opening \(savedItem.title).",
+                        targetAppName: ConversationSessionContext.shared.lastActiveBrowser ?? "Browser",
+                        targetURL: URL(string: savedItem.url),
+                        executedSteps: ["Opened active contextual link: \(savedItem.title)"]
+                    )
+                }
+                if let lastPath = ConversationSessionContext.shared.lastCreatedOrModifiedPath {
+                    return await SandboxFileManagerEngine.shared.handleFileCommand("open file \(URL(fileURLWithPath: lastPath).lastPathComponent)")
+                        ?? AutonomousExecutionResult(success: true, summary: "Opened \(lastPath).", targetAppName: "Finder")
+                }
+                let screenCap = await captureAndAnalyzeScreenSavingContext(question: "What item or control is highlighted or should be opened/acted on?")
+                return AutonomousExecutionResult(
+                    success: true,
+                    summary: screenCap.summary,
+                    targetAppName: screenCap.provider,
+                    executedSteps: ["Analyzed current screen context for action"]
+                )
+            }
+
+            // 1d. Open-Ended Screen / Vision Computer-Use Operator Loop (Control key Agent Mode)
             if triggerMode == .agent && Self.isLikelyOpenEndedComputerUseGoal(trimmed) {
                 onProgress?("Starting visual computer-use loop...")
                 return await ComputerUseOperator.shared.runAgentTask(
@@ -1005,6 +1382,9 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
 
     private func handleMemoryVoiceCommandIfPresent(_ trimmed: String) async -> AutonomousExecutionResult? {
         let lower = trimmed.lowercased()
+        if lower == "forget the screen" || lower == "clear screen context" || lower == "forget screenshot" {
+            return nil
+        }
 
         // 1. "Remember this ..." / "Remember that ..." / "Yaad rakhna ..."
         let rememberPrefixes = [
@@ -1073,27 +1453,46 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             }
         }
 
-        // 3. "What do you remember about ..." / "Show my memories ..."
-        if lower.hasPrefix("what do you remember") || lower.contains("kya yaad hai") || lower == "my memories" || lower == "list my memories" {
-            let query = trimmed
-                .replacingOccurrences(of: "what do you remember about", with: "", options: .caseInsensitive)
-                .replacingOccurrences(of: "what do you remember", with: "", options: .caseInsensitive)
-                .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-            let items: [StructuredMemoryItem]
-            if query.isEmpty {
-                items = Array(MemoryStore.shared.allItems(scope: .longTerm).prefix(5))
-            } else {
-                items = await MemoryStore.shared.searchSemantic(query: query, scope: .longTerm, limit: 5).map { $0.item }
-            }
-            let summary = items.isEmpty
-                ? "I don't have any saved long-term memories matching that yet."
-                : "Here is what I remember:\n" + items.map { "• [\($0.kind.rawValue)] \($0.content)" }.joined(separator: "\n")
+        // 3. Episodic / Temporal / Profile / Semantic Memory Recall:
+        // ("What did we do yesterday?", "What did we talk about?", "What do you remember about me?", "What is my name?")
+        let isTemporalOrEpisodicRecall =
+            lower.contains("what did we do") ||
+            lower.contains("what did we talk") ||
+            lower.contains("what did we discuss") ||
+            lower.contains("what happened yesterday") ||
+            lower.contains("what did i ask yesterday") ||
+            lower.contains("what did i say yesterday") ||
+            lower.contains("kal kya") ||
+            lower.contains("kal humne") ||
+            lower.contains("yesterday") && (lower.contains("talk") || lower.contains("chat") || lower.contains("ask") || lower.contains("conversation") || lower.contains("remember") || lower.contains("do")) ||
+            lower.contains("previous conversation") ||
+            lower.contains("past conversation") ||
+            lower.contains("previous command") ||
+            lower.contains("last command") ||
+            lower.contains("previous question") ||
+            lower.contains("last question") ||
+            lower.contains("previous result") ||
+            lower.contains("last result") ||
+            lower.contains("last response") ||
+            lower.contains("previous response") ||
+            lower.contains("what did i just ask") ||
+            lower.contains("what did i just say") ||
+            lower.contains("what did we just do") ||
+            lower.contains("what did you just say") ||
+            lower.contains("do you remember") ||
+            lower == "who am i" ||
+            lower.contains("what is my name") ||
+            lower.contains("what's my name")
+
+        if lower.hasPrefix("what do you remember") || lower.contains("kya yaad hai") || lower == "my memories" || lower == "list my memories" || isTemporalOrEpisodicRecall {
+            let recall = await MemoryStore.shared.recallByTimeOrTopic(query: trimmed)
+            ConversationSessionContext.shared.recordReply(recall.answer, forCommand: trimmed)
             return AutonomousExecutionResult(
                 success: true,
-                summary: summary,
+                summary: PersonaManager.shared.formatResponse(recall.answer, language: PersonaManager.shared.detectedLanguageCode(for: trimmed)),
                 targetAppName: "Memory",
                 targetURL: nil,
-                executedSteps: ["Queried encrypted MemoryStore (\(items.count) result(s))"]
+                executedSteps: ["Queried local memory & conversation history (\(recall.matchedCount) match(es))"]
             )
         }
 
@@ -1103,16 +1502,41 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
     private func buildPersonaAndMemorySystemPrompt(basePrompt: String, forQuery query: String) async -> String {
         let personaDirectives = PersonaManager.shared.systemPromptDirectives(forUserQuery: query)
         let profile = MemoryStore.shared.userProfile()
-        let hits = await MemoryStore.shared.searchSemantic(query: query, scope: .longTerm, limit: 3)
+        let hits = await MemoryStore.shared.searchSemantic(query: query, scope: .longTerm, limit: 5)
+        let coreFacts = MemoryStore.shared.allItems(scope: .longTerm)
+            .filter { $0.kind == .profile || $0.kind == .preference || $0.kind == .project }
+            .prefix(5)
+        let recentTurns = MemoryStore.shared.shortTermContext(limit: 8)
 
         var parts = [basePrompt, personaDirectives]
         if !profile.displayName.isEmpty && profile.displayName != "User" {
             parts.append("User display name: \(profile.displayName).")
         }
-        if !hits.isEmpty {
-            let bullets = hits.map { "- \($0.item.content)" }.joined(separator: "\n")
-            parts.append("Relevant recalled user memory:\n\(bullets)")
+
+        var memoryBullets: [String] = []
+        for h in hits {
+            let line = "- [\(h.item.kind.rawValue)] \(h.item.content)"
+            if !memoryBullets.contains(line) { memoryBullets.append(line) }
         }
+        for item in coreFacts {
+            let line = "- [\(item.kind.rawValue)] \(item.content)"
+            if !memoryBullets.contains(line) { memoryBullets.append(line) }
+        }
+        if !memoryBullets.isEmpty {
+            parts.append("Known user facts & preferences:\n\(memoryBullets.prefix(8).joined(separator: "\n"))")
+        }
+
+        if !recentTurns.isEmpty {
+            let df = DateFormatter()
+            df.dateStyle = .short
+            df.timeStyle = .short
+            let turnLines = recentTurns.map { item -> String in
+                let compact = item.content.replacingOccurrences(of: "\n", with: " | ")
+                return "- [\(df.string(from: item.createdAt))] \(String(compact.prefix(240)))"
+            }
+            parts.append("Recent conversation context (most recent first):\n\(turnLines.joined(separator: "\n"))")
+        }
+
         return parts.joined(separator: "\n\n")
     }
 

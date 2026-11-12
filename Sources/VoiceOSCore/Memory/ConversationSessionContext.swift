@@ -12,6 +12,28 @@ public final class ConversationSessionContext: @unchecked Sendable {
         case copiedFile(createdPath: String)
     }
 
+    public struct CapturedScreenContext: Sendable {
+        public let pngData: Data?
+        public let ocrText: String
+        public let appName: String
+        public let initialSummary: String
+        public let capturedAt: Date
+
+        public init(
+            pngData: Data?,
+            ocrText: String,
+            appName: String,
+            initialSummary: String,
+            capturedAt: Date = Date()
+        ) {
+            self.pngData = pngData
+            self.ocrText = ocrText
+            self.appName = appName
+            self.initialSummary = initialSummary
+            self.capturedAt = capturedAt
+        }
+    }
+
     private let lock = NSLock()
     private var _lastReply: String?
     private var _lastCommand: String?
@@ -24,6 +46,7 @@ public final class ConversationSessionContext: @unchecked Sendable {
     private var _undoStack: [UndoOperation] = []
     private var _timers: [(label: String, fireAt: Date)] = []
     private var _alarms: [(label: String, timeDescription: String)] = []
+    private var _lastScreenContext: CapturedScreenContext?
 
     public init() {}
 
@@ -40,7 +63,27 @@ public final class ConversationSessionContext: @unchecked Sendable {
             _undoStack = []
             _timers = []
             _alarms = []
+            _lastScreenContext = nil
         }
+    }
+
+    public func setLastScreenContext(_ ctx: CapturedScreenContext) {
+        lock.withLock { _lastScreenContext = ctx }
+    }
+
+    public func lastScreenContext(maxAgeSeconds: TimeInterval = 900) -> CapturedScreenContext? {
+        lock.withLock {
+            guard let ctx = _lastScreenContext else { return nil }
+            if Date().timeIntervalSince(ctx.capturedAt) > maxAgeSeconds {
+                _lastScreenContext = nil
+                return nil
+            }
+            return ctx
+        }
+    }
+
+    public func clearLastScreenContext() {
+        lock.withLock { _lastScreenContext = nil }
     }
 
     public var lastReply: String? { lock.withLock { _lastReply } }

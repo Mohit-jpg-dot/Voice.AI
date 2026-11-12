@@ -6,11 +6,11 @@ import AppKit
 public enum NotchAnimations {
     // MARK: - Spring Physics Curves
     
-    /// Open animation spring: response 0.42s, damping 0.80 (weighty, natural deceleration)
-    public static let openSpring: Animation = .spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
+    /// Open animation spring: crisp 0.28s response, 0.85 damping (instant & smooth)
+    public static let openSpring: Animation = .spring(response: 0.28, dampingFraction: 0.85, blendDuration: 0)
     
-    /// Close animation spring: response 0.45s, damping 1.0 (critically damped: ZERO bounce/overshoot on close)
-    public static let closeSpring: Animation = .spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
+    /// Close animation spring: crisp 0.26s response, 0.96 damping (snappy collapse with near-zero overshoot)
+    public static let closeSpring: Animation = .spring(response: 0.26, dampingFraction: 0.96, blendDuration: 0)
     
     /// Interactive gesture spring for live dragging / gesture tracking
     public static let interactiveSpring: Animation = .interactiveSpring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)

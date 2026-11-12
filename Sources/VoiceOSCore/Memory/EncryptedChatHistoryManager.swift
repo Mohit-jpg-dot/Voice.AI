@@ -193,7 +193,8 @@ public final class EncryptedChatHistoryManager: @unchecked Sendable {
         assistantText: String,
         persona: String = "Friday",
         actions: [ActionRecordItem] = [],
-        sources: [String] = []
+        sources: [String] = [],
+        timestamp: Date = Date()
     ) -> ConversationSessionRecord? {
         if isIncognito || retentionPolicy == .never { return nil }
         
@@ -212,10 +213,11 @@ public final class EncryptedChatHistoryManager: @unchecked Sendable {
         let safeUser = redactSecrets(userText)
         let safeAssistant = redactSecrets(assistantText)
         
-        let userMessage = MessageRecordItem(role: "user", content: safeUser)
+        let userMessage = MessageRecordItem(role: "user", content: safeUser, timestamp: timestamp)
         let assistantMessage = MessageRecordItem(
             role: "assistant",
             content: safeAssistant,
+            timestamp: timestamp,
             actions: actions,
             citedSources: sources
         )
@@ -227,7 +229,7 @@ public final class EncryptedChatHistoryManager: @unchecked Sendable {
             session = inMemorySessions[idx]
             session.messages.append(userMessage)
             session.messages.append(assistantMessage)
-            session.updatedAt = Date()
+            session.updatedAt = timestamp
             inMemorySessions[idx] = session
         } else {
             // Auto-title from first prompt
@@ -237,8 +239,8 @@ public final class EncryptedChatHistoryManager: @unchecked Sendable {
                 accountId: accountId,
                 title: generatedTitle,
                 persona: persona,
-                createdAt: Date(),
-                updatedAt: Date(),
+                createdAt: timestamp,
+                updatedAt: timestamp,
                 messages: [userMessage, assistantMessage]
             )
             inMemorySessions.insert(session, at: 0)
@@ -276,7 +278,9 @@ public final class EncryptedChatHistoryManager: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         inMemorySessions.removeAll()
-        if let accId = loadedAccountId { persistEncryptedHistoryLocked(for: accId) }
+        let accId = loadedAccountId ?? (AccountAuthService.shared.currentAccount?.id ?? "local")
+        loadedAccountId = accId
+        persistEncryptedHistoryLocked(for: accId)
     }
     
     // MARK: - Exporting (Markdown / JSON)

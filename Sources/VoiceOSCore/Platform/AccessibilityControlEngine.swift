@@ -297,39 +297,45 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
     }
     
     public func controlYouTubePlayback(action: String) -> Bool {
-        // 1. Direct tab script execution on Google Chrome
-        let chromeScript = """
-        tell application "System Events"
-            set isChromeRunning to exists (processes where name is "Google Chrome")
-        end tell
-        if isChromeRunning then
-            tell application "Google Chrome"
-                repeat with w in windows
-                    repeat with t in tabs of w
-                        if URL of t contains "youtube.com" then
-                            tell t
-                                if "\(action)" is "pause" then
-                                    execute javascript "const v = document.querySelector('video'); if (v) v.pause();"
-                                else if "\(action)" is "next" then
-                                    execute javascript "const nextBtn = document.querySelector('.ytp-next-button') || document.querySelector('a.ytd-compact-video-renderer'); if (nextBtn) nextBtn.click();"
-                                else if "\(action)" is "previous" then
-                                    execute javascript "window.history.back();"
-                                else
-                                    execute javascript "const v = document.querySelector('video'); if (v) v.play();"
-                                end if
-                            end tell
-                            return "success"
-                        end if
-                    end repeat
-                end repeat
+        let chromiumBrowsers = ["Google Chrome", "Arc", "Brave Browser", "Microsoft Edge"]
+        let frontName = NSWorkspace.shared.frontmostApplication?.localizedName
+        let orderedBrowsers = chromiumBrowsers.sorted { a, _ in a == frontName }
+
+        // 1. Direct tab script execution on Chromium browsers (prioritizing the currently visible browser)
+        for browserName in orderedBrowsers {
+            let chromeScript = """
+            tell application "System Events"
+                set isBrowserRunning to exists (processes where name is "\(browserName)")
             end tell
-        end if
-        return "not_found"
-        """
-        let chromeRes = executeAppleScript(chromeScript)
-        if chromeRes.success && chromeRes.output == "success" {
-            NowPlayingMediaManager.shared.pollMediaState()
-            return true
+            if isBrowserRunning then
+                tell application "\(browserName)"
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            if URL of t contains "youtube.com" then
+                                tell t
+                                    if "\(action)" is "pause" then
+                                        execute javascript "const v = document.querySelector('video'); if (v) v.pause();"
+                                    else if "\(action)" is "next" then
+                                        execute javascript "const nextBtn = document.querySelector('.ytp-next-button') || document.querySelector('a.ytd-compact-video-renderer'); if (nextBtn) nextBtn.click();"
+                                    else if "\(action)" is "previous" then
+                                        execute javascript "window.history.back();"
+                                    else
+                                        execute javascript "const v = document.querySelector('video'); const btn = document.querySelector('.ytp-play-button, .ytp-large-play-button'); if (v && v.paused) { v.play().catch(() => { if (btn) btn.click(); }); } else if (v) { v.play(); } else if (btn) { btn.click(); }"
+                                    end if
+                                end tell
+                                return "success"
+                            end if
+                        end repeat
+                    end repeat
+                end tell
+            end if
+            return "not_found"
+            """
+            let chromeRes = executeAppleScript(chromeScript)
+            if chromeRes.success && chromeRes.output == "success" {
+                NowPlayingMediaManager.shared.pollMediaState()
+                return true
+            }
         }
         
         // 2. Direct tab script execution on Safari
@@ -350,7 +356,7 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                                 else if "\(action)" is "previous" then
                                     do JavaScript "window.history.back();"
                                 else
-                                    do JavaScript "const v = document.querySelector('video'); if (v) v.play();"
+                                    do JavaScript "const v = document.querySelector('video'); const btn = document.querySelector('.ytp-play-button, .ytp-large-play-button'); if (v && v.paused) { v.play().catch(() => { if (btn) btn.click(); }); } else if (v) { v.play(); } else if (btn) { btn.click(); }"
                                 end if
                             end tell
                             return "success"
@@ -367,11 +373,12 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
             return true
         }
         
-        // 3. Media key fallback to frontmost window
+        // 3. Focus external window if Voice.AI is frontmost, then send play/pause shortcut
+        _ = focusExternalTargetAppIfNeeded()
         let keyScript: String
         switch action {
         case "pause", "play":
-            keyScript = "tell application \"System Events\" to key code 49" // Spacebar
+            keyScript = "tell application \"System Events\" to keystroke \"k\""
         case "next":
             keyScript = "tell application \"System Events\" to keystroke \"N\" using {shift down}" // Shift+N
         case "previous":
@@ -401,11 +408,169 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
         return (res.success, targetPct)
     }
     
+    /// Finds the active external user application window (skipping Voice.AI's own notch/HUD windows)
+    /// using the on-screen Quartz window stack so commands like Hide / Copy / Paste hit the real app beneath the pill.
+    private func resolveExternalTargetApp() -> NSRunningApplication? {
+        let selfPID = pid_t(ProcessInfo.processInfo.processIdentifier)
+        if let front = NSWorkspace.shared.frontmostApplication,
+           front.processIdentifier != selfPID,
+           front.bundleIdentifier != Bundle.main.bundleIdentifier {
+            return front
+        }
+
+        if let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] {
+            for info in windowList {
+                let layer = (info[kCGWindowLayer as String] as? Int) ?? 0
+                guard layer == 0 else { continue }
+                guard let pidNum = info[kCGWindowOwnerPID as String] as? pid_t, pidNum != selfPID else { continue }
+                let ownerName = (info[kCGWindowOwnerName as String] as? String ?? "").lowercased()
+                if ownerName == "dock" || ownerName == "window server" || ownerName == "control center" { continue }
+                if let app = NSRunningApplication(processIdentifier: pidNum), app.activationPolicy == .regular {
+                    return app
+                }
+            }
+        }
+        return NSWorkspace.shared.runningApplications.first {
+            $0.processIdentifier != selfPID && $0.activationPolicy == .regular && !$0.isHidden
+        }
+    }
+
+    private func focusExternalTargetAppIfNeeded() -> NSRunningApplication? {
+        guard let target = resolveExternalTargetApp() else { return nil }
+        let selfPID = pid_t(ProcessInfo.processInfo.processIdentifier)
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == selfPID || NSApp.isActive {
+            target.activate(options: [])
+            Thread.sleep(forTimeInterval: 0.12)
+        }
+        return target
+    }
+
+    private func postKeyboardShortcut(keyCode: CGKeyCode, flags: CGEventFlags) -> Bool {
+        let source = CGEventSource(stateID: .combinedSessionState) ?? CGEventSource(stateID: .hidSystemState)
+        guard let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
+            return false
+        }
+        down.flags = flags
+        up.flags = flags
+        down.post(tap: .cghidEventTap)
+        usleep(12_000)
+        up.post(tap: .cghidEventTap)
+        return true
+    }
+
+    private func readFocusedSelectedTextViaAX() -> String? {
+        let systemWide = AXUIElementCreateSystemWide()
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
+              let focused = focusedRef else {
+            return nil
+        }
+        var selectedRef: CFTypeRef?
+        let element = focused as! AXUIElement
+        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selectedRef) == .success,
+              let text = selectedRef as? String,
+              !text.isEmpty else {
+            return nil
+        }
+        return text
+    }
+
+    private func performCopyAction() -> Bool {
+        let beforeCount = NSPasteboard.general.changeCount
+        if AXIsProcessTrusted(), postKeyboardShortcut(keyCode: 8, flags: .maskCommand) {
+            Thread.sleep(forTimeInterval: 0.09)
+            if NSPasteboard.general.changeCount != beforeCount {
+                return true
+            }
+            if let axSelected = readFocusedSelectedTextViaAX() {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(axSelected, forType: .string)
+                return true
+            }
+        }
+        let scriptOk = executeAppleScript("tell application \"System Events\" to keystroke \"c\" using {command down}").success
+        if scriptOk { return true }
+        if NSPasteboard.general.changeCount != beforeCount { return true }
+        if AXIsProcessTrusted(), let axSelected = readFocusedSelectedTextViaAX() {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(axSelected, forType: .string)
+            return true
+        }
+        return false
+    }
+
+    private func performPasteAction() -> Bool {
+        if AXIsProcessTrusted(), postKeyboardShortcut(keyCode: 9, flags: .maskCommand) {
+            return true
+        }
+        return executeAppleScript("tell application \"System Events\" to keystroke \"v\" using {command down}").success
+    }
+
     public func performWindowAction(_ action: String) -> Bool {
         if ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" ||
            ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1" {
             return true
         }
+
+        if action == "hide" {
+            guard let target = resolveExternalTargetApp() else { return false }
+            let appName = (target.localizedName ?? "").replacingOccurrences(of: "\"", with: "\\\"")
+            var hidden = target.hide()
+            if !hidden && !appName.isEmpty {
+                hidden = executeAppleScript("tell application \"System Events\" to set visible of process \"\(appName)\" to false").success
+            }
+            if hidden {
+                Thread.sleep(forTimeInterval: 0.05)
+                if !target.isHidden && !appName.isEmpty {
+                    _ = executeAppleScript("tell application \"System Events\" to set visible of process \"\(appName)\" to false")
+                }
+            }
+            return target.isHidden || hidden
+        }
+
+        if action.hasPrefix("hide_app:") {
+            let query = String(action.dropFirst("hide_app:".count)).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let selfPID = pid_t(ProcessInfo.processInfo.processIdentifier)
+            guard let target = NSWorkspace.shared.runningApplications.first(where: {
+                $0.processIdentifier != selfPID &&
+                ($0.localizedName?.lowercased() == query || $0.localizedName?.lowercased().contains(query) == true)
+            }) else { return false }
+            let appName = (target.localizedName ?? "").replacingOccurrences(of: "\"", with: "\\\"")
+            var hidden = target.hide()
+            if !hidden && !appName.isEmpty {
+                hidden = executeAppleScript("tell application \"System Events\" to set visible of process \"\(appName)\" to false").success
+            }
+            return target.isHidden || hidden
+        }
+
+        if action == "unhide_all" {
+            let selfPID = pid_t(ProcessInfo.processInfo.processIdentifier)
+            var count = 0
+            for app in NSWorkspace.shared.runningApplications where app.processIdentifier != selfPID && app.isHidden && app.activationPolicy == .regular {
+                if app.unhide() { count += 1 }
+            }
+            return count > 0
+        }
+
+        let needsTargetFocus = ["copy", "paste", "copy_and_paste", "select_all", "undo", "redo", "new_line", "delete_last_word", "minimize", "maximize", "close", "tab_close"]
+        if needsTargetFocus.contains(action) {
+            _ = focusExternalTargetAppIfNeeded()
+        }
+
+        if action == "copy_and_paste" {
+            let copied = performCopyAction()
+            Thread.sleep(forTimeInterval: 0.12)
+            let pasted = performPasteAction()
+            return copied && pasted
+        }
+        if action == "copy" {
+            return performCopyAction()
+        }
+        if action == "paste" {
+            return performPasteAction()
+        }
+
         let script: String
         switch action {
         case "close":
@@ -438,14 +603,17 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
         case "new_line":
             script = "tell application \"System Events\" to key code 36"
         case "select_all":
+            if AXIsProcessTrusted(), postKeyboardShortcut(keyCode: 0, flags: .maskCommand) { return true }
             script = "tell application \"System Events\" to keystroke \"a\" using {command down}"
         case "copy":
-            script = "tell application \"System Events\" to keystroke \"c\" using {command down}"
+            return performCopyAction()
         case "paste":
-            script = "tell application \"System Events\" to keystroke \"v\" using {command down}"
+            return performPasteAction()
         case "undo":
+            if AXIsProcessTrusted(), postKeyboardShortcut(keyCode: 6, flags: .maskCommand) { return true }
             script = "tell application \"System Events\" to keystroke \"z\" using {command down}"
         case "redo":
+            if AXIsProcessTrusted(), postKeyboardShortcut(keyCode: 6, flags: [.maskCommand, .maskShift]) { return true }
             script = "tell application \"System Events\" to keystroke \"z\" using {command down, shift down}"
         case "delete_last_word":
             script = "tell application \"System Events\" to key code 51 using {option down}"

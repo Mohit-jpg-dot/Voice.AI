@@ -116,7 +116,7 @@ public final class MemoryStore: MemoryStoreProtocol, @unchecked Sendable {
     private var activeAccountId: String = "local_default"
     private var items: [StructuredMemoryItem] = []
     private var profile: UserMemoryProfile
-    private let maxShortTermTurns = 40
+    private let maxShortTermTurns = 150
 
     public init(
         accountId: String = "local_default",
@@ -156,6 +156,23 @@ public final class MemoryStore: MemoryStoreProtocol, @unchecked Sendable {
         kind: MemoryFactKind = .fact,
         tags: [String] = []
     ) async -> StructuredMemoryItem {
+        return await rememberWithTimestamp(
+            content: content,
+            scope: scope,
+            kind: kind,
+            tags: tags,
+            timestamp: Date()
+        )
+    }
+
+    @discardableResult
+    public func rememberWithTimestamp(
+        content: String,
+        scope: MemoryScope = .longTerm,
+        kind: MemoryFactKind = .fact,
+        tags: [String] = [],
+        timestamp: Date = Date()
+    ) async -> StructuredMemoryItem {
         let scrubbed = SecretRedactor.redact(content).trimmingCharacters(in: .whitespacesAndNewlines)
         let vector = await embeddingProvider.embed(scrubbed)
 
@@ -167,7 +184,9 @@ public final class MemoryStore: MemoryStoreProtocol, @unchecked Sendable {
                 kind: kind,
                 content: scrubbed,
                 tags: tags.map { SecretRedactor.redact($0) },
-                embedding: vector
+                embedding: vector,
+                createdAt: timestamp,
+                updatedAt: timestamp
             )
             items.insert(item, at: 0)
 
@@ -341,7 +360,417 @@ public final class MemoryStore: MemoryStoreProtocol, @unchecked Sendable {
         }
         let path = storageURL(for: target)
         try? FileManager.default.removeItem(at: path)
+        let fallback = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VoiceAIMemory")
+            .appendingPathComponent("memory_\(sha256(target)).enc")
+        try? FileManager.default.removeItem(at: fallback)
         lock.unlock()
+
+        EventBus.shared.publish(VoiceEvent(
+            kind: .memoryUpdated,
+            source: "MemoryStore",
+            severity: .info,
+            payload: ["action": "clear", "accountId": target]
+        ))
+    }
+
+    /// Clears ALL local persistent memory stores (encrypted MemoryStore, LocalMemoryManager, LocalChatMemoryManager, and EncryptedChatHistoryManager).
+    public func clearAllMemoryAndConversations(accountId: String? = nil) {
+        clearAccountMemory(accountId: accountId)
+        LocalMemoryManager.shared.clearAllMemory()
+        LocalChatMemoryManager.shared.clearChat()
+        EncryptedChatHistoryManager.shared.clearAllHistory()
+    }
+
+    // MARK: - Automatic Conversational Memory, Preference Extraction & Episodic Recall
+
+    private static let dayFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.dateFormat = "yyyy-MM-dd"
+        return df
+    }()
+
+    private static let displayTimestampFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.dateStyle = .medium
+        df.timeStyle = .short
+        return df
+    }()
+
+    /// Automatically records a Q/A conversation exchange and extracts durable user facts/preferences.
+    public func recordConversationExchange(
+        userText: String,
+        assistantText: String,
+        timestamp: Date = Date(),
+        sourceTag: String = "conversation"
+    ) async {
+        guard !EncryptedChatHistoryManager.shared.isIncognito,
+              EncryptedChatHistoryManager.shared.retentionPolicy != .never else {
+            return
+        }
+
+        let cleanUser = SecretRedactor.redact(userText).trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanAssistant = SecretRedactor.redact(assistantText).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanUser.isEmpty || !cleanAssistant.isEmpty else { return }
+
+        // Avoid recursive bloat when the user is literally asking to dump/clear/forget memories.
+        let lowerUser = cleanUser.lowercased()
+        let isMetaMemoryAction = lowerUser == "my memories" || lowerUser == "list my memories"
+            || lowerUser.hasPrefix("forget ") || lowerUser.hasPrefix("bhool jao ")
+            || lowerUser.contains("previous command") || lowerUser.contains("last command")
+            || lowerUser.contains("previous result") || lowerUser.contains("last result")
+            || lowerUser.contains("what did i just ask") || lowerUser.contains("what did we just do")
+        guard !isMetaMemoryAction else { return }
+
+        let conciseAssistant = String(cleanAssistant.prefix(400))
+        let formattedTurn = "User: \(cleanUser)\nAssistant: \(conciseAssistant)"
+        let normalizedNew = Self.normalizeForDeduplication(formattedTurn)
+
+        // Deduplicate against recent identical turn logged within 15s (e.g. executor + AppState.recordSession).
+        let isDuplicate: Bool = lock.withLock {
+            let recentTurns = items.prefix(5).filter { $0.scope == .shortTerm && $0.kind == .turn }
+            return recentTurns.contains { existing in
+                abs(existing.createdAt.timeIntervalSince(timestamp)) < 15.0 &&
+                Self.normalizeForDeduplication(existing.content) == normalizedNew
+            }
+        }
+
+        if !isDuplicate {
+            let dayTag = Self.dayFormatter.string(from: timestamp)
+            _ = await rememberWithTimestamp(
+                content: formattedTurn,
+                scope: .shortTerm,
+                kind: .turn,
+                tags: [sourceTag, "day:\(dayTag)"],
+                timestamp: timestamp
+            )
+        }
+
+        // Automatically extract durable personal facts & preferences shared by the user.
+        let extracted = Self.extractUserFacts(from: cleanUser)
+        if !extracted.isEmpty {
+            let existingNormalized = Set(allItems(scope: .longTerm).map { Self.normalizeForDeduplication($0.content) })
+            for fact in extracted {
+                let norm = Self.normalizeForDeduplication(fact.content)
+                if !norm.isEmpty && !existingNormalized.contains(norm) {
+                    _ = await rememberWithTimestamp(
+                        content: fact.content,
+                        scope: .longTerm,
+                        kind: fact.kind,
+                        tags: fact.tags,
+                        timestamp: timestamp
+                    )
+                }
+                if let displayName = fact.extractedName, !displayName.isEmpty {
+                    updateUserProfile { prof in
+                        prof.displayName = displayName
+                    }
+                }
+            }
+        }
+    }
+
+    /// Extracts personal facts, name, location, project, or preferences from natural user utterances.
+    public static func extractUserFacts(from rawUserText: String) -> [(content: String, kind: MemoryFactKind, tags: [String], extractedName: String?)] {
+        let trimmed = rawUserText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 4 && trimmed.count <= 400 else { return [] }
+        let lower = trimmed.lowercased()
+
+        // Skip questions (we extract statements about the user, not queries).
+        if trimmed.hasSuffix("?") && !lower.contains("my name is") && !lower.contains("i live in") && !lower.contains("i prefer") {
+            return []
+        }
+
+        var results: [(content: String, kind: MemoryFactKind, tags: [String], extractedName: String?)] = []
+
+        // 1. Name extraction: "my name is Mohit" / "call me Mohit"
+        let namePatterns = [
+            #"(?:my name is|call me|mera naam)\s+([A-Za-z][A-Za-z0-9 ._-]{1,32})"#,
+        ]
+        for pattern in namePatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+               let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)),
+               let range = Range(match.range(at: 1), in: trimmed) {
+                var candidate = String(trimmed[range])
+                    .components(separatedBy: CharacterSet(charactersIn: ",.!?\n"))
+                    .first?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                for stopWord in [" and ", " hai", " from ", " living "] {
+                    if let r = candidate.range(of: stopWord, options: .caseInsensitive) {
+                        candidate = String(candidate[..<r.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                }
+                if !candidate.isEmpty && candidate.split(separator: " ").count <= 3 {
+                    results.append((
+                        content: "User's name is \(candidate)",
+                        kind: .profile,
+                        tags: ["auto_extracted", "name"],
+                        extractedName: candidate
+                    ))
+                    break
+                }
+            }
+        }
+
+        // 2. Location / background: "i live in ..." / "i am from ..."
+        if let locRange = lower.range(of: #"(?:i live in|i am from|i'm from|i stay in)\s+([^,.!?\n]{2,60})"#, options: .regularExpression) {
+            let clause = String(trimmed[locRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            results.append((content: "User info: \(clause)", kind: .fact, tags: ["auto_extracted", "location"], extractedName: nil))
+        }
+
+        // 3. Work / projects: "i work on ..." / "i work as ..." / "my project is ..." / "i am building ..."
+        if let workRange = lower.range(of: #"(?:i work on|i work as|i'm working on|i am working on|my project is|i am building)\s+([^.!?\n]{3,90})"#, options: .regularExpression) {
+            let clause = String(trimmed[workRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            results.append((content: "User work/project: \(clause)", kind: .project, tags: ["auto_extracted", "project"], extractedName: nil))
+        }
+
+        // 4. Preferences / favorites: "i prefer ..." / "i like ..." / "my favorite ..." / "i love ..." / "always answer in ..."
+        if let prefRange = lower.range(of: #"(?:i prefer|i usually prefer|my favorite .+ is|i really like|i love|always (?:answer|reply|use|write|keep) )\s*([^.!?\n]{3,100})"#, options: .regularExpression) {
+            let clause = String(trimmed[prefRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !clause.lowercased().contains("play ") && !clause.lowercased().contains("open ") {
+                results.append((content: "User preference: \(clause)", kind: .preference, tags: ["auto_extracted", "preference"], extractedName: nil))
+            }
+        }
+
+        return results
+    }
+
+    /// Recalls recorded conversations and facts matching a timeframe ("yesterday", "today", "last week") or topic.
+    public func recallByTimeOrTopic(
+        query: String,
+        referenceDate: Date = Date(),
+        conversations: [ConversationSessionRecord]? = nil
+    ) async -> (answer: String, matchedCount: Int) {
+        let lower = query.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let cal = Calendar.current
+        let todayStart = cal.startOfDay(for: referenceDate)
+        let yesterdayStart = cal.date(byAdding: .day, value: -1, to: todayStart) ?? referenceDate.addingTimeInterval(-86400)
+        let weekStart = cal.date(byAdding: .day, value: -7, to: todayStart) ?? referenceDate.addingTimeInterval(-7 * 86400)
+
+        let asksYesterday = lower.contains("yesterday") || lower.contains("kal kya") || lower.contains("kal humne")
+        let asksToday = !asksYesterday && (lower.contains("today") || lower.contains("aaj kya"))
+        let asksWeek = lower.contains("last week") || lower.contains("this week") || lower.contains("past few days")
+        let asksAboutMe = lower.contains("about me") || lower.contains("who am i") || lower.contains("my profile") || lower.contains("what is my name") || lower.contains("what's my name")
+        let asksLastTurn = lower.contains("previous command") || lower.contains("last command") ||
+            lower.contains("previous question") || lower.contains("last question") ||
+            lower.contains("previous result") || lower.contains("last result") ||
+            lower.contains("last response") || lower.contains("previous response") ||
+            lower.contains("what did i just ask") || lower.contains("what did i just say") ||
+            lower.contains("what did we just do") || lower.contains("what did you just say")
+
+        if conversations == nil {
+            EncryptedChatHistoryManager.shared.loadForAccount(accountId: AccountAuthService.shared.currentAccount?.id ?? "local")
+        }
+        let sessions = conversations ?? EncryptedChatHistoryManager.shared.listConversations()
+        let currentItems = allItems(scope: nil)
+        let localEntries = LocalMemoryManager.shared.allEntries()
+
+        let inWindow: (Date) -> Bool = { date in
+            if asksYesterday {
+                return date >= yesterdayStart && date < todayStart
+            }
+            if asksToday {
+                return date >= todayStart
+            }
+            if asksWeek {
+                return date >= weekStart
+            }
+            return true
+        }
+
+        if asksAboutMe {
+            var facts: [String] = []
+            let prof = userProfile()
+            if !prof.displayName.isEmpty && prof.displayName != "User" {
+                facts.append("Your name is \(prof.displayName).")
+            }
+            for item in currentItems where item.scope == .longTerm {
+                facts.append("• [\(item.kind.rawValue)] \(item.content)")
+            }
+            if facts.isEmpty {
+                return ("I don't have saved personal facts about you yet. Tell me things like your name, preferences, or what you're working on and I'll remember them locally.", 0)
+            }
+            let summary = "Here is what I remember about you:\n" + facts.prefix(10).joined(separator: "\n")
+            return (summary, facts.count)
+        }
+
+        if asksLastTurn {
+            if let latestTurn = currentItems.first(where: { $0.scope == .shortTerm && $0.kind == .turn }) {
+                return ("Here is your previous command and result:\n\(latestTurn.content)", 1)
+            }
+            if let latestSession = sessions.first, let lastUser = latestSession.messages.last(where: { $0.role == "user" }) {
+                let lastAssistant = latestSession.messages.last(where: { $0.role == "assistant" && $0.timestamp >= lastUser.timestamp })
+                let reply = lastAssistant.map { "\nAssistant: \($0.content)" } ?? ""
+                return ("Here is your previous command and result:\nUser: \(lastUser.content)\(reply)", 1)
+            }
+            return ("I don't have a previous command recorded yet.", 0)
+        }
+
+        // Collect chronological conversation exchanges from EncryptedChatHistoryManager & MemoryStore turns.
+        var timelineLines: [(date: Date, text: String)] = []
+
+        for session in sessions {
+            var idx = 0
+            while idx < session.messages.count {
+                let msg = session.messages[idx]
+                if inWindow(msg.timestamp) {
+                    if msg.role == "user" {
+                        var line = "[\(Self.displayTimestampFormatter.string(from: msg.timestamp))] You asked: \"\(msg.content)\""
+                        if idx + 1 < session.messages.count && session.messages[idx + 1].role == "assistant" {
+                            let reply = String(session.messages[idx + 1].content.prefix(160))
+                            line += " -> I replied: \"\(reply)\""
+                            idx += 1
+                        }
+                        timelineLines.append((msg.timestamp, line))
+                    }
+                }
+                idx += 1
+            }
+        }
+
+        // Merge MemoryStore turns / facts that fall inside the window (deduplicating against session lines).
+        var seenNorms = Set(timelineLines.map { Self.normalizeForDeduplication($0.text) })
+        for item in currentItems where inWindow(item.createdAt) {
+            if asksYesterday || asksToday || asksWeek || item.kind == .turn {
+                let singleLine = item.content.replacingOccurrences(of: "\n", with: " | ")
+                let norm = Self.normalizeForDeduplication(singleLine)
+                if !norm.isEmpty && !seenNorms.contains(norm) {
+                    let alreadyCovered = timelineLines.contains { existing in
+                        abs(existing.date.timeIntervalSince(item.createdAt)) < 30 &&
+                        Self.normalizeForDeduplication(item.content).contains(
+                            String(Self.normalizeForDeduplication(existing.text).prefix(20))
+                        )
+                    }
+                    if !alreadyCovered {
+                        seenNorms.insert(norm)
+                        timelineLines.append((item.createdAt, "[\(Self.displayTimestampFormatter.string(from: item.createdAt))] \(String(singleLine.prefix(240)))"))
+                    }
+                }
+            }
+        }
+
+        // Include LocalMemoryManager entries only for explicit historical timeframe windows if needed.
+        if (asksYesterday || asksToday || asksWeek) && timelineLines.isEmpty {
+            for entry in localEntries where inWindow(entry.timestamp) {
+                timelineLines.append((entry.timestamp, "[\(Self.displayTimestampFormatter.string(from: entry.timestamp))] \(String(entry.content.prefix(220)))"))
+            }
+        }
+
+        if asksYesterday || asksToday || asksWeek {
+            let sorted = timelineLines.sorted { $0.date > $1.date }
+            let periodLabel = asksYesterday ? "yesterday" : (asksToday ? "today" : "the past week")
+            if sorted.isEmpty {
+                return ("I don't have any conversations or activities recorded from \(periodLabel) yet.", 0)
+            }
+            let bullets = sorted.prefix(12).map { "• \($0.text)" }.joined(separator: "\n")
+            return ("Here is what we did and talked about \(periodLabel):\n\(bullets)", sorted.count)
+        }
+
+        // General topic/episodic recall ("what did we talk about ...", "remember what we discussed ...").
+        let strippedTopic = lower
+            .replacingOccurrences(of: "what did we talk about", with: "")
+            .replacingOccurrences(of: "what did we do", with: "")
+            .replacingOccurrences(of: "what did we discuss", with: "")
+            .replacingOccurrences(of: "what do you remember about", with: "")
+            .replacingOccurrences(of: "what do you remember", with: "")
+            .replacingOccurrences(of: "remember our", with: "")
+            .replacingOccurrences(of: "previous conversation", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+
+        if strippedTopic.isEmpty || strippedTopic == "before" || strippedTopic == "earlier" || strippedTopic == "last time" {
+            let sorted = timelineLines.sorted { $0.date > $1.date }
+            if sorted.isEmpty {
+                let longTerm = allItems(scope: .longTerm)
+                if longTerm.isEmpty {
+                    return ("I don't have any saved conversations or memories yet.", 0)
+                }
+                let bullets = longTerm.prefix(8).map { "• [\($0.kind.rawValue)] \($0.content)" }.joined(separator: "\n")
+                return ("Here is what I remember:\n\(bullets)", longTerm.count)
+            }
+            let bullets = sorted.prefix(8).map { "• \($0.text)" }.joined(separator: "\n")
+            return ("Here is our recent conversation history:\n\(bullets)", sorted.count)
+        }
+
+        let hits = await searchSemantic(query: strippedTopic, scope: nil, limit: 6)
+        let matchingSessions = timelineLines.filter { $0.text.lowercased().contains(strippedTopic) }
+        var combined: [String] = []
+        for h in hits {
+            combined.append("• [\(h.item.kind.rawValue), \(Self.displayTimestampFormatter.string(from: h.item.createdAt))] \(h.item.content.replacingOccurrences(of: "\n", with: " | "))")
+        }
+        for m in matchingSessions.prefix(4) where !combined.contains(where: { $0.contains(m.text) }) {
+            combined.append("• \(m.text)")
+        }
+
+        if combined.isEmpty {
+            return ("I don't have any saved memories or conversations matching \"\(strippedTopic)\" yet.", 0)
+        }
+        return ("Here is what I found in local memory for \"\(strippedTopic)\":\n\(combined.prefix(8).joined(separator: "\n"))", combined.count)
+    }
+
+    /// Exports all locally stored memory (profile, structured long/short-term memories, local entries, and conversations) as pretty-printed JSON.
+    public func exportAllMemoryDocument(conversations: [ConversationSessionRecord]? = nil) -> String {
+        struct ExportMemoryItemDTO: Codable {
+            let id: String
+            let scope: String
+            let kind: String
+            let content: String
+            let tags: [String]
+            let createdAt: Date
+            let updatedAt: Date
+        }
+        struct ExportBundleDTO: Codable {
+            let exportedAt: Date
+            let accountId: String
+            let profile: UserMemoryProfile
+            let memories: [ExportMemoryItemDTO]
+            let localEntries: [MemoryEntry]
+            let conversations: [ConversationSessionRecord]
+        }
+
+        let accountId = lock.withLock { activeAccountId }
+        let prof = userProfile()
+        let allMem = allItems(scope: nil).map {
+            ExportMemoryItemDTO(
+                id: $0.id,
+                scope: $0.scope.rawValue,
+                kind: $0.kind.rawValue,
+                content: $0.content,
+                tags: $0.tags,
+                createdAt: $0.createdAt,
+                updatedAt: $0.updatedAt
+            )
+        }
+        let localEntries = LocalMemoryManager.shared.allEntries()
+        if conversations == nil {
+            EncryptedChatHistoryManager.shared.loadForAccount(accountId: AccountAuthService.shared.currentAccount?.id ?? "local")
+        }
+        let sessionList = conversations ?? EncryptedChatHistoryManager.shared.listConversations()
+
+        let bundle = ExportBundleDTO(
+            exportedAt: Date(),
+            accountId: accountId,
+            profile: prof,
+            memories: allMem,
+            localEntries: localEntries,
+            conversations: sessionList
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        if let data = try? encoder.encode(bundle),
+           let str = String(data: data, encoding: .utf8) {
+            return str
+        }
+        return "{}"
+    }
+
+    private static func normalizeForDeduplication(_ text: String) -> String {
+        text.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     // MARK: - Per-Account AES-256 Encryption at Rest (Keychain-Bound)

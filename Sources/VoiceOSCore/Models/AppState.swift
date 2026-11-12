@@ -74,11 +74,26 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     @Published public var structuredMemories: [StructuredMemoryItem] = []
     @Published public var configuredRoutines: [VoiceRoutine] = []
     private var recordingWatchdogWorkItem: DispatchWorkItem?
+    private var autoCollapseWorkItem: DispatchWorkItem?
+    private var activeResponseToken = UUID()
     
-    // "THE VOICE" Hands-free ambient wake-word mode & one-time search permission
+    // "THE VOICE" Hands-free ambient wake-word mode & 24/7 continuous listening mode
     @Published public var isTheVoiceModeEnabled: Bool {
         didSet {
             TheVoiceAmbientListener.shared.isTheVoiceModeEnabled = isTheVoiceModeEnabled
+        }
+    }
+    @Published public var isAlwaysOnListeningMode: Bool {
+        didSet {
+            TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode = isAlwaysOnListeningMode
+            if isAlwaysOnListeningMode && !isTheVoiceModeEnabled {
+                isTheVoiceModeEnabled = true
+            }
+        }
+    }
+    @Published public var isComputerAudioListeningEnabled: Bool {
+        didSet {
+            ComputerAudioListenerService.shared.isEnabled = isComputerAudioListeningEnabled
         }
     }
     @Published public var hasGrantedBackgroundSearchPermission: Bool
@@ -94,8 +109,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     // Real User Profile - loaded dynamically from system & UserDefaults
     @Published public var userName: String
     @Published public var userEmail: String
-    @Published public var trialDaysUsed: Int = 1
-    @Published public var trialDaysTotal: Int = 14
+    @Published public var isHoveringPill: Bool = false
     
     // Real Metrics - persisted in UserDefaults
     @Published public var totalSessions: Int
@@ -230,9 +244,11 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         }
         self.chatMessages = LocalChatMemoryManager.shared.allMessages()
 
-        // 4. Initialize stored properties for "THE VOICE" Mode & Background Search Permissions
+        // 4. Initialize stored properties for "THE VOICE" Mode, 24/7 Listening & Background Search Permissions
         let theVoiceSaved = UserDefaults.standard.object(forKey: "VoiceAI_TheVoiceModeActive") == nil ? true : UserDefaults.standard.bool(forKey: "VoiceAI_TheVoiceModeActive")
         self.isTheVoiceModeEnabled = theVoiceSaved
+        self.isAlwaysOnListeningMode = TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode
+        self.isComputerAudioListeningEnabled = ComputerAudioListenerService.shared.isEnabled
         let mediaDisplaySaved = UserDefaults.standard.object(forKey: "VoiceAI_NotchMediaDisplayEnabled") == nil ? true : UserDefaults.standard.bool(forKey: "VoiceAI_NotchMediaDisplayEnabled")
         self.isNotchMediaDisplayEnabled = mediaDisplaySaved
         self.hasGrantedBackgroundSearchPermission = UserDefaults.standard.bool(forKey: "VoiceAI_BackgroundSearchPermissionGranted")
@@ -265,8 +281,65 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                 self.interruptAndExecute(instruction: command)
             }
         }
+        TheVoiceAmbientListener.shared.canAcceptDirectSilenceCommand = { [weak self] in
+            guard let self = self else { return false }
+            return self.islandState != .resting ||
+                   self.isMediaExpanded ||
+                   SpeechPipelineEngine.shared.currentState == .speaking
+        }
+        TheVoiceAmbientListener.shared.onHotCaptureLevels = { [weak self] levels in
+            self?.audioLevels = levels
+        }
+        TheVoiceAmbientListener.shared.onHotCapturePartial = { [weak self] partial in
+            DispatchQueue.main.async {
+                self?.currentTranscript = partial
+            }
+        }
+        TheVoiceAmbientListener.shared.onHotCaptureCompleted = { [weak self] captured in
+            guard let self = self else { return }
+            let trimmed = captured.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                BoringSoundEngine.shared.playError()
+                self.executionState = .idle
+                if !self.isPinned, case .voiceCompact = self.islandState {
+                    self.islandState = .resting
+                }
+                return
+            }
+            if Self.isSilenceAndCollapseCommand(trimmed) {
+                self.shutUpAndCollapse()
+                return
+            }
+            self.submitTypedPrompt(trimmed)
+        }
         if theVoiceSaved {
             TheVoiceAmbientListener.shared.startAmbientListening()
+        }
+        EventBus.shared.subscribe(matching: .custom("notch_collapse_requested")) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.shutUpAndCollapse()
+            }
+        }
+        EventBus.shared.subscribe(matching: .custom("listening_mode_changed")) { [weak self] evt in
+            let alwaysOn = evt.payload["always_on"] == "true"
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if self.isAlwaysOnListeningMode != alwaysOn {
+                    self.isAlwaysOnListeningMode = alwaysOn
+                }
+                if alwaysOn && !self.isTheVoiceModeEnabled {
+                    self.isTheVoiceModeEnabled = true
+                }
+            }
+        }
+        EventBus.shared.subscribe(matching: .custom("computer_audio_listening_changed")) { [weak self] evt in
+            let enabled = evt.payload["enabled"] == "true"
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if self.isComputerAudioListeningEnabled != enabled {
+                    self.isComputerAudioListeningEnabled = enabled
+                }
+            }
         }
 
         // 7. Bind voice pipeline
@@ -566,6 +639,19 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
             }
             self.conversationSessions = EncryptedChatHistoryManager.shared.listConversations()
         }
+
+        // Persist structured conversational turn & extract user preferences locally
+        Task {
+            await MemoryStore.shared.recordConversationExchange(
+                userText: prompt,
+                assistantText: response,
+                timestamp: Date(),
+                sourceTag: appName
+            )
+            await MainActor.run {
+                self.structuredMemories = MemoryStore.shared.allItems(scope: nil)
+            }
+        }
         
         // Persist to SQLite Database (APP-SECRET.md line 122-131)
         let userId = AccountAuthService.shared.currentAccount?.id ?? "local_user"
@@ -595,6 +681,13 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         self.conversationSessions = []
         UserDefaults.standard.removeObject(forKey: "VoiceOS_RecentHistory")
         recomputeAppUsages()
+    }
+
+    public func clearAllMemoryAndHistory() {
+        MemoryStore.shared.clearAllMemoryAndConversations()
+        self.structuredMemories = []
+        self.chatMessages = LocalChatMemoryManager.shared.allMessages()
+        clearAllHistory()
     }
 
     public func toggleHistorySidebar() {
@@ -768,7 +861,9 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         }
 
         pipeline.onLiveTranscript = { [weak self] liveText in
-            self?.currentTranscript = liveText
+            DispatchQueue.main.async {
+                self?.currentTranscript = liveText
+            }
         }
 
         pipeline.onTranscriptionCompleted = { [weak self] transcript, mode in
@@ -803,6 +898,12 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
             }
 
             let lower = polished.polishedText.lowercased()
+            if Self.isSilenceAndCollapseCommand(polished.polishedText) {
+                DispatchQueue.main.async {
+                    self.shutUpAndCollapse()
+                }
+                return
+            }
             if Self.isBrainSuggestionPrompt(lower) {
                 DispatchQueue.main.async {
                     self.triggerBrainThinkAndSuggest()
@@ -855,68 +956,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                     }
                     guard !Task.isCancelled else { return }
                     await MainActor.run {
-                        if result.success {
-                            BoringSoundEngine.shared.playDone()
-                        } else {
-                            BoringSoundEngine.shared.playError()
-                        }
-                        self.executionState = .completed(result.summary)
-                        self.currentAgentReply = result.summary
-                        self.latestAutonomousResult = result
-                        let targetLower = result.targetAppName.lowercased()
-                        let summaryLower = result.summary.lowercased()
-                        let isDirectOpen = targetLower == "browser" ||
-                                           targetLower == "safari" ||
-                                           targetLower == "google chrome" ||
-                                           targetLower == "whatsapp" ||
-                                           targetLower == "spotify" ||
-                                           targetLower == "terminal" ||
-                                           targetLower == "finder" ||
-                                           targetLower.contains("chrome") ||
-                                           targetLower.contains("safari") ||
-                                           summaryLower.contains("opened") ||
-                                           summaryLower.contains("opening") ||
-                                           summaryLower.contains("launched") ||
-                                           summaryLower.contains("playing")
-                        self.isAwaitingRedirectConfirmation = !isDirectOpen && result.targetURL != nil
-                        if self.isAwaitingRedirectConfirmation {
-                            BoringSoundEngine.shared.playAlert()
-                        }
-                        self.islandState = .hoverExpanded
-                        
-                        // Add assistant response to persistent chat memory
-                        _ = LocalChatMemoryManager.shared.addMessage(
-                            role: "assistant",
-                            text: result.summary,
-                            sourceURL: result.targetURL?.absoluteString,
-                            sourceTitle: result.targetAppName
-                        )
-                        self.chatMessages = LocalChatMemoryManager.shared.allMessages()
-
-                        self.recordSession(
-                            mode: .agent,
-                            prompt: polished.polishedText,
-                            response: result.summary,
-                            appName: result.targetAppName,
-                            appIcon: "sparkles"
-                        )
-                        // Speak aloud direct answer / summary
-                        SpeechPipelineEngine.shared.speakResponse(result.summary)
-                        if result.success {
-                            self.refreshBrainSuggestions(query: polished.polishedText, reply: result.summary)
-                        }
-
-                        // Keep HUD open so user can read response; auto-close after 12s if not pinned/hovered
-                        if !self.isPinned {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 12.0) {
-                                guard !self.isPinned else { return }
-                                if case .speaking = self.executionState { return }
-                                self.isAwaitingRedirectConfirmation = false
-                                if case .hoverExpanded = self.islandState {
-                                    self.islandState = .resting
-                                }
-                            }
-                        }
+                        self.presentCompletedAgentResult(result, forPrompt: polished.polishedText)
                     }
                 }
             } else {
@@ -991,6 +1031,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     }
     
     public func triggerVoice(mode: VoiceTriggerMode) {
+        cancelPendingAutoCollapse()
         recordingWatchdogWorkItem?.cancel()
         GoogleSearchEngine.shared.clearLastAnswer()
         BoringSoundEngine.shared.playQueued()
@@ -1077,9 +1118,163 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         recordingWatchdogWorkItem?.cancel()
         recordingWatchdogWorkItem = nil
         BoringSoundEngine.shared.playSend()
+        if TheVoiceAmbientListener.shared.isCapturingHotCommand {
+            TheVoiceAmbientListener.shared.cancelHotFollowUpCapture()
+            if case .listening = executionState {
+                executionState = .idle
+            }
+            if !isPinned, case .voiceCompact = islandState {
+                islandState = .resting
+            }
+            return
+        }
         SpeechPipelineEngine.shared.stopRecording()
     }
+
+    @discardableResult
+    public func cancelPendingAutoCollapse() -> UUID {
+        autoCollapseWorkItem?.cancel()
+        autoCollapseWorkItem = nil
+        let next = UUID()
+        activeResponseToken = next
+        return next
+    }
+
+    public func scheduleAutoCollapseAfterSpeech(delaySeconds: Double = 0.55, forToken token: UUID) {
+        autoCollapseWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            guard self.activeResponseToken == token else { return }
+            guard !self.isPinned, !self.isTypingFocused, !self.isHoveringPill, !self.isCurrentlyListening, !self.isAwaitingRedirectConfirmation else { return }
+            guard SpeechPipelineEngine.shared.currentState != .speaking else { return }
+            self.autoCollapseWorkItem = nil
+            self.isMediaExpanded = false
+            if case .hoverExpanded = self.islandState {
+                self.islandState = .resting
+            }
+            if case .completed = self.executionState {
+                self.executionState = .idle
+            }
+        }
+        autoCollapseWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds, execute: work)
+    }
+
+    private func presentCompletedAgentResult(_ result: AutonomousExecutionResult, forPrompt prompt: String) {
+        cancelPendingAutoCollapse()
+        let responseToken = self.activeResponseToken
+
+        if result.success {
+            BoringSoundEngine.shared.playDone()
+        } else {
+            BoringSoundEngine.shared.playError()
+        }
+        self.executionState = .completed(result.summary)
+        self.currentAgentReply = result.summary
+        self.latestAutonomousResult = result
+        let targetLower = result.targetAppName.lowercased()
+        let summaryLower = result.summary.lowercased()
+        let isDirectOpen = targetLower == "browser" ||
+                           targetLower == "safari" ||
+                           targetLower == "google chrome" ||
+                           targetLower == "whatsapp" ||
+                           targetLower == "spotify" ||
+                           targetLower == "terminal" ||
+                           targetLower == "finder" ||
+                           targetLower.contains("chrome") ||
+                           targetLower.contains("safari") ||
+                           summaryLower.contains("opened") ||
+                           summaryLower.contains("opening") ||
+                           summaryLower.contains("launched") ||
+                           summaryLower.contains("playing")
+        self.isAwaitingRedirectConfirmation = !isDirectOpen && result.targetURL != nil
+        if self.isAwaitingRedirectConfirmation {
+            BoringSoundEngine.shared.playAlert()
+        }
+        self.islandState = .hoverExpanded
+
+        _ = LocalChatMemoryManager.shared.addMessage(
+            role: "assistant",
+            text: result.summary,
+            sourceURL: result.targetURL?.absoluteString,
+            sourceTitle: result.targetAppName
+        )
+        self.chatMessages = LocalChatMemoryManager.shared.allMessages()
+
+        self.recordSession(
+            mode: .agent,
+            prompt: prompt,
+            response: result.summary,
+            appName: result.targetAppName,
+            appIcon: "sparkles"
+        )
+
+        // Speak the full response cleanly ONCE, and automatically collapse the pill smoothly after speech finishes
+        SpeechPipelineEngine.shared.speakResponse(result.summary) { [weak self] in
+            DispatchQueue.main.async {
+                self?.scheduleAutoCollapseAfterSpeech(delaySeconds: 0.55, forToken: responseToken)
+            }
+        }
+        if result.success {
+            self.refreshBrainSuggestions(query: prompt, reply: result.summary)
+        }
+    }
     
+    public static func isSilenceAndCollapseCommand(_ text: String) -> Bool {
+        var normalized = text
+            .replacingOccurrences(of: "[,.!?।\"']", with: " ", options: .regularExpression)
+            .lowercased()
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return false }
+
+        let customWake = NSRegularExpression.escapedPattern(for: TheVoiceAmbientListener.shared.wakePhrase)
+        let wakePrefixPattern = "^(?:(?:hey|hi|ok|okay|hello|the|arey)\\s+)?(?:jarvis|friday|voice|\(customWake))\\s+"
+        normalized = normalized.replacingOccurrences(of: wakePrefixPattern, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let wakeSuffixPattern = "\\s+(?:jarvis|friday|voice|\(customWake))$"
+        normalized = normalized.replacingOccurrences(of: wakeSuffixPattern, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let trimWords = ["please ", "ji ", "sir ", "bro "]
+        for w in trimWords where normalized.hasPrefix(w) {
+            normalized = String(normalized.dropFirst(w.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        for w in [" please", " right now", " now", " already", " man", " bro", " sir"] where normalized.hasSuffix(w) {
+            normalized = String(normalized.dropLast(w.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        let silencePhrases: Set<String> = [
+            "shut up", "be quiet", "quiet", "stop talking", "stop speaking",
+            "mute yourself", "silence", "go away", "close notch", "collapse",
+            "chup", "chup ho jao", "chup kar", "chup raho", "bas karo", "shant ho jao"
+        ]
+        return silencePhrases.contains(normalized) || normalized.hasPrefix("shut up ")
+    }
+
+    /// Silences TTS/execution immediately and resizes any opened Notch hover pill back to resting size.
+    public func shutUpAndCollapse() {
+        recordingWatchdogWorkItem?.cancel()
+        recordingWatchdogWorkItem = nil
+        currentExecutionTask?.cancel()
+        currentExecutionTask = nil
+        if ComputerUseOperator.shared.isRunning {
+            ComputerUseOperator.shared.stopActiveRun()
+        }
+        SpeechPipelineEngine.shared.bargeIn()
+        if case .recording = SpeechPipelineEngine.shared.currentState {
+            SpeechPipelineEngine.shared.cancel()
+        }
+        _ = PersonaManager.shared.evaluateSafetyGuardrail(userInput: "shut up")
+        isPinned = false
+        isMediaExpanded = false
+        isTypingFocused = false
+        isAwaitingRedirectConfirmation = false
+        isScreenCaptureActive = false
+        executionState = .idle
+        islandState = .resting
+    }
+
     private static func isBrainSuggestionPrompt(_ lower: String) -> Bool {
         lower.contains("suggest something") || lower.contains("what should i do next") ||
         lower.contains("give me suggestions") || lower.contains("brain suggest") ||
@@ -1089,6 +1284,12 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     public func submitTypedPrompt(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        if Self.isSilenceAndCollapseCommand(trimmed) {
+            promptInputText = ""
+            shutUpAndCollapse()
+            return
+        }
+        cancelPendingAutoCollapse()
         // Support instant barge-in when user sends a typed follow-up while speaking
         SpeechPipelineEngine.shared.bargeIn()
         if Self.isBrainSuggestionPrompt(trimmed.lowercased()) {
@@ -1129,54 +1330,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
             }
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                if result.success {
-                    BoringSoundEngine.shared.playDone()
-                } else {
-                    BoringSoundEngine.shared.playError()
-                }
-                self.executionState = .completed(result.summary)
-                self.currentAgentReply = result.summary
-                self.latestAutonomousResult = result
-                let targetLower = result.targetAppName.lowercased()
-                let summaryLower = result.summary.lowercased()
-                let isDirectOpen = targetLower == "browser" ||
-                                   targetLower == "safari" ||
-                                   targetLower == "google chrome" ||
-                                   targetLower == "whatsapp" ||
-                                   targetLower == "spotify" ||
-                                   targetLower == "terminal" ||
-                                   targetLower == "finder" ||
-                                   targetLower.contains("chrome") ||
-                                   targetLower.contains("safari") ||
-                                   summaryLower.contains("opened") ||
-                                   summaryLower.contains("opening") ||
-                                   summaryLower.contains("launched") ||
-                                   summaryLower.contains("playing")
-                self.isAwaitingRedirectConfirmation = !isDirectOpen && result.targetURL != nil
-                if self.isAwaitingRedirectConfirmation {
-                    BoringSoundEngine.shared.playAlert()
-                }
-                
-                // Add assistant response to persistent chat memory
-                _ = LocalChatMemoryManager.shared.addMessage(
-                    role: "assistant",
-                    text: result.summary,
-                    sourceURL: result.targetURL?.absoluteString,
-                    sourceTitle: result.targetAppName
-                )
-                self.chatMessages = LocalChatMemoryManager.shared.allMessages()
-                
-                self.recordSession(
-                    mode: .agent,
-                    prompt: trimmed,
-                    response: result.summary,
-                    appName: result.targetAppName,
-                    appIcon: "sparkles"
-                )
-                SpeechPipelineEngine.shared.speakResponse(result.summary)
-                if result.success {
-                    self.refreshBrainSuggestions(query: trimmed, reply: result.summary)
-                }
+                self.presentCompletedAgentResult(result, forPrompt: trimmed)
             }
         }
     }
@@ -1240,6 +1394,15 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
             )
             let finalSummary = llmResult?.summary ?? captured.analysis.summary
             let sourceLabel = llmResult?.usedProvider ?? "Screen OCR"
+            ConversationSessionContext.shared.setLastScreenContext(
+                ConversationSessionContext.CapturedScreenContext(
+                    pngData: captured.pngData,
+                    ocrText: captured.analysis.fullText,
+                    appName: captured.analysis.activeAppTitle ?? "Active App",
+                    initialSummary: finalSummary,
+                    capturedAt: Date()
+                )
+            )
             await MainActor.run {
                 self.executionState = .completed(finalSummary)
                 self.currentAgentReply = finalSummary
@@ -1293,6 +1456,13 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     /// Halts ongoing execution or TTS speech, cancels background agent tasks,
     /// and either switches to active listening or immediately executes the user's new instruction.
     public func interruptAndExecute(instruction: String, mode: VoiceTriggerMode = .agent) {
+        // 0. If user tells Jarvis to shut up / quiet down, silence speech and collapse open hover pill immediately
+        cancelPendingAutoCollapse()
+        if Self.isSilenceAndCollapseCommand(instruction) {
+            shutUpAndCollapse()
+            return
+        }
+
         // 1. Cancel ongoing autonomous agent or computer-use task
         currentExecutionTask?.cancel()
         currentExecutionTask = nil
@@ -1310,11 +1480,22 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         let lower = trimmed.lowercased()
         let activeWake = TheVoiceAmbientListener.shared.wakePhrase
         
-        // If the wake word was spoken without an immediate instruction ("jarvis", "hey jarvis", "voice", "hey voice")
-        if trimmed.isEmpty || lower == activeWake || lower == "hey \(activeWake)" || lower == "ok \(activeWake)" ||
-           lower == "voice" || lower == "the voice" || lower == "hey voice" || lower == "ok voice" {
-            // Switch to active listening state with the chosen trigger mode
-            triggerVoice(mode: mode)
+        // If bare wake word ("jarvis", "bro", "hey bro", "voice", "hey voice") without command:
+        let isBareWake = trimmed.isEmpty || lower == activeWake || lower == "hey \(activeWake)" || lower == "ok \(activeWake)" ||
+                         lower == "voice" || lower == "the voice" || lower == "hey voice" || lower == "ok voice" ||
+                         lower == "bro" || lower == "hey bro" || lower == "yo bro" || lower == "ok bro"
+        if isBareWake {
+            // Use zero-lag hot capture on the already-running ambient AVAudioEngine when available!
+            if mode == .agent && TheVoiceAmbientListener.shared.isListening {
+                recordingWatchdogWorkItem?.cancel()
+                GoogleSearchEngine.shared.clearLastAnswer()
+                currentTranscript = ""
+                executionState = .listening(.agent)
+                islandState = .voiceCompact(.agent)
+                TheVoiceAmbientListener.shared.beginHotFollowUpCapture()
+            } else {
+                triggerVoice(mode: mode)
+            }
         } else {
             let cleanedPrompt = TheVoiceAmbientListener.extractCommand(from: trimmed, wakePhrase: activeWake) ?? trimmed
             submitTypedPrompt(cleanedPrompt.isEmpty ? trimmed : cleanedPrompt)

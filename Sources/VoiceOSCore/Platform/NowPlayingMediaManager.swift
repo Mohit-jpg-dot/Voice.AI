@@ -98,17 +98,23 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
     }
     
     public func startPolling() {
+        if ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1" {
+            return
+        }
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.refreshTimer?.invalidate()
             self.pollMediaState()
-            self.refreshTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
+            self.refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
                 self?.pollMediaState()
             }
         }
     }
     
     public func pollMediaState() {
+        if ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1" {
+            return
+        }
         Task.detached(priority: .utility) { [weak self] in
             guard let self = self else { return }
             let detected = await self.detectActivePlayback()
@@ -230,22 +236,19 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
                     repeat with t in tabs of w
                         set tTitle to title of t
                         if (tTitle contains " - YouTube") or (tTitle contains "YouTube" and tTitle is not "YouTube") then
-                            set isPlaying to false
                             try
-                                set jsCheck to (execute t javascript "var v = document.querySelector('video'); (v && !v.paused && !v.ended && v.currentTime > 0 && v.readyState >= 2) ? 'PLAYING' : 'NOT_PLAYING';")
-                                if jsCheck is "PLAYING" then
-                                    set isPlaying to true
-                                else if jsCheck is "NOT_PLAYING" then
-                                    set isPlaying to false
+                                set jsCheck to (execute t javascript "var v = document.querySelector('video'); (v && !v.paused && !v.ended && v.currentTime > 0 && v.readyState >= 2) ? (Math.floor(v.currentTime || 0) + '|||' + Math.floor(v.duration || 0)) : 'NOT_PLAYING';")
+                                if jsCheck is not "NOT_PLAYING" and jsCheck contains "|||" then
+                                    return tTitle & "|||" & jsCheck
                                 end if
                             on error
                                 try
                                     set isPlaying to (audible of t)
+                                    if isPlaying then
+                                        return tTitle & "|||0|||0"
+                                    end if
                                 end try
                             end try
-                            if isPlaying then
-                                return tTitle
-                            end if
                         end if
                     end repeat
                 end repeat
@@ -256,10 +259,18 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         return ""
         """
         
-        let rawTitle = runAppleScript(script).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !rawTitle.isEmpty && (rawTitle.contains("YouTube") || rawTitle.contains("- YouTube")) else {
+        let rawPayload = runAppleScript(script).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawPayload.isEmpty else {
             return nil
         }
+        let metaParts = rawPayload.components(separatedBy: "|||")
+        let rawTitle = metaParts.first ?? rawPayload
+        guard rawTitle.contains("YouTube") || rawTitle.contains("- YouTube") else {
+            return nil
+        }
+        let pos = metaParts.count > 1 ? (Int(metaParts[1]) ?? 0) : 0
+        let dur = metaParts.count > 2 ? (Int(metaParts[2]) ?? 0) : 0
+        let progress = dur > 0 ? min(1.0, max(0.0, Double(pos) / Double(dur))) : 0.0
         
         // Clean YouTube title: "Song Name - Artist - YouTube" -> "Song Name", "Artist"
         let clean = rawTitle
@@ -283,9 +294,9 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
             albumOrContext: "\(appName) Player",
             source: .youtube,
             isPlaying: true,
-            progress: 0.35,
-            positionSeconds: 65,
-            durationSeconds: 210
+            progress: progress,
+            positionSeconds: pos,
+            durationSeconds: dur
         )
     }
     
@@ -300,9 +311,9 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
                         set tName to name of t
                         if (tName contains " - YouTube") or (tName contains "YouTube" and tName is not "YouTube") then
                             try
-                                set isPlaying to do JavaScript "var v = document.querySelector('video'); !!(v && !v.paused && !v.ended && v.currentTime > 0 && v.readyState >= 2);" in t
-                                if isPlaying is true or isPlaying is "true" then
-                                    return tName
+                                set jsOut to do JavaScript "var v = document.querySelector('video'); (v && !v.paused && !v.ended && v.currentTime > 0 && v.readyState >= 2) ? (Math.floor(v.currentTime || 0) + '|||' + Math.floor(v.duration || 0)) : 'NOT_PLAYING';" in t
+                                if jsOut is not "NOT_PLAYING" and jsOut contains "|||" then
+                                    return tName & "|||" & jsOut
                                 end if
                             on error
                                 -- If JavaScript is not allowed, do not falsely report playing
@@ -317,10 +328,18 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         return ""
         """
         
-        let rawTitle = runAppleScript(script).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !rawTitle.isEmpty && rawTitle.contains("YouTube") else {
+        let rawPayload = runAppleScript(script).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawPayload.isEmpty else {
             return nil
         }
+        let metaParts = rawPayload.components(separatedBy: "|||")
+        let rawTitle = metaParts.first ?? rawPayload
+        guard rawTitle.contains("YouTube") else {
+            return nil
+        }
+        let pos = metaParts.count > 1 ? (Int(metaParts[1]) ?? 0) : 0
+        let dur = metaParts.count > 2 ? (Int(metaParts[2]) ?? 0) : 0
+        let progress = dur > 0 ? min(1.0, max(0.0, Double(pos) / Double(dur))) : 0.0
         
         let clean = rawTitle
             .replacingOccurrences(of: " - YouTube", with: "")
@@ -335,9 +354,9 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
             albumOrContext: "Video Playback",
             source: .youtube,
             isPlaying: true,
-            progress: 0.40,
-            positionSeconds: 90,
-            durationSeconds: 240
+            progress: progress,
+            positionSeconds: pos,
+            durationSeconds: dur
         )
     }
     

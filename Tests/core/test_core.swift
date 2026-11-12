@@ -1471,6 +1471,473 @@ if let activeSess = histState.conversationSessions.first(where: { $0.id == first
     assertTrue(false, "Expected active multi-turn conversation in conversationSessions")
 }
 
+// =========================================================================
+// [Suite 42] "Jarvis Shut Up" Silence & Hover Pill Collapse
+// =========================================================================
+print("\n[Suite 42] Silence & Hover Pill Collapse ('Jarvis, shut up')")
+
+assertTrue(AppState.isSilenceAndCollapseCommand("shut up"), "Detects bare 'shut up'")
+assertTrue(AppState.isSilenceAndCollapseCommand("Jarvis, shut up!"), "Detects 'Jarvis, shut up!'")
+assertTrue(AppState.isSilenceAndCollapseCommand("Hey Jarvis shut up right now"), "Detects wake-prefixed shut up")
+assertTrue(AppState.isSilenceAndCollapseCommand("chup ho jao"), "Detects Hinglish silence command")
+assertTrue(AppState.isSilenceAndCollapseCommand("stop talking please"), "Detects polite silence command")
+assertTrue(!AppState.isSilenceAndCollapseCommand("shut down the computer"), "Does not misclassify shutdown as shut up")
+assertTrue(!AppState.isSilenceAndCollapseCommand("open Google Chrome"), "Does not misclassify normal app launch")
+
+histState.islandState = .hoverExpanded
+histState.isMediaExpanded = true
+histState.isPinned = true
+histState.isTypingFocused = true
+histState.executionState = .thinking("Speaking...")
+histState.submitTypedPrompt("Jarvis, shut up")
+assertEqual(histState.islandState, .resting, "Saying 'Jarvis, shut up' collapses opened hover pill back to resting size")
+assertEqual(histState.isPinned, false, "Collapsed pill clears pin state cleanly")
+assertEqual(histState.isMediaExpanded, false, "Collapsed pill closes expanded media panel")
+assertEqual(histState.isTypingFocused, false, "Collapsed pill releases typing focus")
+assertEqual(histState.executionState, .idle, "Execution state resets to idle without talking back")
+
+histState.islandState = .hoverExpanded
+histState.interruptAndExecute(instruction: "Hey Jarvis shut up", mode: .agent)
+assertEqual(histState.islandState, .resting, "Wake-word interruption with 'Hey Jarvis shut up' collapses opened hover pill")
+
+// =========================================================================
+// [Suite 43] Fast Wake Phonetics, 24/7 'Bro' Mode & Persistent Screen Context
+// =========================================================================
+print("\n[Suite 43] Fast Wake, 24/7 'Bro' Mode & Saved Screen Context")
+
+assertEqual(
+    TheVoiceAmbientListener.extractCommand(from: "jervis open Terminal", wakePhrase: "jarvis"),
+    "open Terminal",
+    "Phonetic alias 'jervis' wakes Jarvis on first attempt"
+)
+assertEqual(
+    TheVoiceAmbientListener.extractCommand(from: "Hey service open Safari", wakePhrase: "jarvis"),
+    "open Safari",
+    "Prefixed phonetic alias 'Hey service' recovers missed 'Hey Jarvis' wake trigger"
+)
+assertEqual(
+    TheVoiceAmbientListener.extractCommand(from: "bro open this up", wakePhrase: "jarvis"),
+    "open this up",
+    "Casual 'bro <cmd>' starter extracts trailing computer-use command cleanly"
+)
+assertEqual(
+    TheVoiceAmbientListener.extractCommand(from: "hey bro tell me what Swift is", wakePhrase: "jarvis"),
+    "tell me what Swift is",
+    "'hey bro' extracts conversational query cleanly"
+)
+assertTrue(
+    TheVoiceAmbientListener.extractCommand(from: "cool story bro", wakePhrase: "jarvis") == nil,
+    "Trailing casual 'bro' in background chatter does not false-trigger wake word"
+)
+
+if case .openApp(let broApp) = AgentToolParser.parse(query: "bro open Safari") {
+    assertTrue(broApp.lowercased().contains("safari"), "'bro open Safari' maps directly to opening Safari")
+} else {
+    assertTrue(false, "'bro open Safari' should parse to .openApp(Safari)")
+}
+
+if case .screenRead = AgentToolParser.parse(query: "can u see whats on my screen") {
+    assertTrue(true, "'can u see whats on my screen' parses to screen vision capture")
+} else {
+    assertTrue(false, "'can u see whats on my screen' must parse to .screenRead")
+}
+
+// 24/7 Listening Voice Toggle & Restoration
+let prevAlwaysOn = TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode
+let prevTheVoice = TheVoiceAmbientListener.shared.isTheVoiceModeEnabled
+let onRes = await AutonomousAgentExecutor.shared.planAndExecute(taskDescription: "turn on 24/7 listening", triggerMode: .agent)
+assertTrue(onRes.success && TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode, "Voice command turns on 24/7 listening mode cleanly")
+let offRes = await AutonomousAgentExecutor.shared.planAndExecute(taskDescription: "wake word only mode", triggerMode: .agent)
+assertTrue(offRes.success && !TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode, "Voice command restores wake-word-only mode cleanly")
+TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode = prevAlwaysOn
+TheVoiceAmbientListener.shared.isTheVoiceModeEnabled = prevTheVoice
+
+// Persistent Saved Screenshot Context Follow-Up (No Pill Click Required)
+ConversationSessionContext.shared.setLastScreenContext(
+    ConversationSessionContext.CapturedScreenContext(
+        pngData: nil,
+        ocrText: "Build Failed: Undefined symbol _main in AppDelegate.swift line 42",
+        appName: "Xcode",
+        initialSummary: "Xcode shows a linker build error on AppDelegate.swift line 42."
+    )
+)
+let followUpScreen = await AutonomousAgentExecutor.shared.planAndExecute(taskDescription: "what error is on it?", triggerMode: .agent)
+assertTrue(
+    followUpScreen.success && (followUpScreen.summary.contains("AppDelegate.swift") || followUpScreen.summary.contains("_main") || followUpScreen.summary.contains("Xcode")),
+    "Voice follow-up answers from stored screenshot context without interacting with the pill: \(followUpScreen.summary)"
+)
+let clearScreen = await AutonomousAgentExecutor.shared.planAndExecute(taskDescription: "forget the screen", triggerMode: .agent)
+assertTrue(clearScreen.success && ConversationSessionContext.shared.lastScreenContext() == nil, "Cleared stored screenshot context cleanly")
+
+// =========================================================================
+// [Suite 44] Full Single-Speak TTS, Auto-Collapse & Instant Voice Interruption
+// =========================================================================
+print("\n[Suite 44] Full Single-Speak TTS, Auto-Collapse & Instant Barge-In")
+
+let sixSentenceReply = "Sentence one explains the topic. Sentence two gives details. Sentence three clarifies steps. Sentence four adds context. Sentence five provides an example. Sentence six wraps up cleanly."
+let fullSpoken = SpeechPipelineEngine.formatMinimalisticSpokenReply(rawText: sixSentenceReply)
+assertTrue(fullSpoken.contains("Sentence six wraps up cleanly"), "Full response is preserved for speaking without 4-sentence cutoff")
+
+assertEqual(TheVoiceAmbientListener.extractCommand(from: "bro", wakePhrase: "jarvis"), "", "Standalone 'bro' triggers immediate interruption & listening")
+assertEqual(TheVoiceAmbientListener.extractCommand(from: "hey bro", wakePhrase: "jarvis"), "", "Standalone 'hey bro' triggers immediate interruption & listening")
+assertEqual(TheVoiceAmbientListener.extractCommand(from: "Voice", wakePhrase: "jarvis"), "", "Standalone 'Voice' triggers immediate interruption & listening")
+
+assertTrue(
+    TheVoiceAmbientListener.looksLikeOwnTTSEcho("Sentence one explains", spokenNormalized: sixSentenceReply.lowercased()),
+    "Detects speaker self-echo accurately during active TTS"
+)
+assertTrue(
+    !TheVoiceAmbientListener.looksLikeOwnTTSEcho("open Chrome right now", spokenNormalized: sixSentenceReply.lowercased()),
+    "Distinguishes new human voice interruption from speaker echo"
+)
+
+await MainActor.run {
+    histState.isPinned = false
+    histState.isTypingFocused = false
+    histState.isAwaitingRedirectConfirmation = false
+    histState.islandState = .hoverExpanded
+    histState.executionState = .completed("All done")
+    let token = histState.cancelPendingAutoCollapse()
+    SpeechPipelineEngine.shared.speakResponse("") {
+        DispatchQueue.main.async {
+            histState.scheduleAutoCollapseAfterSpeech(delaySeconds: 0.05, forToken: token)
+        }
+    }
+}
+try? await Task.sleep(nanoseconds: 180_000_000)
+await MainActor.run {
+    assertEqual(histState.islandState, .resting, "Hover pill automatically collapses to normal resting size after full response finishes")
+}
+// Verify explicit interruption via 'bro'
+await MainActor.run {
+    histState.islandState = .hoverExpanded
+    histState.interruptAndExecute(instruction: "bro", mode: .agent)
+    assertEqual(histState.islandState, .voiceCompact(.agent), "Interrupting with 'bro' immediately switches pill into compact listening state")
+}
+
+// MARK: - 45. Screenshot Target Parsing & Ambient Listener Diagnostics
+assertEqual(
+    AgentToolParser.parse(query: "take screenshot of this window"),
+    .takeScreenshot(target: "window", destination: "clipboard"),
+    "Screenshot command referencing 'this window' parses target='window'"
+)
+assertEqual(
+    AgentToolParser.parse(query: "take a screenshot to desktop"),
+    .takeScreenshot(target: "screen", destination: "desktop"),
+    "Screenshot command referencing 'desktop' parses target='screen' and destination='desktop'"
+)
+assertTrue(
+    !TheVoiceAmbientListener.shared.diagnosticSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+    "TheVoiceAmbientListener exposes a non-empty diagnosticSummary"
+)
+
+// MARK: - 46. Self-TTS Echo Guard, Background Media Filtering & Computer Audio Mode
+assertTrue(
+    TheVoiceAmbientListener.looksLikeOwnTTSEcho(
+        "say bro or tell me",
+        spokenNormalized: "continuous listening mode is on say bro or tell me what to do"
+    ),
+    "Detects multi-word bigram echo even when TTS output contains wake words"
+)
+assertTrue(
+    TheVoiceAmbientListener.shouldSuppressWakeAsSelfEcho(
+        transcript: "say bro or tell me what to do",
+        spokenNormalized: "continuous listening mode is on say bro or tell me what to do",
+        isTTSActiveOrCoolingDown: true
+    ),
+    "Suppresses wake trigger when Voice.AI hears its own spoken reply"
+)
+assertTrue(
+    !TheVoiceAmbientListener.shouldSuppressWakeAsSelfEcho(
+        transcript: "shut up",
+        spokenNormalized: "the weather in ludhiana is sunny today",
+        isTTSActiveOrCoolingDown: true
+    ),
+    "Allows explicit human 'shut up' interrupt during active TTS"
+)
+assertTrue(
+    !TheVoiceAmbientListener.shouldSuppressWakeAsSelfEcho(
+        transcript: "jarvis open chrome",
+        spokenNormalized: "the weather in ludhiana is sunny today",
+        isTTSActiveOrCoolingDown: true
+    ),
+    "Allows distinct human wake command during active TTS"
+)
+assertEqual(
+    TheVoiceAmbientListener.extractCommand(from: "bro look at this gameplay", wakePhrase: "jarvis", allowCasualShortTriggers: false),
+    nil,
+    "Ignores casual 'bro' speech coming from background YouTube/video playback"
+)
+assertEqual(
+    TheVoiceAmbientListener.extractCommand(from: "jarvis pause video", wakePhrase: "jarvis", allowCasualShortTriggers: false),
+    "pause video",
+    "Still honors intentional 'Jarvis' wake command while YouTube/video playback is active"
+)
+assertEqual(
+    ComputerAudioListenerService.parseListeningToggleCommand("listen to the things my computer is making"),
+    true,
+    "Parses 'listen to the things my computer is making' to enable computer audio mode"
+)
+assertEqual(
+    ComputerAudioListenerService.parseListeningToggleCommand("stop listening to my computer"),
+    false,
+    "Parses 'stop listening to my computer' to disable computer audio mode"
+)
+assertEqual(
+    ComputerAudioListenerService.parseListeningToggleCommand("listen to music"),
+    nil,
+    "Does not hijack 'listen to music' playback commands"
+)
+assertEqual(
+    ComputerAudioListenerService.parseListeningToggleCommand("stop listening"),
+    nil,
+    "Does not hijack generic wake-word 'stop listening' command"
+)
+assertTrue(
+    ComputerAudioListenerService.isComputerAudioQuestion("what is this video talking about?"),
+    "Recognizes voice questions asking about active computer/video audio"
+)
+
+ComputerAudioListenerService.shared.isEnabled = false
+ComputerAudioListenerService.shared.clearTranscriptBuffer()
+let enableAudioRes = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "listen to the things my computer is making",
+    triggerMode: .agent
+)
+assertTrue(enableAudioRes.success && ComputerAudioListenerService.shared.isEnabled, "Voice command turns ON computer audio listening mode")
+
+ComputerAudioListenerService.shared.appendTranscriptSegment(
+    "Today we are building a fast macOS voice agent with ScreenCaptureKit audio.",
+    sourceTitle: "Swift Tutorial"
+)
+let askAudioRes = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "what is this video talking about?",
+    triggerMode: .agent
+)
+assertTrue(askAudioRes.success && askAudioRes.summary.lowercased().contains("screencapturekit"), "Answers questions using captured computer audio context")
+
+let disableAudioRes = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "stop listening to my computer",
+    triggerMode: .agent
+)
+assertTrue(disableAudioRes.success && !ComputerAudioListenerService.shared.isEnabled, "Voice command turns OFF computer audio listening mode")
+ComputerAudioListenerService.shared.clearTranscriptBuffer()
+
+// MARK: - 47. Self-Quit (with Ollama Shutdown) & Real-Time Host Telemetry
+assertTrue(AutonomousAgentExecutor.isSelfQuitCommand("quit yourself"), "Recognizes 'quit yourself'")
+assertTrue(AutonomousAgentExecutor.isSelfQuitCommand("shut yourself down"), "Recognizes 'shut yourself down'")
+assertTrue(AutonomousAgentExecutor.isSelfQuitCommand("quit voice ai"), "Recognizes 'quit voice ai'")
+assertTrue(!AutonomousAgentExecutor.isSelfQuitCommand("quit Chrome"), "Does not confuse 'quit Chrome' with self-quit")
+
+nonisolated(unsafe) var sawSelfQuitEvent = false
+let quitSubId = EventBus.shared.subscribe(matching: .custom("app_self_quit_requested")) { evt in
+    if evt.payload["quit_ollama"] == "true" {
+        sawSelfQuitEvent = true
+    }
+}
+let quitSelfRes = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "quit yourself",
+    triggerMode: .agent
+)
+EventBus.shared.unsubscribe(quitSubId)
+assertTrue(quitSelfRes.success && quitSelfRes.summary.lowercased().contains("ollama") && sawSelfQuitEvent, "Self-quit command emits Ollama+App shutdown event and confirms shutdown")
+
+let telemetrySnapshot = LiveHostTelemetrySnapshot.capture()
+assertTrue(telemetrySnapshot.cpuCoreCount > 0, "Real-time telemetry reports positive host CPU cores")
+assertTrue((0...100).contains(telemetrySnapshot.ramUsagePercent), "Real-time telemetry reports valid host RAM percentage")
+assertTrue(!telemetrySnapshot.activeAIMode.isEmpty && !telemetrySnapshot.activeMicName.isEmpty, "Real-time telemetry captures active AI mode & audio input")
+
+// MARK: - 48. Multi-Location File/Folder Ops, Local Search, Copy/Paste & Hide Window
+let isolatedDir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true).appendingPathComponent("voiceai_fs_suite48_\(UUID().uuidString)", isDirectory: true)
+setenv("VOICE_AI_SANDBOX_DIR", isolatedDir.path, 1)
+
+let mkDesktopFolder = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "create folder mohit.dev on my desktop",
+    triggerMode: .agent
+)
+let expectedDesktopFolder = isolatedDir.appendingPathComponent("Desktop/mohit.dev", isDirectory: true)
+assertTrue(mkDesktopFolder.success && FileManager.default.fileExists(atPath: expectedDesktopFolder.path), "Creates folder inside Desktop instead of literal 'mohit.dev on my desktop' name")
+
+let mkDocsFile = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "create file readme.md in documents",
+    triggerMode: .agent
+)
+let expectedDocsFile = isolatedDir.appendingPathComponent("Documents/readme.md")
+assertTrue(mkDocsFile.success && FileManager.default.fileExists(atPath: expectedDocsFile.path), "Creates file inside Documents with preserved filename")
+
+let locateFolderRes = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "find folder mohit.dev",
+    triggerMode: .agent
+)
+assertTrue(locateFolderRes.success && locateFolderRes.summary.lowercased().contains("mohit.dev"), "Locates folder locally with exact path")
+
+let missingLocateRes = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "locate file definitely_nonexistent_xyz_999.txt",
+    triggerMode: .agent
+)
+assertTrue(!missingLocateRes.success, "Never hallucinates success when a file or folder does not exist locally")
+
+let naturalLocateRes = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "find my mohit.dev folder on my desktop",
+    triggerMode: .agent
+)
+assertTrue(naturalLocateRes.success && naturalLocateRes.summary.lowercased().contains("mohit.dev"), "Locates folder with natural phrasing 'find my mohit.dev folder on my desktop'")
+
+unsetenv("VOICE_AI_SANDBOX_DIR")
+try? FileManager.default.removeItem(at: isolatedDir)
+
+assertEqual(AgentToolParser.parse(query: "copy this"), .windowAction(action: "copy"), "Parses 'copy this' to copy window action")
+assertEqual(AgentToolParser.parse(query: "press command c"), .windowAction(action: "copy"), "Parses 'press command c' to copy window action")
+assertEqual(AgentToolParser.parse(query: "copy this to clipboard"), .windowAction(action: "copy"), "Parses 'copy this to clipboard' to copy window action")
+assertEqual(AgentToolParser.parse(query: "paste here"), .windowAction(action: "paste"), "Parses 'paste here' to paste window action")
+assertEqual(AgentToolParser.parse(query: "press command v"), .windowAction(action: "paste"), "Parses 'press command v' to paste window action")
+assertEqual(AgentToolParser.parse(query: "copy and paste"), .windowAction(action: "copy_and_paste"), "Parses 'copy and paste' combined action")
+let copyToClipboardExec = await AutonomousAgentExecutor.shared.planAndExecute(taskDescription: "copy this to clipboard", triggerMode: .agent)
+assertTrue(copyToClipboardExec.success && !copyToClipboardExec.summary.contains("Could not find"), "Copy to clipboard does not get hijacked by file copy")
+assertEqual(AgentToolParser.parse(query: "hide this window"), .windowAction(action: "hide"), "Parses 'hide this window' natively instead of hallucinating")
+assertEqual(AgentToolParser.parse(query: "press command h"), .windowAction(action: "hide"), "Parses 'press command h' natively to hide window")
+assertEqual(AgentToolParser.parse(query: "hide Terminal"), .windowAction(action: "hide_app:Terminal"), "Parses named window/app hide")
+assertEqual(AgentToolParser.parse(query: "show hidden windows"), .windowAction(action: "unhide_all"), "Parses 'show hidden windows'")
+assertEqual(AgentToolParser.parse(query: "play the current video or song"), .mediaPlay(app: nil, query: nil, action: "play"), "Parses 'play the current video or song' for screen-context play without opening a new tab")
+assertEqual(AgentToolParser.parse(query: "play this video on screen"), .mediaPlay(app: "YouTube", query: nil, action: "play"), "Parses 'play this video on screen' for YouTube on-screen play")
+assertEqual(AgentToolParser.parse(query: "play this song on spotify"), .mediaPlay(app: "Spotify", query: nil, action: "play"), "Parses 'play this song on spotify' for Spotify play without search")
+
+// MARK: - 49. Real-Time Statement Terminator ('dot' / '.') Detection
+let t1 = TheVoiceAmbientListener.stripStatementTerminator("open chrome dot")
+assertTrue(t1.terminated && t1.cleaned == "open chrome", "Stops on trailing spoken 'dot' and strips 'dot' cleanly")
+
+let t2 = TheVoiceAmbientListener.stripStatementTerminator("create folder mohit.dev dot")
+assertTrue(t2.terminated && t2.cleaned == "create folder mohit.dev", "Preserves internal dots like 'mohit.dev' while stopping on trailing 'dot'")
+
+let t3 = TheVoiceAmbientListener.stripStatementTerminator("tell me the time full stop")
+assertTrue(t3.terminated && t3.cleaned == "tell me the time", "Stops on trailing 'full stop'")
+
+let t4 = TheVoiceAmbientListener.stripStatementTerminator("open chrome.")
+assertTrue(t4.terminated && t4.cleaned == "open chrome", "Stops cleanly when recognizer formats spoken 'dot' as trailing '.'")
+
+let t5 = TheVoiceAmbientListener.stripStatementTerminator("go to wikipedia.org")
+assertTrue(!t5.terminated && t5.cleaned == "go to wikipedia.org", "Does NOT stop mid-domain without trailing terminator")
+
+let t6 = TheVoiceAmbientListener.stripStatementTerminator("dot")
+assertTrue(t6.terminated && t6.cleaned.isEmpty, "Standalone 'dot' signals stop without submitting stray text")
+
+// MARK: - 50. File Creation Inside Custom Folders + Writing Poems + Clean Agents List
+let customFsSandbox = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true).appendingPathComponent("voiceai_fs_suite50_\(UUID().uuidString)", isDirectory: true)
+let mohitFolder = customFsSandbox.appendingPathComponent("Mohit or deaf", isDirectory: true)
+try? FileManager.default.createDirectory(at: mohitFolder, withIntermediateDirectories: true)
+setenv("VOICE_AI_SANDBOX_DIR", customFsSandbox.path, 1)
+
+let poemInFolderRes = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "create a file inside Moto deaf folder and write a poem in it",
+    triggerMode: .agent
+)
+let expectedPoemPath = mohitFolder.appendingPathComponent("poem.txt")
+let writtenPoemText = (try? String(contentsOf: expectedPoemPath, encoding: .utf8)) ?? ""
+assertTrue(
+    poemInFolderRes.success &&
+    FileManager.default.fileExists(atPath: expectedPoemPath.path) &&
+    !writtenPoemText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+    "Creates poem.txt inside fuzzy-matched target folder ('Mohit or deaf') and writes poem content inside it"
+)
+
+unsetenv("VOICE_AI_SANDBOX_DIR")
+try? FileManager.default.removeItem(at: customFsSandbox)
+
+assertEqual(TheVoiceAmbientListener.extractCommand(from: "bro open safari", wakePhrase: "jarvis"), "open safari", "Allows 'bro' wake word cleanly")
+assertEqual(TheVoiceAmbientListener.extractCommand(from: "hey bro open safari", wakePhrase: "jarvis", allowCasualShortTriggers: false), "open safari", "Allows 'hey bro' even when media is playing")
+TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode = false
+let enable24x7Res = await AutonomousAgentExecutor.shared.planAndExecute(taskDescription: "turn on the 24/7 listening mode", triggerMode: .agent)
+assertTrue(enable24x7Res.success && TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode && !enable24x7Res.summary.lowercased().contains("dark mode"), "Voice command 'turn on the 24/7 listening mode' enables 24/7 mode instead of Dark Mode")
+TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode = false
+let enableBroModeRes = await AutonomousAgentExecutor.shared.planAndExecute(taskDescription: "turn on the Bro mode", triggerMode: .agent)
+assertTrue(enableBroModeRes.success && TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode && !enableBroModeRes.summary.lowercased().contains("dark mode"), "Voice command 'turn on the Bro mode' enables 24/7 Bro mode instead of Dark Mode")
+let disableBroModeRes = await AutonomousAgentExecutor.shared.planAndExecute(taskDescription: "turn off bro mode", triggerMode: .agent)
+assertTrue(disableBroModeRes.success && !TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode, "Voice command 'turn off bro mode' switches back to wake-word mode")
+let freshAgentsMgr = CodingAgentManager()
+assertEqual(freshAgentsMgr.activeAgents.count, 0, "CodingAgentManager starts with zero fake seeded agents")
+
+// Test Suite 51: Persistent Local Memory, Auto Preference Extraction, Yesterday Recall, Download & Clear
+print("\n[Suite 51] Persistent Local Memory, Episodic Recall, Export & Clear")
+let memTestId = "test_suite51_\(UUID().uuidString)"
+let suite51Store = MemoryStore(accountId: memTestId)
+suite51Store.clearAccountMemory(accountId: memTestId)
+
+let now51 = Date()
+let yesterday51 = Calendar.current.date(byAdding: .day, value: -1, to: now51) ?? now51.addingTimeInterval(-86400)
+
+// Empty yesterday check must respond honestly with 0 matches
+let emptyYesterdayRecall = await suite51Store.recallByTimeOrTopic(
+    query: "what did we do yesterday?",
+    referenceDate: now51,
+    conversations: []
+)
+assertTrue(emptyYesterdayRecall.matchedCount == 0 && emptyYesterdayRecall.answer.lowercased().contains("don't have"), "Honest empty response when nothing recorded yesterday")
+
+// Record today's turn with automatic fact/preference extraction + yesterday's turn
+await suite51Store.recordConversationExchange(
+    userText: "My name is Mohit and I prefer dark terminal themes",
+    assistantText: "Nice to meet you Mohit! Noted your preference.",
+    timestamp: now51,
+    sourceTag: "Voice.AI"
+)
+await suite51Store.recordConversationExchange(
+    userText: "Yesterday we built the VoiceOS sidebar layout",
+    assistantText: "Reviewed sidebar spacing and scroll containers.",
+    timestamp: yesterday51,
+    sourceTag: "Voice.AI"
+)
+
+assertEqual(suite51Store.userProfile().displayName, "Mohit", "Automatically extracted user display name into profile")
+assertTrue(suite51Store.allItems(scope: .longTerm).contains(where: { $0.content.contains("Mohit") }), "Saved long-term user profile memory")
+assertTrue(suite51Store.allItems(scope: .longTerm).contains(where: { $0.kind == .preference && $0.content.lowercased().contains("dark terminal themes") }), "Automatically extracted user preference into long-term memory")
+
+let yesterdayRecall = await suite51Store.recallByTimeOrTopic(
+    query: "what did we do yesterday?",
+    referenceDate: now51,
+    conversations: []
+)
+assertTrue(yesterdayRecall.matchedCount >= 1 && yesterdayRecall.answer.contains("VoiceOS sidebar layout"), "Recalls yesterday's recorded conversation accurately")
+
+let exportedJSON = suite51Store.exportAllMemoryDocument(conversations: [])
+assertTrue(exportedJSON.contains("Mohit") && exportedJSON.contains("VoiceOS sidebar layout") && exportedJSON.contains("memories"), "Memory export JSON includes profile, long-term memories, and recorded turns")
+
+// Test end-to-end voice recall command through AutonomousAgentExecutor
+MemoryStore.shared.load(accountId: memTestId)
+await MemoryStore.shared.recordConversationExchange(
+    userText: "My name is Mohit",
+    assistantText: "Noted Mohit.",
+    timestamp: yesterday51,
+    sourceTag: "Voice.AI"
+)
+let nameRecallExec = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "what is my name?",
+    triggerMode: .agent
+)
+assertTrue(nameRecallExec.success && nameRecallExec.summary.contains("Mohit"), "Voice command 'what is my name?' recalls extracted user memory")
+
+let yesterdayExec = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "what did we do yesterday?",
+    triggerMode: .agent
+)
+assertTrue(yesterdayExec.success && (yesterdayExec.summary.contains("VoiceOS sidebar layout") || yesterdayExec.summary.contains("Mohit")), "Voice command 'what did we do yesterday?' recalls persisted cross-day history")
+
+_ = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "calculate 25 * 4",
+    triggerMode: .agent
+)
+let prevCmdExec = await AutonomousAgentExecutor.shared.planAndExecute(
+    taskDescription: "what was my previous command and result?",
+    triggerMode: .agent
+)
+assertTrue(prevCmdExec.success && prevCmdExec.summary.contains("25 * 4") && prevCmdExec.summary.contains("100"), "Immediate next command recalls the previous command and its result")
+
+// Clear Memory verification
+suite51Store.clearAccountMemory(accountId: memTestId)
+assertEqual(suite51Store.allItems(scope: nil).count, 0, "Clear memory wipes all structured memory items")
+assertEqual(suite51Store.userProfile().displayName, "User", "Clear memory resets user profile display name")
+MemoryStore.shared.clearAccountMemory(accountId: memTestId)
+MemoryStore.shared.load(accountId: "local_default")
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

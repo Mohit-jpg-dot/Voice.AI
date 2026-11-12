@@ -114,10 +114,47 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                 )
                 
             case .mediaPlay(let app, let query, let action):
-                var targetApp = app ?? "Spotify"
-                if targetApp == "Spotify" && query == nil, let current = NowPlayingMediaManager.shared.currentMedia, current.source == .youtube {
-                    targetApp = "YouTube"
+                let isDryOrTest = ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" ||
+                                  ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1"
+
+                var targetApp = app ?? ""
+                var usedScreenContext = false
+
+                // When playing current on-screen media with no search query, take a live screenshot first
+                // so we inspect whether YouTube or Spotify is open on screen instead of blindly opening a new browser tab.
+                if !isDryOrTest && query == nil && action == "play" {
+                    let captured = await ScreenVisionService.shared.captureFullScreenWithImage()
+                    usedScreenContext = true
+                    let appTitle = (captured.analysis.activeAppTitle ?? "").lowercased()
+                    let screenText = captured.analysis.fullText.lowercased()
+                    ConversationSessionContext.shared.setLastScreenContext(
+                        ConversationSessionContext.CapturedScreenContext(
+                            pngData: captured.pngData,
+                            ocrText: captured.analysis.fullText,
+                            appName: captured.analysis.activeAppTitle ?? "Screen",
+                            initialSummary: captured.analysis.summary
+                        )
+                    )
+
+                    if screenText.contains("youtube") || screenText.contains("subscribe") || screenText.contains("watch later") || screenText.contains("skip ad") {
+                        targetApp = "YouTube"
+                    } else if appTitle.contains("spotify") || screenText.contains("spotify") || screenText.contains("liked songs") {
+                        targetApp = "Spotify"
+                    } else if appTitle.contains("music") {
+                        targetApp = "Music"
+                    } else if appTitle.contains("safari") || appTitle.contains("chrome") || appTitle.contains("arc") || appTitle.contains("brave") || appTitle.contains("edge") {
+                        targetApp = "YouTube"
+                    }
                 }
+
+                if targetApp.isEmpty {
+                    if let current = NowPlayingMediaManager.shared.currentMedia {
+                        targetApp = current.source == .youtube ? "YouTube" : (current.source == .appleMusic ? "Music" : "Spotify")
+                    } else {
+                        targetApp = "Spotify"
+                    }
+                }
+
                 let success = AccessibilityControlEngine.shared.controlMedia(app: targetApp, action: action, query: query)
                 let trackInfo = AccessibilityControlEngine.shared.verifyMediaPlaybackState(app: targetApp)
                 let trackSummary: String
@@ -129,7 +166,17 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                 case "previous":
                     trackSummary = "Playing previous on \(targetApp)"
                 default:
-                    trackSummary = trackInfo.track != nil ? "Now playing: \(trackInfo.track!)" : (query != nil ? "Playing \"\(query!)\" on \(targetApp)" : "Playing on \(targetApp)")
+                    if !success {
+                        trackSummary = "Could not press play on \(targetApp). Make sure the window is open or Accessibility permission is enabled."
+                    } else if let track = trackInfo.track {
+                        trackSummary = "Now playing: \(track)"
+                    } else if let query = query {
+                        trackSummary = "Playing \"\(query)\" on \(targetApp)"
+                    } else {
+                        trackSummary = usedScreenContext
+                            ? "Pressed play on \(targetApp) using current screen context."
+                            : "Playing on \(targetApp)"
+                    }
                 }
                 return DispatchedActionResult(
                     success: success,
@@ -161,18 +208,61 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                         deepLinkURL: fileURL
                     )
                 }
+
+                // Use ScreenCaptureKit so opened windows and current app are captured rather than only desktop wallpaper
+                let cap = await ScreenVisionService.shared.captureWindowOrScreenPNG(target: target)
+                if !cap.hasScreenPermission {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                        NSWorkspace.shared.open(url)
+                    }
+                    return DispatchedActionResult(
+                        success: false,
+                        summary: "Screen Recording permission is needed to capture open windows instead of just the desktop background. Enable Voice.AI in System Settings → Privacy & Security → Screen & System Audio Recording, then reopen Voice.AI.",
+                        appName: "Screenshot"
+                    )
+                }
+
+                if let png = cap.pngData {
+                    if destination == "clipboard" {
+                        let pb = NSPasteboard.general
+                        pb.clearContents()
+                        pb.setData(png, forType: .png)
+                        try? png.write(to: fileURL)
+                        ConversationSessionContext.shared.setLastFilePath(fileURL.path)
+                        return DispatchedActionResult(
+                            success: true,
+                            summary: "Screenshot of \(cap.appName) copied to clipboard.",
+                            appName: "Screenshot",
+                            deepLinkURL: fileURL
+                        )
+                    } else {
+                        let desktopURL = FileManager.default.homeDirectoryForCurrentUser
+                            .appendingPathComponent("Desktop")
+                            .appendingPathComponent("Screenshot-\(Int(Date().timeIntervalSince1970)).png")
+                        try? png.write(to: desktopURL)
+                        ConversationSessionContext.shared.setLastFilePath(desktopURL.path)
+                        return DispatchedActionResult(
+                            success: true,
+                            summary: "Screenshot of \(cap.appName) saved to Desktop.",
+                            appName: "Screenshot",
+                            deepLinkURL: desktopURL
+                        )
+                    }
+                }
+
+                // Fallback to macOS screencapture if ScreenCaptureKit image encoding returned nil
                 let proc = Process()
                 proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
                 if destination == "clipboard" {
-                    proc.arguments = ["-c"]
+                    proc.arguments = ["-x", "-c"]
                 } else {
-                    proc.arguments = [fileURL.path]
+                    let desktopURL = FileManager.default.homeDirectoryForCurrentUser
+                        .appendingPathComponent("Desktop")
+                        .appendingPathComponent("Screenshot-\(Int(Date().timeIntervalSince1970)).png")
+                    proc.arguments = ["-x", desktopURL.path]
                 }
                 try? proc.run()
                 proc.waitUntilExit()
-                if proc.terminationStatus == 0 && destination != "clipboard" {
-                    ConversationSessionContext.shared.setLastFilePath(fileURL.path)
-                }
                 return DispatchedActionResult(
                     success: proc.terminationStatus == 0,
                     summary: destination == "clipboard" ? "Screenshot copied to clipboard." : "Screenshot saved to Desktop.",
@@ -276,9 +366,18 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                     )
                 }
                 let success = AccessibilityControlEngine.shared.performWindowAction(action)
+                let readable = action
+                    .replacingOccurrences(of: "hide_app:", with: "hide ")
+                    .replacingOccurrences(of: "_", with: " ")
+                let msg: String
+                if success {
+                    msg = "Executed \(readable)."
+                } else {
+                    msg = "Could not \(readable). Make sure Accessibility permission is enabled for Voice.AI in System Settings → Privacy & Security → Accessibility."
+                }
                 return DispatchedActionResult(
                     success: success,
-                    summary: "Executed \(action.replacingOccurrences(of: "_", with: " "))",
+                    summary: msg,
                     appName: "Window Manager"
                 )
                 
@@ -291,18 +390,11 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                 )
                 
             case .screenRead(let query):
-                let captured = await ScreenVisionService.shared.captureFullScreenWithImage()
-                let llm = await AutonomousAgentExecutor.shared.analyzeScreenWithActiveModel(
-                    pngData: captured.pngData,
-                    ocrText: captured.analysis.fullText,
-                    appName: captured.analysis.activeAppTitle ?? "Screen",
-                    sourceLabel: "Full Screen",
-                    question: query
-                )
+                let result = await AutonomousAgentExecutor.shared.captureAndAnalyzeScreenSavingContext(question: query)
                 return DispatchedActionResult(
                     success: true,
-                    summary: llm?.summary ?? captured.analysis.summary,
-                    appName: llm?.usedProvider ?? "Screen Vision"
+                    summary: result.summary,
+                    appName: result.provider
                 )
                 
             case .uiClick(let desc):
@@ -450,20 +542,13 @@ public final class AgentActionDispatcher: @unchecked Sendable {
             }
         }
 
-        // 1. Screen Vision Query ("what is on my screen?", "screen pe kya hai", "read my screen")
-        if lower.contains("screen") && (lower.contains("what") || lower.contains("read") || lower.contains("summarize") || lower.contains("kya") || lower.contains("dekho") || lower.contains("view")) {
-            let captured = await ScreenVisionService.shared.captureFullScreenWithImage()
-            let llm = await AutonomousAgentExecutor.shared.analyzeScreenWithActiveModel(
-                pngData: captured.pngData,
-                ocrText: captured.analysis.fullText,
-                appName: captured.analysis.activeAppTitle ?? "Screen",
-                sourceLabel: "Full Screen",
-                question: text
-            )
+        // 1. Screen Vision Query ("what is on my screen?", "can you see what's on my screen?", "screen pe kya hai")
+        if lower.contains("screen") && (lower.contains("what") || lower.contains("read") || lower.contains("summarize") || lower.contains("kya") || lower.contains("dekho") || lower.contains("view") || lower.contains("see") || lower.contains("check") || lower.contains("explain")) {
+            let result = await AutonomousAgentExecutor.shared.captureAndAnalyzeScreenSavingContext(question: text)
             return DispatchedActionResult(
                 success: true,
-                summary: llm?.summary ?? captured.analysis.summary,
-                appName: llm?.usedProvider ?? "Screen Vision"
+                summary: result.summary,
+                appName: result.provider
             )
         }
 

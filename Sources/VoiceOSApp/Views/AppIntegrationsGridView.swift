@@ -282,65 +282,68 @@ public struct AppIntegrationsGridView: View {
             .padding(.horizontal, 4)
             .padding(.top, 2)
             
-            // 6-Column Grid of 22 Apps
-            LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(allApps) { app in
-                    Button(action: {
-                        triggerAppLaunch(app)
-                    }) {
-                        VStack(spacing: 5) {
-                            // App Icon
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: app.gradientColors,
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                    .frame(width: 38, height: 38)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                            .stroke(
-                                                app.isDashedBorder ? Color.white.opacity(0.35) : Color.white.opacity(0.18),
-                                                style: StrokeStyle(lineWidth: 0.75, dash: app.isDashedBorder ? [3, 2] : [])
+            // Scrollable 6-Column Grid of Apps
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(allApps) { app in
+                        Button(action: {
+                            triggerAppLaunch(app)
+                        }) {
+                            VStack(spacing: 5) {
+                                // App Icon
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                        .fill(
+                                            LinearGradient(
+                                                colors: app.gradientColors,
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
                                             )
-                                    )
-                                    .shadow(color: Color.black.opacity(0.35), radius: 3, x: 0, y: 1.5)
-                                
-                                if app.isCustomIcon, let letter = app.customLetter {
-                                    Text(letter)
-                                        .font(.system(size: letter.count > 1 ? 14 : 16, weight: .bold, design: .rounded))
-                                        .foregroundColor(app.iconColor)
-                                } else {
-                                    Image(systemName: app.iconSystemName)
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundColor(app.iconColor)
+                                        )
+                                        .frame(width: 38, height: 38)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                                .stroke(
+                                                    app.isDashedBorder ? Color.white.opacity(0.35) : Color.white.opacity(0.18),
+                                                    style: StrokeStyle(lineWidth: 0.75, dash: app.isDashedBorder ? [3, 2] : [])
+                                                )
+                                        )
+                                        .shadow(color: Color.black.opacity(0.35), radius: 3, x: 0, y: 1.5)
+                                    
+                                    if app.isCustomIcon, let letter = app.customLetter {
+                                        Text(letter)
+                                            .font(.system(size: letter.count > 1 ? 14 : 16, weight: .bold, design: .rounded))
+                                            .foregroundColor(app.iconColor)
+                                    } else {
+                                        Image(systemName: app.iconSystemName)
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundColor(app.iconColor)
+                                    }
                                 }
+                                .scaleEffect(hoveredAppId == app.id ? 1.08 : 1.0)
+                                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: hoveredAppId)
+                                
+                                // App Name
+                                Text(app.name)
+                                    .font(.system(size: 9.5, weight: .medium))
+                                    .foregroundColor(Color.white.opacity(hoveredAppId == app.id ? 1.0 : 0.72))
+                                    .lineLimit(1)
+                                    .frame(maxWidth: 82)
                             }
-                            .scaleEffect(hoveredAppId == app.id ? 1.08 : 1.0)
-                            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: hoveredAppId)
-                            
-                            // App Name
-                            Text(app.name)
-                                .font(.system(size: 9.5, weight: .medium))
-                                .foregroundColor(Color.white.opacity(hoveredAppId == app.id ? 1.0 : 0.72))
-                                .lineLimit(1)
-                                .frame(maxWidth: 82)
                         }
-                    }
-                    .buttonStyle(.plain)
-                    .onHover { isHovered in
-                        if isHovered {
-                            hoveredAppId = app.id
-                        } else if hoveredAppId == app.id {
-                            hoveredAppId = nil
+                        .buttonStyle(.plain)
+                        .onHover { isHovered in
+                            if isHovered {
+                                hoveredAppId = app.id
+                            } else if hoveredAppId == app.id {
+                                hoveredAppId = nil
+                            }
                         }
                     }
                 }
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
             }
-            .padding(.horizontal, 2)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)

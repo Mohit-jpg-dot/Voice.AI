@@ -32,6 +32,8 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
     private var silenceWorkItem: DispatchWorkItem?
     private var isUsingLocalWhisperForSession: Bool = false
     private let whisperProvider = LocalWhisperProvider()
+    private var whisperLivePreviewRequest: SFSpeechAudioBufferRecognitionRequest?
+    private var whisperLivePreviewTask: SFSpeechRecognitionTask?
 
     // Adaptive RMS End-of-Speech VAD (essential for Whisper & fast silence auto-stop)
     private let vadLock = NSLock()
@@ -49,6 +51,56 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
     private var ttsChunkQueue: [(text: String, isHinglish: Bool)] = []
     private var isProcessingTTSQueue: Bool = false
     private var ttsCompletionCallback: (@Sendable () -> Void)?
+    private var activeSystemUtteranceId: ObjectIdentifier?
+    private var activeSystemUtteranceGeneration: UInt64 = 0
+    private var lastSpokenNormalizedLock = NSLock()
+    private var _lastSpokenTextNormalized: String = ""
+    private var _recentSpokenPhrases: [String] = []
+    private var _lastTTSEndedAt: Date = .distantPast
+    public var lastSpokenTextNormalized: String {
+        lastSpokenNormalizedLock.withLock { _lastSpokenTextNormalized }
+    }
+    public var lastTTSEndedAt: Date {
+        lastSpokenNormalizedLock.withLock { _lastTTSEndedAt }
+    }
+    public var isTTSActiveOrCoolingDown: Bool {
+        if currentState == .speaking { return true }
+        return lastSpokenNormalizedLock.withLock {
+            Date().timeIntervalSince(_lastTTSEndedAt) < 2.2
+        }
+    }
+    public var recentSpokenTextCombined: String {
+        lastSpokenNormalizedLock.withLock {
+            var all = _recentSpokenPhrases
+            if !_lastSpokenTextNormalized.isEmpty && !all.contains(_lastSpokenTextNormalized) {
+                all.append(_lastSpokenTextNormalized)
+            }
+            return all.joined(separator: " ")
+        }
+    }
+
+    private func recordSpokenTTSPhrase(_ rawPhrase: String) {
+        let norm = rawPhrase.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !norm.isEmpty else { return }
+        lastSpokenNormalizedLock.withLock {
+            _lastSpokenTextNormalized = norm
+            _recentSpokenPhrases.append(norm)
+            if _recentSpokenPhrases.count > 8 {
+                _recentSpokenPhrases.removeFirst(_recentSpokenPhrases.count - 8)
+            }
+        }
+    }
+
+    private func markTTSEnded(flushAmbientAfter delay: TimeInterval?) {
+        lastSpokenNormalizedLock.withLock {
+            _lastTTSEndedAt = Date()
+        }
+        if let delay = delay {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                TheVoiceAmbientListener.shared.flushRecognitionBufferAfterTTS()
+            }
+        }
+    }
 
     // Callbacks to update UI / AppState
     public var onAudioLevelsUpdated: (([CGFloat]) -> Void)?
@@ -116,6 +168,12 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
         let preferWhisper = (STTEngineProvider.shared.selectedKind == .localWhisper) && LocalWhisperProvider.diagnostics().isReady
         self.isUsingLocalWhisperForSession = preferWhisper
 
+        guard Bundle.main.bundleIdentifier != nil,
+              Bundle.main.infoDictionary?["NSSpeechRecognitionUsageDescription"] != nil,
+              ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] != "1" else {
+            return
+        }
+
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
 
@@ -142,16 +200,19 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             whisperProvider.start(
                 configuration: config,
                 onPartialResult: { [weak self] partial in
-                    DispatchQueue.main.async { self?.onLiveTranscript?(partial) }
+                    let term = TheVoiceAmbientListener.stripStatementTerminator(partial)
+                    DispatchQueue.main.async { self?.onLiveTranscript?(term.cleaned) }
                 },
                 onFinalResult: { [weak self] finalText, _ in
                     DispatchQueue.main.async {
                         guard let self = self else { return }
-                        self.accumulatedTranscript = finalText
+                        let stripped = TheVoiceAmbientListener.stripStatementTerminator(finalText).cleaned
+                        let chosen = stripped.isEmpty ? self.accumulatedTranscript : stripped
+                        self.accumulatedTranscript = chosen
                         self.currentState = .idle
                         self.onStateChanged?(.idle)
                         TheVoiceAmbientListener.shared.resumeFromRecording()
-                        self.onTranscriptionCompleted?(finalText, mode)
+                        self.onTranscriptionCompleted?(chosen, mode)
                     }
                 },
                 onError: { [weak self] err in
@@ -165,11 +226,43 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
                     }
                 }
             )
+
+            // Stream live words into the Voice Pill even when Local Whisper handles final accuracy
+            if SFSpeechRecognizer.authorizationStatus() == .authorized {
+                let previewReq = SFSpeechAudioBufferRecognitionRequest()
+                previewReq.shouldReportPartialResults = true
+                previewReq.contextualStrings = Array(VocabularyBiasManager.shared.getVocabularyBias().prefix(150))
+                self.whisperLivePreviewRequest = previewReq
+                self.whisperLivePreviewTask = speechRecognizer?.recognitionTask(with: previewReq) { [weak self] result, _ in
+                    guard let self = self, case .recording = self.currentState else { return }
+                    guard let result = result else { return }
+                    let rawText = result.bestTranscription.formattedString
+                    let term = TheVoiceAmbientListener.stripStatementTerminator(rawText)
+                    if !term.cleaned.isEmpty {
+                        self.accumulatedTranscript = term.cleaned
+                        DispatchQueue.main.async {
+                            self.onLiveTranscript?(term.cleaned)
+                        }
+                        if term.cleaned != self.lastTranscribedText {
+                            self.lastTranscribedText = term.cleaned
+                            self.lastSpeechTimestamp = Date()
+                            self.resetSilenceTimer()
+                        }
+                    }
+                    if term.terminated {
+                        DispatchQueue.main.async {
+                            guard case .recording = self.currentState else { return }
+                            self.stopRecording()
+                        }
+                    }
+                }
+            }
             
             inputNode.removeTap(onBus: 0)
-            inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, _ in
                 guard let self = self else { return }
                 self.whisperProvider.appendAudioBuffer(buffer)
+                self.whisperLivePreviewRequest?.append(buffer)
                 self.processAudioLevels(buffer: buffer)
             }
             
@@ -204,9 +297,9 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             }
         }
 
-        // Install audio tap for real-time metering and recognition buffer feed
+        // Install audio tap for real-time metering and recognition buffer feed (nil format avoids CoreAudio rate/channel mismatch crashes)
         inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, time in
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, time in
             guard let self = self else { return }
             self.recognitionRequest?.append(buffer)
 
@@ -236,12 +329,13 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
 
             if let result = result {
                 let rawText = result.bestTranscription.formattedString
-                self.accumulatedTranscript = rawText
+                let term = TheVoiceAmbientListener.stripStatementTerminator(rawText)
+                self.accumulatedTranscript = term.cleaned
                 DispatchQueue.main.async {
-                    self.onLiveTranscript?(rawText)
+                    self.onLiveTranscript?(term.cleaned)
                 }
                 
-                let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+                let trimmed = term.cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
                     // Only restart silence timer if new speech tokens/words actually arrived
                     if trimmed != self.lastTranscribedText {
@@ -249,6 +343,13 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
                         self.lastSpeechTimestamp = Date()
                         self.resetSilenceTimer()
                     }
+                }
+                if term.terminated, case .recording = self.currentState {
+                    DispatchQueue.main.async {
+                        guard case .recording = self.currentState else { return }
+                        self.stopRecording()
+                    }
+                    return
                 }
             }
 
@@ -272,15 +373,15 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             guard !text.isEmpty else { return }
             
             let elapsed = Date().timeIntervalSince(self.lastSpeechTimestamp)
-            if elapsed >= 1.8 {
-                NSLog("[VoiceOS SpeechEngine] 2.0s silence detected. Auto-finalizing utterance: %@", text)
+            if elapsed >= 2.2 {
+                NSLog("[VoiceOS SpeechEngine] 2.4s silence detected. Auto-finalizing utterance: %@", text)
                 DispatchQueue.main.async {
                     self.stopRecording()
                 }
             }
         }
         self.silenceWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4, execute: work)
     }
 
     public func stopRecording() {
@@ -311,6 +412,10 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
 
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
+        whisperLivePreviewRequest?.endAudio()
+        whisperLivePreviewTask?.cancel()
+        whisperLivePreviewTask = nil
+        whisperLivePreviewRequest = nil
         
         if isUsingLocalWhisperForSession {
             isUsingLocalWhisperForSession = false
@@ -345,6 +450,10 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             isUsingLocalWhisperForSession = false
             whisperProvider.cancel()
         }
+        whisperLivePreviewRequest?.endAudio()
+        whisperLivePreviewTask?.cancel()
+        whisperLivePreviewTask = nil
+        whisperLivePreviewRequest = nil
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
         recognitionTask = nil
@@ -405,12 +514,15 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             ttsChunkQueue.removeAll()
             isProcessingTTSQueue = false
             ttsCompletionCallback = nil
+            activeSystemUtteranceId = nil
+            activeSystemUtteranceGeneration = 0
         }
 
         if speechSynthesizer.isSpeaking {
             speechSynthesizer.stopSpeaking(at: .immediate)
         }
         KokoroTTSEngine.shared.stop()
+        markTTSEnded(flushAmbientAfter: nil)
 
         if currentState == .speaking {
             self.currentState = .idle
@@ -429,6 +541,7 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
     public func enqueueStreamingSpeechChunk(_ chunk: String) {
         let clean = chunk.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
+        recordSpokenTTSPhrase(clean)
         let isHinglish = HinglishParser.isHinglishQuery(clean)
 
         let shouldKickoff = ttsLock.withLock { () -> (Bool, UInt64) in
@@ -453,7 +566,16 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             return
         }
 
-        // Barge-in any previous utterance cleanly before starting fresh response
+        // Invalidate previous generation BEFORE stopping synths so delayed didFinish/didCancel callbacks never advance the new queue
+        ttsLock.withLock {
+            ttsGeneration &+= 1
+            ttsChunkQueue.removeAll()
+            isProcessingTTSQueue = false
+            ttsCompletionCallback = nil
+            activeSystemUtteranceId = nil
+            activeSystemUtteranceGeneration = 0
+        }
+
         if speechSynthesizer.isSpeaking {
             speechSynthesizer.stopSpeaking(at: .immediate)
         }
@@ -461,6 +583,7 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
 
         let isHinglish = HinglishParser.isHinglishQuery(text)
         let spokenText = Self.formatMinimalisticSpokenReply(rawText: text, isHinglish: isHinglish)
+        recordSpokenTTSPhrase(spokenText)
         let chunks = Self.splitIntoSpeakableChunks(spokenText)
 
         guard !chunks.isEmpty else {
@@ -498,6 +621,7 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
         guard generation == currentTTSGeneration() else { return }
 
         guard let item = nextItem.item else {
+            markTTSEnded(flushAmbientAfter: 0.25)
             DispatchQueue.main.async { [weak self] in
                 guard let self = self, generation == self.currentTTSGeneration() else { return }
                 self.currentState = .idle
@@ -519,21 +643,22 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
                     if played {
                         self.playNextTTSChunk(generation: generation)
                     } else {
-                        self.speakWithSystemSynthesizer(item.text, isHinglish: item.isHinglish)
+                        self.speakWithSystemSynthesizer(item.text, isHinglish: item.isHinglish, generation: generation)
                     }
                 }
             }
             return
         }
 
-        speakWithSystemSynthesizer(item.text, isHinglish: item.isHinglish)
+        speakWithSystemSynthesizer(item.text, isHinglish: item.isHinglish, generation: generation)
     }
 
-    private func speakWithSystemSynthesizer(_ spokenText: String, isHinglish: Bool) {
+    private func speakWithSystemSynthesizer(_ spokenText: String, isHinglish: Bool, generation: UInt64) {
+        guard generation == currentTTSGeneration() else { return }
         let utterance = AVSpeechUtterance(string: spokenText)
-        utterance.rate = 0.52 // Smooth, natural conversational pace (not dragging or robotic)
-        utterance.pitchMultiplier = 1.02 // Pleasant, human tonal quality
-        utterance.preUtteranceDelay = 0.05
+        utterance.rate = 0.54 // Smooth, responsive natural conversational pace
+        utterance.pitchMultiplier = 1.02
+        utterance.preUtteranceDelay = 0.0
 
         let hasDevanagari = spokenText.unicodeScalars.contains { scalar in
             scalar.value >= 0x0900 && scalar.value <= 0x097F
@@ -551,6 +676,11 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             utterance.voice = selectBestVoice(for: "en")
         }
 
+        ttsLock.withLock {
+            guard generation == ttsGeneration else { return }
+            activeSystemUtteranceId = ObjectIdentifier(utterance)
+            activeSystemUtteranceGeneration = generation
+        }
         speechSynthesizer.speak(utterance)
     }
 
@@ -671,17 +801,15 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             return isHinglish ? "Kaam ho gaya sir." : "i just did"
         }
 
-        // Keep speech natural and complete: speak up to 4 complete sentences without mid-sentence truncation
-        let rawSentences = cleaned.components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
+        // Speak the full response cleanly once without truncating sentences prematurely
+        let rawSentences = cleaned.components(separatedBy: CharacterSet(charactersIn: "\n"))
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-            
-        if rawSentences.count > 4 {
-            let selected = rawSentences.prefix(4).joined(separator: ". ")
-            return selected + "."
-        } else if !rawSentences.isEmpty {
+
+        if !rawSentences.isEmpty {
             let joined = rawSentences.joined(separator: ". ")
-            return joined.hasSuffix(".") ? joined : joined + "."
+            let last = joined.last
+            return (last == "." || last == "!" || last == "?") ? joined : joined + "."
         }
 
         return cleaned
@@ -806,15 +934,34 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
     // MARK: - AVSpeechSynthesizerDelegate
 
     public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        let gen = currentTTSGeneration()
-        let isStillQueueing = ttsLock.withLock { isProcessingTTSQueue }
-        if isStillQueueing {
-            playNextTTSChunk(generation: gen)
+        let uid = ObjectIdentifier(utterance)
+        let match: (valid: Bool, gen: UInt64, stillQueueing: Bool) = ttsLock.withLock {
+            guard activeSystemUtteranceId == uid, activeSystemUtteranceGeneration == ttsGeneration else {
+                return (false, 0, false)
+            }
+            activeSystemUtteranceId = nil
+            return (true, ttsGeneration, isProcessingTTSQueue)
+        }
+        guard match.valid else { return }
+
+        if match.stillQueueing {
+            playNextTTSChunk(generation: match.gen)
             return
         }
+        markTTSEnded(flushAmbientAfter: 0.25)
         DispatchQueue.main.async { [weak self] in
-            self?.currentState = .idle
-            self?.onStateChanged?(.idle)
+            guard let self = self, match.gen == self.currentTTSGeneration() else { return }
+            self.currentState = .idle
+            self.onStateChanged?(.idle)
+        }
+    }
+
+    public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        let uid = ObjectIdentifier(utterance)
+        ttsLock.withLock {
+            if activeSystemUtteranceId == uid {
+                activeSystemUtteranceId = nil
+            }
         }
     }
 }

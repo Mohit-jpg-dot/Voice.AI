@@ -1,4 +1,5 @@
 import AppKit
+@preconcurrency import ScreenCaptureKit
 import Vision
 import Foundation
 
@@ -49,21 +50,40 @@ public final class ScreenVisionService: @unchecked Sendable {
     
     public func captureRegionAndAnalyze(globalAppKitRect: CGRect, activeAppName: String? = nil) async -> (analysis: ScreenVisionAnalysis, pngData: Data?) {
         let frontApp = activeAppName ?? NSWorkspace.shared.frontmostApplication?.localizedName ?? "Active App"
+        let isTestEnv = ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1"
+        if !isTestEnv && !CGPreflightScreenCaptureAccess() {
+            CGRequestScreenCaptureAccess()
+            let permMsg = "Screen Recording permission is required to read open windows in \(frontApp) (without it, macOS only exposes the desktop wallpaper). Enable Voice.AI in System Settings → Privacy & Security → Screen & System Audio Recording, then reopen Voice.AI."
+            return (
+                ScreenVisionAnalysis(fullText: "", recognizedBlocks: [], activeAppTitle: frontApp, summary: permMsg),
+                nil
+            )
+        }
+
         let primaryHeight = NSScreen.screens.first?.frame.height ?? (NSScreen.main?.frame.height ?? 900)
-        
         let cgRect = CGRect(
             x: globalAppKitRect.origin.x,
             y: primaryHeight - globalAppKitRect.origin.y - globalAppKitRect.height,
             width: max(1, globalAppKitRect.width),
             height: max(1, globalAppKitRect.height)
         )
-        
-        guard let cgImage = CGWindowListCreateImage(
-            cgRect,
-            .optionOnScreenOnly,
-            kCGNullWindowID,
-            [.bestResolution]
-        ) else {
+
+        var capturedImage: CGImage?
+        if #available(macOS 14.0, *) {
+            if let fullDisplayImg = await captureViaScreenCaptureKit(target: "screen", sourceRect: cgRect) {
+                capturedImage = fullDisplayImg
+            }
+        }
+        if capturedImage == nil {
+            capturedImage = CGWindowListCreateImage(
+                cgRect,
+                .optionOnScreenOnly,
+                kCGNullWindowID,
+                [.bestResolution]
+            )
+        }
+
+        guard let cgImage = capturedImage else {
             let fallback = ScreenVisionAnalysis(
                 fullText: "",
                 recognizedBlocks: [],
@@ -92,17 +112,138 @@ public final class ScreenVisionService: @unchecked Sendable {
         return await captureFullScreenWithImage().analysis
     }
 
-    /// Captures the full main display along with PNG image data and Apple Vision OCR.
-    public func captureFullScreenWithImage() async -> (analysis: ScreenVisionAnalysis, pngData: Data?) {
+    /// Captures the active display or frontmost opened application window using ScreenCaptureKit (macOS 14+)
+    /// so opened windows and current apps are always included rather than only desktop wallpaper.
+    public func captureWindowOrScreenPNG(target: String = "screen") async -> (pngData: Data?, cgImage: CGImage?, appName: String, hasScreenPermission: Bool) {
         let frontApp = NSWorkspace.shared.frontmostApplication?.localizedName ?? "Active App"
-        let displayBounds = CGDisplayBounds(CGMainDisplayID())
-        
-        guard let cgImage = CGWindowListCreateImage(
-            displayBounds,
-            .optionOnScreenOnly,
-            kCGNullWindowID,
-            [.bestResolution]
-        ) else {
+        let isTestEnv = ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1"
+        if !isTestEnv && !CGPreflightScreenCaptureAccess() {
+            CGRequestScreenCaptureAccess()
+            return (nil, nil, frontApp, false)
+        }
+
+        var cgImage: CGImage?
+        if #available(macOS 14.0, *) {
+            cgImage = await captureViaScreenCaptureKit(target: target, sourceRect: nil)
+        }
+        if cgImage == nil {
+            let displayBounds = activeScreenDisplayBounds()
+            cgImage = CGWindowListCreateImage(
+                displayBounds,
+                .optionOnScreenOnly,
+                kCGNullWindowID,
+                [.bestResolution]
+            )
+        }
+        guard let image = cgImage else {
+            return (nil, nil, frontApp, true)
+        }
+        let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+        return (png, image, frontApp, true)
+    }
+
+    private func activeScreenDisplayBounds() -> CGRect {
+        let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        if let frontPID = frontPID,
+           let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] {
+            for info in list {
+                let ownerPID = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value
+                let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0
+                guard ownerPID == frontPID, layer == 0,
+                      let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
+                      let winRect = CGRect(dictionaryRepresentation: boundsDict),
+                      winRect.width > 80 && winRect.height > 80 else { continue }
+                for screen in NSScreen.screens {
+                    if let num = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+                        let bounds = CGDisplayBounds(num.uint32Value)
+                        if bounds.intersects(winRect) {
+                            return bounds
+                        }
+                    }
+                }
+            }
+        }
+        return CGDisplayBounds(CGMainDisplayID())
+    }
+
+    @available(macOS 14.0, *)
+    private func captureViaScreenCaptureKit(target: String, sourceRect: CGRect?) async -> CGImage? {
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            let myPID = ProcessInfo.processInfo.processIdentifier
+            let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            let selfApps = content.applications.filter { $0.processID == myPID }
+
+            let frontWindow: SCWindow? = content.windows.first { win in
+                win.windowLayer == 0 &&
+                win.isOnScreen &&
+                win.frame.width > 120 &&
+                win.frame.height > 120 &&
+                win.owningApplication?.processID != myPID &&
+                (frontPID == nil || win.owningApplication?.processID == frontPID)
+            } ?? content.windows.first { win in
+                win.windowLayer == 0 &&
+                win.isOnScreen &&
+                win.frame.width > 120 &&
+                win.frame.height > 120 &&
+                win.owningApplication?.processID != myPID &&
+                win.owningApplication?.bundleIdentifier != "com.apple.finder"
+            }
+
+            if target == "window", sourceRect == nil, let win = frontWindow {
+                let filter = SCContentFilter(desktopIndependentWindow: win)
+                let cfg = SCStreamConfiguration()
+                let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+                cfg.width = max(1, Int(win.frame.width * scale))
+                cfg.height = max(1, Int(win.frame.height * scale))
+                cfg.showsCursor = false
+                return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
+            }
+
+            let targetDisplay: SCDisplay? = {
+                if let win = frontWindow {
+                    return content.displays.first(where: { $0.frame.intersects(win.frame) })
+                }
+                return content.displays.first
+            }()
+            guard let display = targetDisplay else { return nil }
+
+            let filter = SCContentFilter(display: display, excludingApplications: selfApps, exceptingWindows: [])
+            let cfg = SCStreamConfiguration()
+            let scale = NSScreen.main?.backingScaleFactor ?? 2.0
+            if let rect = sourceRect, rect.width > 4, rect.height > 4 {
+                cfg.sourceRect = CGRect(
+                    x: rect.origin.x - display.frame.origin.x,
+                    y: rect.origin.y - display.frame.origin.y,
+                    width: rect.width,
+                    height: rect.height
+                )
+                cfg.width = max(1, Int(rect.width * scale))
+                cfg.height = max(1, Int(rect.height * scale))
+            } else {
+                cfg.width = max(1, Int(CGFloat(display.width) * scale))
+                cfg.height = max(1, Int(CGFloat(display.height) * scale))
+            }
+            cfg.showsCursor = false
+            return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
+        } catch {
+            NSLog("[ScreenVisionService] ScreenCaptureKit fallback: %@", error.localizedDescription)
+            return nil
+        }
+    }
+
+    /// Captures the active display (including all opened windows & current app) along with PNG image data and Apple Vision OCR.
+    public func captureFullScreenWithImage() async -> (analysis: ScreenVisionAnalysis, pngData: Data?) {
+        let capture = await captureWindowOrScreenPNG(target: "screen")
+        let frontApp = capture.appName
+        if !capture.hasScreenPermission {
+            let permMsg = "Screen Recording permission is required for Voice.AI to see your open windows (currently macOS hides windows and only shows your desktop wallpaper). Enable Voice.AI in System Settings → Privacy & Security → Screen & System Audio Recording, then reopen Voice.AI."
+            return (
+                ScreenVisionAnalysis(fullText: "", recognizedBlocks: [], activeAppTitle: frontApp, summary: permMsg),
+                nil
+            )
+        }
+        guard let cgImage = capture.cgImage else {
             let fallback = ScreenVisionAnalysis(
                 fullText: "",
                 recognizedBlocks: [],
@@ -111,12 +252,12 @@ public final class ScreenVisionService: @unchecked Sendable {
             )
             return (fallback, nil)
         }
-        
-        let pngData = NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:])
+
+        let pngData = capture.pngData
         let analysis = await recognizeText(
             in: cgImage,
             frontApp: frontApp,
-            recognitionLevel: .fast,
+            recognitionLevel: .accurate,
             emptySummary: "Your active application is \(frontApp). No readable text was detected on the current display.",
             populatedPrefix: "You are currently viewing \(frontApp). Key content on screen: ",
             errorSummary: "I see your active window is \(frontApp)."

@@ -36,7 +36,9 @@ public struct SettingsView: View {
     @State private var profileEmail: String = ""
     @State private var profileSavedNotice: Bool = false
     @State private var showingResetAlert: Bool = false
+    @State private var showingClearMemoryAlert: Bool = false
     @State private var showingModelSetupSheet: Bool = false
+    @State private var listenerStatusText: String = TheVoiceAmbientListener.shared.diagnosticSummary
     
     // Voice & Audition State
     @State private var availableVoices: [VoiceOption] = []
@@ -311,18 +313,65 @@ public struct SettingsView: View {
                     }
 
                     if appState.isTheVoiceModeEnabled {
+                        Divider().padding(.vertical, 2)
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("24/7 Continuous Listening Mode (No Wake Word)")
+                                    .font(.system(size: 12.5, weight: .semibold))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                Text("Listens 24/7 so you can speak naturally without repeating a wake word—say 'bro open this up', 'tell me...', or 'can you see what's on my screen?'")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $appState.isAlwaysOnListeningMode)
+                                .labelsHidden()
+                                .toggleStyle(SwitchToggleStyle(tint: Color.green))
+                        }
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Listen to Computer Audio (YouTube / Media)")
+                                    .font(.system(size: 12.5, weight: .semibold))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                Text("Off by default so background YouTube videos are ignored. Say \"listen to the things my computer is making\" to start listening and asking about playback.")
+                                    .font(.system(size: 10.5))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $appState.isComputerAudioListeningEnabled)
+                                .labelsHidden()
+                                .toggleStyle(SwitchToggleStyle(tint: Color.purple))
+                                .onChange(of: appState.isComputerAudioListeningEnabled) { _, _ in
+                                    listenerStatusText = TheVoiceAmbientListener.shared.diagnosticSummary
+                                }
+                        }
+
                         HStack(spacing: 8) {
-                            Image(systemName: "info.circle.fill")
-                                .foregroundColor(.blue)
+                            Image(systemName: TheVoiceAmbientListener.shared.isListening ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundColor(TheVoiceAmbientListener.shared.isListening ? .green : .orange)
                                 .font(.system(size: 11))
-                            Text("Active: Say \"\(wakePhraseInput.isEmpty ? "Jarvis" : wakePhraseInput.capitalized), open Spotify\" anytime hands-free (on-device).")
+                            Text(listenerStatusText)
                                 .font(.system(size: 11))
-                                .foregroundColor(Color.blue.opacity(0.9))
+                                .foregroundColor(TheVoiceAmbientListener.shared.isListening ? Color.green.opacity(0.95) : Color.orange.opacity(0.95))
+                            Spacer()
+                            Button("Retry / Refresh Mic") {
+                                TheVoiceAmbientListener.shared.stopAmbientListening()
+                                TheVoiceAmbientListener.shared.startAmbientListening()
+                                listenerStatusText = TheVoiceAmbientListener.shared.diagnosticSummary
+                            }
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
                         }
                         .padding(8)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.blue.opacity(0.08))
+                        .background((TheVoiceAmbientListener.shared.isListening ? Color.green : Color.orange).opacity(0.08))
                         .cornerRadius(6)
+                        .onAppear {
+                            listenerStatusText = TheVoiceAmbientListener.shared.diagnosticSummary
+                        }
                     }
                 }
             }
@@ -1138,6 +1187,53 @@ public struct SettingsView: View {
                 }
             }
             
+            // Local Memory & Conversation Retention
+            settingsCard(title: "Local Memory & Conversation History", icon: "brain.head.profile") {
+                let longTermCount = appState.structuredMemories.filter { $0.scope == .longTerm }.count
+                let turnCount = appState.structuredMemories.filter { $0.scope == .shortTerm }.count
+                let convCount = appState.conversationSessions.count
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("All questions, answers, and personal preferences are stored locally on your Mac to preserve cross-day context (e.g. asking \"What did we do yesterday?\").")
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textMuted)
+
+                    HStack(spacing: 16) {
+                        Label("\(longTermCount) facts", systemImage: "bookmark.fill")
+                        Label("\(turnCount) turns", systemImage: "bubble.left.and.bubble.right.fill")
+                        Label("\(convCount) sessions", systemImage: "clock.arrow.circlepath")
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+
+                    HStack(spacing: 10) {
+                        Button("Download Memory") {
+                            downloadMemoryToFile()
+                        }
+                        .font(.system(size: 11, weight: .medium))
+
+                        Spacer()
+
+                        Button("Clear Memory") {
+                            showingClearMemoryAlert = true
+                        }
+                        .foregroundColor(.red)
+                        .font(.system(size: 11, weight: .semibold))
+                        .alert(isPresented: $showingClearMemoryAlert) {
+                            Alert(
+                                title: Text("Clear All Local Memory?"),
+                                message: Text("This permanently deletes all remembered personal facts, preferences, and locally recorded conversation history."),
+                                primaryButton: .destructive(Text("Clear Memory")) {
+                                    appState.clearAllMemoryAndHistory()
+                                    routineStatusBanner = "All local memory and conversation history cleared."
+                                    showNotice("All local memory and conversation history cleared.")
+                                },
+                                secondaryButton: .cancel()
+                            )
+                        }
+                    }
+                }
+            }
+
             // Data Management & Reset
             settingsCard(title: "Data Management & Privacy", icon: "trash.fill") {
                 VStack(spacing: 12) {
@@ -1225,6 +1321,24 @@ public struct SettingsView: View {
     
     // MARK: - Actions
     
+    private func downloadMemoryToFile() {
+        let json = MemoryStore.shared.exportAllMemoryDocument()
+        let panel = NSSavePanel()
+        panel.title = "Download Voice.AI Local Memory"
+        panel.nameFieldStringValue = "VoiceAI-Memory-Export.json"
+        panel.canCreateDirectories = true
+        if panel.runModal() == .OK, let destURL = panel.url {
+            do {
+                try json.write(to: destURL, atomically: true, encoding: .utf8)
+                routineStatusBanner = "Memory saved to \(destURL.lastPathComponent)."
+                showNotice("Memory downloaded to \(destURL.lastPathComponent).")
+            } catch {
+                routineStatusBanner = "Failed to save memory: \(error.localizedDescription)"
+                showNotice("Failed to save memory file.")
+            }
+        }
+    }
+
     private func showNotice(_ text: String) {
         keySavedNotice = text
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
@@ -1634,9 +1748,33 @@ public struct SettingsView: View {
             settingsCard(title: "Long-Term Memory Viewer", icon: "brain") {
                 let longTermItems = appState.structuredMemories.filter { $0.scope == .longTerm }
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Semantic long-term facts, preferences, projects, and people stored in encrypted per-account memory.")
+                    HStack {
+                        Text("Semantic long-term facts, preferences, projects, and past turns stored in encrypted local memory.")
+                            .font(.system(size: 11))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        Spacer()
+                        Button("Download Memory") {
+                            downloadMemoryToFile()
+                        }
                         .font(.system(size: 11))
-                        .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        Button("Clear Memory") {
+                            showingClearMemoryAlert = true
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.red)
+                        .alert(isPresented: $showingClearMemoryAlert) {
+                            Alert(
+                                title: Text("Clear All Local Memory?"),
+                                message: Text("This permanently deletes all remembered personal facts, preferences, and locally recorded conversation history."),
+                                primaryButton: .destructive(Text("Clear Memory")) {
+                                    appState.clearAllMemoryAndHistory()
+                                    routineStatusBanner = "All local memory and conversation history cleared."
+                                    showNotice("All local memory and conversation history cleared.")
+                                },
+                                secondaryButton: .cancel()
+                            )
+                        }
+                    }
 
                     HStack(spacing: 8) {
                         Picker("Kind", selection: $newMemoryKind) {

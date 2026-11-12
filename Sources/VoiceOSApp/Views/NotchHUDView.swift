@@ -76,52 +76,47 @@ public struct NotchHUDView: View {
             }
             .padding(.bottom, 2)
             
-            // User Speech Bubble / Prompt
-            Text(appState.currentTranscript)
-                .font(DesignTokens.Typography.fontBodyMedium)
-                .foregroundColor(DesignTokens.Colors.textPrimaryDark)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-            
-            // Agent Response Text
-            Text(appState.currentAgentReply)
-                .font(DesignTokens.Typography.fontSubheadline)
-                .foregroundColor(DesignTokens.Colors.textSecondaryDark)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
+            // Scrollable User Speech & Agent Response Content
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit2) {
+                    if !appState.currentTranscript.isEmpty {
+                        Text(appState.currentTranscript)
+                            .font(DesignTokens.Typography.fontBodyMedium)
+                            .foregroundColor(DesignTokens.Colors.textPrimaryDark)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
+                    
+                    if !appState.currentAgentReply.isEmpty {
+                        Text(appState.currentAgentReply)
+                            .font(DesignTokens.Typography.fontSubheadline)
+                            .foregroundColor(DesignTokens.Colors.textSecondaryDark)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 150)
             
             // Embedded Confirmation / Interactive Card (Calendar / Things 3)
             if let action = appState.currentAction {
-                if action.appName == "Calendar" || action.title.contains("Roadmap") {
-                    // Meeting Confirmation Card matching reference screenshot
+                if action.appName == "Calendar" {
+                    // Real Action Confirmation Card
                     VStack(alignment: .leading, spacing: 6) {
                         Text(action.title)
                             .font(.system(size: 15, weight: .bold))
                             .foregroundColor(.white)
                         
-                        Text(action.subtitle ?? "Monday, June 15, 2026, 2:00 PM - 3:00 PM PDT")
+                        Text(action.subtitle ?? DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .short))
                             .font(.system(size: 13))
                             .foregroundColor(Color.gray)
                         
-                        HStack(spacing: 4) {
-                            Text("Attendees: ")
-                                .font(.system(size: 12))
-                                .foregroundColor(Color.gray)
-                            Text("kai@voiceos.com, maksim@voiceos.com")
+                        if let attendees = action.payload["attendees"], !attendees.isEmpty {
+                            Text("Attendees: \(attendees)")
                                 .font(.system(size: 12))
                                 .foregroundColor(DesignTokens.Colors.accentBlue)
                         }
-                        
-                        HStack {
-                            Text("Google Meet Link")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(DesignTokens.Colors.accentBlue)
-                            Spacer()
-                            Image(systemName: "doc.on.doc")
-                                .font(.system(size: 12))
-                                .foregroundColor(Color.gray)
-                        }
-                        .padding(.top, 4)
                     }
                     .padding(DesignTokens.Spacing.unit3)
                     .background(DesignTokens.Colors.surfaceElevatedDark.opacity(0.85))

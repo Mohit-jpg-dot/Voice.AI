@@ -2,6 +2,7 @@ import SwiftUI
 import VoiceOSCore
 import AppKit
 import AVFoundation
+import Speech
 
 public struct PermissionItem: Identifiable, Sendable {
     public let id = UUID()
@@ -16,6 +17,7 @@ public struct PermissionItem: Identifiable, Sendable {
 public struct PermissionsDoctorView: View {
     @State private var accessibilityGranted: Bool = false
     @State private var micGranted: Bool = false
+    @State private var speechGranted: Bool = false
     @State private var screenCaptureGranted: Bool = false
     @State private var automationGranted: Bool = true
     @State private var lastCheckTime: Date = Date()
@@ -71,6 +73,20 @@ public struct PermissionsDoctorView: View {
                             DispatchQueue.main.async { refreshPermissions() }
                         }
                         openSettingsURL("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+                    }
+                )
+                
+                permissionRow(
+                    title: "Speech Recognition (Wake Word)",
+                    description: "Required for hands-free wake word detection ('Jarvis', 'Bro', 'Voice') and instant voice interruption.",
+                    icon: "waveform.badge.mic",
+                    isGranted: speechGranted,
+                    settingsPane: "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition",
+                    onRequest: {
+                        SFSpeechRecognizer.requestAuthorization { _ in
+                            DispatchQueue.main.async { refreshPermissions() }
+                        }
+                        openSettingsURL("x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition")
                     }
                 )
                 
@@ -182,10 +198,16 @@ public struct PermissionsDoctorView: View {
         let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         micGranted = (micStatus == .authorized)
         
+        speechGranted = (SFSpeechRecognizer.authorizationStatus() == .authorized)
+        
         if #available(macOS 11.0, *) {
             screenCaptureGranted = CGPreflightScreenCaptureAccess()
         } else {
             screenCaptureGranted = true
+        }
+        
+        if micGranted && speechGranted && TheVoiceAmbientListener.shared.isTheVoiceModeEnabled && !TheVoiceAmbientListener.shared.isListening {
+            TheVoiceAmbientListener.shared.startAmbientListening()
         }
         
         lastCheckTime = Date()

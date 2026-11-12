@@ -77,53 +77,14 @@ public final class CodingAgentManager: @unchecked Sendable {
         return _agents.filter { $0.isWaitingForInput }.count
     }
     
-    public init() {
-        seedInitialAgents()
-    }
-    
-    private func seedInitialAgents() {
-        let agent1 = CodingAgentTask(
-            id: UUID(),
-            name: "Architecture Agent",
-            role: "Senior macOS Lead",
-            state: .running(currentStep: "Compiling native Swift packages & optimizing layout...", progress: 0.85),
-            tasksPerformed: [
-                "Scanned project dependencies and SPM targets",
-                "Built universal dynamic libraries for arm64",
-                "Verified 84 unit test cases across all suites"
-            ],
-            startedAt: Date().addingTimeInterval(-180)
-        )
-        
-        let agent2 = CodingAgentTask(
-            id: UUID(),
-            name: "Blender Tutor Subagent",
-            role: "3D Animation Specialist",
-            state: .waitingForInput(
-                question: "Do you want me to automatically insert keyframes on the armature bone?",
-                options: ["Approve Keyframes", "Manual Step", "Cancel"]
-            ),
-            tasksPerformed: [
-                "Analyzed Blender viewport and identified 3D cursor position",
-                "Selected Armature object in scene collection",
-                "Switched viewport mode to Pose Mode"
-            ],
-            startedAt: Date().addingTimeInterval(-95)
-        )
-        
-        let agent3 = CodingAgentTask(
-            id: UUID(),
-            name: "Refactor Subagent",
-            role: "Code Quality & Cleanup",
-            state: .completed(summary: "Cleaned duplicate DMG installers and consolidated test suites."),
-            tasksPerformed: [
-                "Removed 4 duplicate installation files",
-                "Unified test runner under scripts/run-tests.sh"
-            ],
-            startedAt: Date().addingTimeInterval(-320)
-        )
-        
-        self._agents = [agent1, agent2, agent3]
+    public init() {}
+
+    public func clearAllAgents() {
+        lock.lock()
+        _agents.removeAll()
+        let copy = _agents
+        lock.unlock()
+        notifyAgentsChanged(copy)
     }
     
     public func registerAgent(name: String, role: String, initialStep: String) -> UUID {

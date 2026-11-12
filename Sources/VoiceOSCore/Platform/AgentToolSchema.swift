@@ -218,9 +218,21 @@ public enum AgentToolParser {
         lower.hasPrefix("why ") || lower.hasPrefix("how does sound")
     }
 
+    /// Strips casual conversational wake/filler starters ("bro ", "hey bro ", "hey jarvis ", "jarvis ") cleanly.
+    public static func stripCasualPrefix(_ query: String) -> String {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stripped = trimmed.replacingOccurrences(
+            of: #"^(?:(?:hey|hi|yo|ok|okay|arey)\s+)?(?:bro|bhai|jarvis)\b[\s,:!]*"#,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        return stripped.isEmpty ? trimmed : stripped
+    }
+
     /// Parses any user utterance (English, Hindi, Hinglish, Devanagari) directly into an `AgentTool`
     public static func parse(query: String) -> AgentTool? {
-        let normalized = HinglishTransliterator.normalize(query)
+        let cleanQuery = stripCasualPrefix(query)
+        let normalized = HinglishTransliterator.normalize(cleanQuery)
         let lower = normalized.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !lower.isEmpty else { return nil }
         
@@ -237,7 +249,7 @@ public enum AgentToolParser {
                                 (lower.contains("open chatgpt") && (lower.contains("write") || lower.contains("ask") || lower.contains("type"))) ||
                                 (lower.contains("chatgpt") && lower.contains("paste"))
         if isChainedWorkflow {
-            return .chainedWorkflow(plan: query)
+            return .chainedWorkflow(plan: cleanQuery)
         }
         
         // 0.5. Computer Control UI Click ("click on the first video you are seeing in this tab", "click on the first video", "first video pe click karo", "click the search bar")
@@ -249,10 +261,14 @@ public enum AgentToolParser {
             return .uiClick(description: target)
         }
         
-        // 1. Screen Vision ("screen pe kya hai", "meri screen dekho", "screen vision dekho", "what's on my screen")
-        if lower.contains("screen vision") || lower.contains("screen pe kya hai") || lower.contains("screen dekho") || lower.contains("screen padho") ||
-           lower.contains("what is on my screen") || lower.contains("what's on my screen") || lower.contains("look at my screen") {
-            return .screenRead(query: query)
+        // 1. Screen Vision ("can u see whats on my screen", "what's on my screen", "screen pe kya hai", "take a screenshot and tell me")
+        if lower.contains("screen vision") || lower.contains("screen pe kya hai") || lower.contains("mere screen") ||
+           lower.contains("screen dekho") || lower.contains("screen padho") ||
+           lower.contains("what is on my screen") || lower.contains("what's on my screen") || lower.contains("whats on my screen") ||
+           lower.contains("see on my screen") || lower.contains("see my screen") || lower.contains("look at my screen") ||
+           lower.contains("check my screen") || lower.contains("explain my screen") ||
+           (lower.contains("screenshot") && (lower.contains("tell me") || lower.contains("what") || lower.contains("explain") || lower.contains("read"))) {
+            return .screenRead(query: cleanQuery)
         }
         
         // 1.5. World Search / Deep Search ("world search on...", "deep search about...", "search the whole internet about...", "deep research...")
@@ -359,9 +375,11 @@ public enum AgentToolParser {
             }
         }
         
-        // 3. Screenshot ("screenshot le lo", "screenshot khincho", "take screenshot", "capture screen")
+        // 3. Screenshot ("screenshot le lo", "screenshot this window", "take screenshot", "capture screen")
         if lower.contains("screenshot") || lower.contains("screen shot") || lower.contains("screen capture") {
-            return .takeScreenshot(target: "screen", destination: "clipboard")
+            let target = (lower.contains("window") || lower.contains("current app") || lower.contains("this app")) ? "window" : "screen"
+            let dest = lower.contains("desktop") ? "desktop" : "clipboard"
+            return .takeScreenshot(target: target, destination: dest)
         }
         
         // 4. Window & System Control ("window band karo", "lock screen", "lock the screen", "sleep kar do")
@@ -407,18 +425,57 @@ public enum AgentToolParser {
         if lower.contains("maximize") || lower.contains("full screen") || lower.contains("bada kar do") {
             return .windowAction(action: "maximize")
         }
+        if lower == "show hidden windows" || lower == "unhide windows" || lower == "unhide all" || lower == "show hidden apps" {
+            return .windowAction(action: "unhide_all")
+        }
+        if !lower.contains("bones") && (
+            lower == "hide" ||
+            lower.contains("hide this window") ||
+            lower.contains("hide the window") ||
+            lower.contains("hide current window") ||
+            lower.contains("hide active window") ||
+            lower.contains("hide window") ||
+            lower.contains("hide this app") ||
+            lower.contains("hide current app") ||
+            lower.contains("press command h") ||
+            lower.contains("command h")
+        ) {
+            return .windowAction(action: "hide")
+        }
+        if lower.hasPrefix("hide ") && !lower.contains("bones") {
+            let appTarget = String(query.trimmingCharacters(in: .whitespacesAndNewlines).dropFirst(5))
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            if !appTarget.isEmpty {
+                return .windowAction(action: "hide_app:\(appTarget)")
+            }
+        }
 
         // 4.5 Editor & Typing Commands (Section 4)
         if lower == "new line" || lower == "next line" {
             return .windowAction(action: "new_line")
         }
-        if lower == "select all" {
+        if lower == "select all" || lower == "select everything" {
             return .windowAction(action: "select_all")
         }
-        if lower == "copy" || lower == "copy that" {
+        if lower.contains("copy and paste") || lower.contains("copy that and paste") || lower.contains("copy this and paste") {
+            return .windowAction(action: "copy_and_paste")
+        }
+        let copyPhrases: Set<String> = [
+            "copy", "copy that", "copy this", "copy it", "copy all", "copy everything",
+            "copy text", "copy the text", "copy selected text", "copy the selected text", "copy selection",
+            "copy to clipboard", "copy this to clipboard", "copy that to clipboard",
+            "press command c", "command c", "cmd c", "press cmd c", "control c", "ctrl c"
+        ]
+        if copyPhrases.contains(lower) {
             return .windowAction(action: "copy")
         }
-        if lower == "paste" || lower == "paste that" {
+        let pastePhrases: Set<String> = [
+            "paste", "paste that", "paste this", "paste it", "paste here", "paste it here", "paste that here",
+            "paste text", "paste the text", "paste the copied text", "paste copied text",
+            "paste from clipboard", "paste clipboard",
+            "press command v", "command v", "cmd v", "press cmd v", "control v", "ctrl v"
+        ]
+        if pastePhrases.contains(lower) {
             return .windowAction(action: "paste")
         }
         if lower == "undo" {
@@ -522,16 +579,40 @@ public enum AgentToolParser {
             return .mediaPlay(app: targetMediaApp, query: nil, action: "pause")
         }
         
-        // Play / Resume Playback ("play the current video", "play it", "resume", "play video", "resume playback", "chalao")
-        let isPlayOrResume = lower == "play" || lower == "play it" || lower == "play the video" || lower == "play video" ||
-                             lower == "play current video" || lower == "play the current video" || lower == "resume" ||
-                             lower == "resume it" || lower == "resume video" || lower == "resume the video" ||
-                             lower == "resume music" || lower == "resume playback" || lower == "play playback" ||
-                             lower == "chalao" || lower == "video chalao" || lower == "play song" ||
-                             lower == "play current song" || lower == "play the current song" || lower == "play again" ||
+        // Play / Resume Playback ("play the current video", "play this song", "play the current video or song", "resume")
+        let normalizedPlayPhrase = lower
+            .replacingOccurrences(of: #"\s+(?:on\s+screen|on\s+my\s+screen|visible|right\s+now|please)\b"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let contextualPlayPhrases: Set<String> = [
+            "play", "play it", "play this", "play that",
+            "play video", "play the video", "play this video", "play that video",
+            "play current video", "play the current video",
+            "play song", "play the song", "play this song", "play that song",
+            "play current song", "play the current song",
+            "play track", "play this track", "play current track", "play the current track",
+            "play music", "play the music", "play this music", "play current music",
+            "play current video or song", "play the current video or song",
+            "play video or song", "play this video or song",
+            "resume", "resume it", "resume this", "resume video", "resume the video",
+            "resume this video", "resume song", "resume the song", "resume music",
+            "resume playback", "play playback", "play again",
+            "chalao", "video chalao", "ye video chalao", "ye gana chalao", "ye gaana chalao"
+        ]
+        let isPlayOrResume = contextualPlayPhrases.contains(normalizedPlayPhrase) ||
                              lower.contains("chala do") || lower.contains("chalu karo") || lower.contains("resume karo")
         if isPlayOrResume {
-            return .mediaPlay(app: targetMediaApp, query: nil, action: "play")
+            let inferredApp: String?
+            if lower.contains("spotify") {
+                inferredApp = "Spotify"
+            } else if lower.contains("apple music") {
+                inferredApp = "Music"
+            } else if lower.contains("youtube") || (lower.contains("video") && !lower.contains("song")) {
+                inferredApp = "YouTube"
+            } else {
+                inferredApp = nil
+            }
+            return .mediaPlay(app: inferredApp, query: nil, action: "play")
         }
         
         // 9. Media / Music ("Spotify pe Arijit Singh ke gaane chalao", "ye gana laga do", "gaana chalao", "play music", "play top hits", "play a song on spotify")

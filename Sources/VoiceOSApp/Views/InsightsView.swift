@@ -4,6 +4,7 @@ import AppKit
 
 public struct InsightsView: View {
     @ObservedObject var appState: AppState
+    @State private var telemetry: LiveHostTelemetrySnapshot = LiveHostTelemetrySnapshot.capture()
     
     public init(appState: AppState) {
         self.appState = appState
@@ -77,15 +78,15 @@ public struct InsightsView: View {
                     }
                     
                     VStack(spacing: DesignTokens.Spacing.unit3) {
-                        TelemetryRow(label: "Speech Recognition Engine", value: "Apple SFSpeechRecognizer & Local Whisper")
+                        TelemetryRow(label: "Speech Recognition Engine", value: "\(telemetry.activeSTTProvider) • \(telemetry.wakeStatusLabel)")
                         Divider()
-                        TelemetryRow(label: "Audio Input Device", value: "Mac Built-in Microphone (CoreAudio)")
+                        TelemetryRow(label: "Active Audio Input Device", value: telemetry.activeMicName)
                         Divider()
-                        TelemetryRow(label: "Sample Rate & Format", value: "16,000 Hz · 32-bit Float · Mono PCM")
+                        TelemetryRow(label: "Live Hardware Sample Rate", value: telemetry.inputSampleRateHz > 0 ? "\(telemetry.inputSampleRateHz) Hz (CoreAudio Native)" : "Waiting for mic access")
                         Divider()
-                        TelemetryRow(label: "On-Device Privacy Boundary", value: "100% Offline · Zero Audio Leaves This Mac")
+                        TelemetryRow(label: "Active AI Brain & Mode", value: telemetry.activeAIMode)
                         Divider()
-                        TelemetryRow(label: "Latency Benchmark", value: "< 150ms Speech-to-Intent Pipeline")
+                        TelemetryRow(label: "Computer Audio Listener", value: telemetry.computerAudioEnabled ? "Listening (ScreenCaptureKit)" : "Off (Background media ignored)")
                     }
                     .padding(DesignTokens.Spacing.unit4)
                     .background(DesignTokens.Colors.cardBackground)
@@ -110,13 +111,17 @@ public struct InsightsView: View {
                     VStack(spacing: DesignTokens.Spacing.unit3) {
                         TelemetryRow(label: "Hardware Identifier", value: macHardwareDescription)
                         Divider()
-                        TelemetryRow(label: "System Memory", value: macMemoryGB)
+                        TelemetryRow(label: "System Memory (Live)", value: "\(macMemoryGB) • \(telemetry.ramUsagePercent)% In Use")
+                        Divider()
+                        TelemetryRow(label: "CPU Cores & Thermal", value: "\(telemetry.cpuCoreCount) Active Cores • \(telemetry.thermalLabel)")
+                        if let bat = telemetry.batteryPercent {
+                            Divider()
+                            TelemetryRow(label: "Battery Power", value: "\(bat)% \(telemetry.isCharging ? "(Charging)" : "(On Battery)")")
+                        }
                         Divider()
                         TelemetryRow(label: "Operating System", value: ProcessInfo.processInfo.operatingSystemVersionString)
                         Divider()
                         TelemetryRow(label: "\(AppBrand.name) Bundle Identifier", value: "\(AppBrand.bundleId) (\(AppBrand.displayVersion))")
-                        Divider()
-                        TelemetryRow(label: "Hardened Runtime", value: "Sandboxed Core · Accessibility & Speech Entitled")
                     }
                     .padding(DesignTokens.Spacing.unit4)
                     .background(DesignTokens.Colors.cardBackground)
@@ -128,6 +133,12 @@ public struct InsightsView: View {
                 }
             }
             .padding(DesignTokens.Spacing.unit6)
+        }
+        .onAppear {
+            telemetry = LiveHostTelemetrySnapshot.capture()
+        }
+        .onReceive(Timer.publish(every: 3.0, on: .main, in: .common).autoconnect()) { _ in
+            telemetry = LiveHostTelemetrySnapshot.capture()
         }
     }
 }

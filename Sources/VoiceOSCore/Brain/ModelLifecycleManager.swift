@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 public enum VisionModelState: String, Sendable {
     case suspended = "Suspended (RAM freed)"
@@ -100,19 +101,41 @@ public actor ModelLifecycleManager {
     }
     
     /// Synchronously unloads all active Ollama models from unified memory / VRAM on app termination
-    public func offloadAllModelsImmediately() {
+    public nonisolated func offloadAllModelsImmediately() {
+        guard ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] != "1" else { return }
         let models = [ModelRouter.shared.ollamaChatModel, ModelRouter.shared.ollamaVisionModel]
         for m in models {
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
             proc.arguments = [
                 "-s", "-m", "1.0",
-                "-X", "POST", "http://localhost:11434/api/generate",
+                "-X", "POST", "http://127.0.0.1:11434/api/generate",
                 "-H", "Content-Type: application/json",
                 "-d", "{\"model\": \"\(m)\", \"keep_alive\": 0}"
             ]
             try? proc.run()
             proc.waitUntilExit()
         }
+    }
+
+    /// Unloads loaded models and terminates both Ollama.app and any running headless `ollama` daemon.
+    public nonisolated func shutdownOllamaAndUnloadModels() {
+        guard ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] != "1" else { return }
+        offloadAllModelsImmediately()
+
+        for app in NSWorkspace.shared.runningApplications {
+            let bid = (app.bundleIdentifier ?? "").lowercased()
+            let name = (app.localizedName ?? "").lowercased()
+            if bid.contains("ollama") || name == "ollama" {
+                app.terminate()
+            }
+        }
+
+        let killProc = Process()
+        killProc.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        killProc.arguments = ["-x", "ollama"]
+        try? killProc.run()
+        killProc.waitUntilExit()
+        NSLog("[ModelLifecycle] Unloaded models and shut down Ollama.")
     }
 }

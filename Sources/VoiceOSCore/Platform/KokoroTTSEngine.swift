@@ -64,10 +64,6 @@ public final class KokoroTTSEngine: NSObject, TTSServiceProtocol, @unchecked Sen
     private var workerProcess: Process?
     private var workerStdin: FileHandle?
     private var workerStdout: FileHandle?
-    private var workerStarting = false
-    private var audioCache: [String: Data] = [:]
-    private var audioCacheOrder: [String] = []
-    private var inflightCacheKeys: Set<String> = []
     private var cachedPythonWithKokoro: String?
     private var hasProbedPython = false
     private var cachedServerReachable = false
@@ -170,63 +166,6 @@ public final class KokoroTTSEngine: NSObject, TTSServiceProtocol, @unchecked Sen
         cb?(false)
     }
     
-    private func cacheKey(text: String, voice: String, speed: Float) -> String {
-        "\(voice)|\(String(format: "%.2f", speed))|\(text)"
-    }
-
-    private func cachedAudio(forKey key: String) -> Data? {
-        lock.lock()
-        defer { lock.unlock() }
-        return audioCache[key]
-    }
-
-    private func storeCachedAudio(_ data: Data, forKey key: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        if audioCache[key] == nil {
-            audioCacheOrder.append(key)
-            if audioCacheOrder.count > 12, let oldest = audioCacheOrder.first {
-                audioCacheOrder.removeFirst()
-                audioCache.removeValue(forKey: oldest)
-            }
-        }
-        audioCache[key] = data
-    }
-
-    private func isWorkerWarm() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return !workerStarting && (workerProcess?.isRunning == true) && workerStdin != nil && workerStdout != nil
-    }
-
-    /// Pre-synthesizes an upcoming sentence in background so queued chunks play back-to-back without pauses.
-    public func prewarm(text: String, voice: String? = nil, speed: Float = 1.0) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isPreferredForTTS, !trimmed.isEmpty, isWorkerWarm() else { return }
-        let resolvedVoice = voice ?? selectedVoiceId
-        let key = cacheKey(text: trimmed, voice: resolvedVoice, speed: speed)
-        lock.lock()
-        let alreadyHandled = (audioCache[key] != nil) || inflightCacheKeys.contains(key)
-        if !alreadyHandled {
-            inflightCacheKeys.insert(key)
-        }
-        lock.unlock()
-        guard !alreadyHandled else { return }
-
-        Task.detached(priority: .utility) { [weak self] in
-            guard let self = self else { return }
-            defer {
-                self.lock.lock()
-                self.inflightCacheKeys.remove(key)
-                self.lock.unlock()
-            }
-            if let py = self.findPythonWithKokoroOnnx(forceRefresh: false),
-               let wav = self.synthesizeViaPython(pythonPath: py, text: trimmed, voice: resolvedVoice, speed: speed) {
-                self.storeCachedAudio(wav, forKey: key)
-            }
-        }
-    }
-
     public func speak(text: String, voice: String? = nil, speed: Float = 1.0, completion: (@Sendable (Bool) -> Void)? = nil) {
         let resolvedVoice = voice ?? selectedVoiceId
         let weightsPath = Self.weightsURL.path
@@ -235,57 +174,33 @@ public final class KokoroTTSEngine: NSObject, TTSServiceProtocol, @unchecked Sen
             completion?(false)
             return
         }
-
-        let key = cacheKey(text: text, voice: resolvedVoice, speed: speed)
-        if let hit = cachedAudio(forKey: key) {
-            Task { @MainActor in
-                await self.playAudioData(hit, completion: completion)
-            }
-            return
-        }
-
+        
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self = self else {
                 completion?(false)
                 return
             }
-
-            // 1. Check cache again in case a prewarm finished concurrently
-            if let hit = self.cachedAudio(forKey: key) {
-                await self.playAudioData(hit, completion: completion)
+            
+            // Probe runtimes off the main thread so first speech never misses due to cold cache
+            let diag = self.diagnostics()
+            guard diag.isFullyReady else {
+                completion?(false)
                 return
             }
-
-            // 2. If kokoro-tts local server is reachable on :8880, synthesize via HTTP
-            if self.isLocalKokoroServerReachable(),
-               let audioData = await self.synthesizeViaServer(text: text, voice: resolvedVoice, speed: speed) {
-                self.storeCachedAudio(audioData, forKey: key)
+            
+            // 1. Try kokoro-tts local server on port 8880
+            if let audioData = await self.synthesizeViaServer(text: text, voice: resolvedVoice, speed: speed) {
                 await self.playAudioData(audioData, completion: completion)
                 return
             }
-
-            // 3. Use warm Python worker immediately; if still cold-starting, kick off warmup in background
-            //    and fall back instantaneously to macOS Neural TTS so voice never stalls behind a 9s Python load.
-            let diag = self.diagnostics()
-            guard diag.isFullyReady, let py = diag.pythonPath else {
-                completion?(false)
-                return
-            }
-
-            if !self.isWorkerWarm() {
-                Task.detached(priority: .utility) { [weak self] in
-                    self?.ensurePersistentWorker(pythonPath: py)
-                }
-                completion?(false)
-                return
-            }
-
-            if let wavData = self.synthesizeViaPython(pythonPath: py, text: text, voice: resolvedVoice, speed: speed) {
-                self.storeCachedAudio(wavData, forKey: key)
+            
+            // 2. Try Python kokoro_onnx runtime if installed
+            if let py = diag.pythonPath,
+               let wavData = self.synthesizeViaPython(pythonPath: py, text: text, voice: resolvedVoice, speed: speed) {
                 await self.playAudioData(wavData, completion: completion)
                 return
             }
-
+            
             completion?(false)
         }
     }
@@ -390,23 +305,15 @@ public final class KokoroTTSEngine: NSObject, TTSServiceProtocol, @unchecked Sen
     private func ensurePersistentWorker(pythonPath: String) {
         workerLock.lock()
         defer { workerLock.unlock() }
-        if isWorkerWarm() {
+        if let proc = workerProcess, proc.isRunning, workerStdin != nil, workerStdout != nil {
             return
         }
-        lock.lock()
-        workerStarting = true
-        lock.unlock()
         stopPersistentWorkerLocked()
         
         let weightsPath = Self.weightsURL.path
         let voicesPath = Self.voicePackURL.path
         guard FileManager.default.fileExists(atPath: weightsPath),
-              FileManager.default.fileExists(atPath: voicesPath) else {
-            lock.lock()
-            workerStarting = false
-            lock.unlock()
-            return
-        }
+              FileManager.default.fileExists(atPath: voicesPath) else { return }
         
         let workerScript = """
         import sys, json
@@ -449,35 +356,21 @@ public final class KokoroTTSEngine: NSObject, TTSServiceProtocol, @unchecked Sen
             try proc.run()
             // Wait for READY\n handshake from Python after ONNX load
             if let readyLine = readLineBlocking(from: outPipe.fileHandleForReading), readyLine == "READY" {
-                lock.lock()
                 workerProcess = proc
                 workerStdin = inPipe.fileHandleForWriting
                 workerStdout = outPipe.fileHandleForReading
-                workerStarting = false
-                lock.unlock()
             } else {
                 proc.terminate()
-                lock.lock()
-                workerStarting = false
-                lock.unlock()
             }
-        } catch {
-            lock.lock()
-            workerStarting = false
-            lock.unlock()
-        }
+        } catch {}
     }
     
     private func stopPersistentWorkerLocked() {
-        lock.lock()
-        let stdin = workerStdin
-        let proc = workerProcess
+        try? workerStdin?.close()
+        workerProcess?.terminate()
         workerProcess = nil
         workerStdin = nil
         workerStdout = nil
-        lock.unlock()
-        try? stdin?.close()
-        proc?.terminate()
     }
     
     private func readLineBlocking(from handle: FileHandle) -> String? {

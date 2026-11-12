@@ -338,16 +338,10 @@ public final class SandboxFileManagerEngine: @unchecked Sendable {
                 .replacingOccurrences(of: "search files for ", with: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
             var matches: [String] = []
-            let resolvedRootPrefix = root.resolvingSymlinksInPath().path + "/"
-            let rawRootPrefix = root.path + "/"
             if let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
                 while let url = enumerator.nextObject() as? URL {
                     if url.lastPathComponent.lowercased().contains(query) {
-                        let resolvedPath = url.resolvingSymlinksInPath().path
-                        let rel = resolvedPath.hasPrefix(resolvedRootPrefix)
-                            ? String(resolvedPath.dropFirst(resolvedRootPrefix.count))
-                            : url.path.replacingOccurrences(of: rawRootPrefix, with: "")
-                        matches.append(rel)
+                        matches.append(url.path.replacingOccurrences(of: root.path + "/", with: ""))
                     }
                 }
             }

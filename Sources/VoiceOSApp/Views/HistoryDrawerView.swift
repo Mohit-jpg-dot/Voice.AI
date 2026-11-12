@@ -1,106 +1,150 @@
 import SwiftUI
+import AppKit
 import VoiceOSCore
 
-/// ChatGPT-style dynamic scrollable left-edge History Sidebar.
-/// Toggled with Command+H or by clicking the left edge handle of the screen.
+/// Floating Left-Edge History Sidebar + Collapsed Trigger Pill + ChatGPT-style Session Viewer.
+/// Toggleable anytime with Command + H or by clicking the left-edge pill.
 public struct HistoryDrawerView: View {
     @ObservedObject var appState: AppState
     @State private var searchQuery: String = ""
+    @State private var followUpText: String = ""
     @State private var hoveredSessionId: String? = nil
+    @State private var isPillHovered: Bool = false
+    @State private var copiedConversationId: String? = nil
 
     public init(appState: AppState) {
         self.appState = appState
     }
 
-    private var filteredSessions: [VoiceChatSession] {
-        let base = appState.chatSessions
-        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return base }
+    private var filteredSessions: [ConversationSessionRecord] {
+        let base = appState.conversationSessions
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return base }
         return base.filter { session in
-            session.title.localizedCaseInsensitiveContains(q) ||
-            session.messages.contains { $0.text.localizedCaseInsensitiveContains(q) }
+            if session.title.localizedCaseInsensitiveContains(trimmed) { return true }
+            return session.messages.contains { $0.content.localizedCaseInsensitiveContains(trimmed) }
         }
     }
 
-    private var filteredLegacyRecords: [SessionRecord] {
-        // Show recentHistory items that don't duplicate existing VoiceChatSession titles
-        let existingPrompts = Set(appState.chatSessions.flatMap { s in
-            s.messages.filter { $0.role == "user" }.map { $0.text.lowercased() }
-        })
-        let unique = appState.recentHistory.filter { !existingPrompts.contains($0.prompt.lowercased()) }
-        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return unique }
-        return unique.filter {
-            $0.prompt.localizedCaseInsensitiveContains(q) ||
-            $0.response.localizedCaseInsensitiveContains(q) ||
-            $0.appName.localizedCaseInsensitiveContains(q)
-        }
-    }
-
-    private struct SessionGroup: Identifiable {
-        let id: String
-        let title: String
-        let sessions: [VoiceChatSession]
-    }
-
-    private var groupedSessions: [SessionGroup] {
+    private var groupedSections: [(title: String, items: [ConversationSessionRecord])] {
         let sessions = filteredSessions
+        guard !sessions.isEmpty else { return [] }
+
         let cal = Calendar.current
-        let timeFmt = DateFormatter()
-        timeFmt.dateFormat = "HH:mm"
+        let pinned = sessions.filter { $0.isPinned }
+        let unpinned = sessions.filter { !$0.isPinned }
 
-        var pinned: [VoiceChatSession] = []
-        var today: [VoiceChatSession] = []
-        var yesterday: [VoiceChatSession] = []
-        var week: [VoiceChatSession] = []
-        var earlier: [VoiceChatSession] = []
+        var today: [ConversationSessionRecord] = []
+        var yesterday: [ConversationSessionRecord] = []
+        var week: [ConversationSessionRecord] = []
+        var earlier: [ConversationSessionRecord] = []
 
-        for s in sessions {
-            if s.isPinned {
-                pinned.append(s)
-            } else if cal.isDateInToday(s.updatedAt) {
-                today.append(s)
-            } else if cal.isDateInYesterday(s.updatedAt) {
-                yesterday.append(s)
-            } else if let weekAgo = cal.date(byAdding: .day, value: -7, to: Date()), s.updatedAt >= weekAgo {
-                week.append(s)
+        let now = Date()
+        for item in unpinned {
+            if cal.isDateInToday(item.updatedAt) {
+                today.append(item)
+            } else if cal.isDateInYesterday(item.updatedAt) {
+                yesterday.append(item)
+            } else if let days = cal.dateComponents([.day], from: item.updatedAt, to: now).day, days <= 7 {
+                week.append(item)
             } else {
-                earlier.append(s)
+                earlier.append(item)
             }
         }
 
-        var groups: [SessionGroup] = []
-        if !pinned.isEmpty {
-            groups.append(SessionGroup(id: "pinned", title: "Pinned", sessions: pinned))
+        var result: [(String, [ConversationSessionRecord])] = []
+        if !pinned.isEmpty { result.append(("Pinned", pinned)) }
+        if let firstToday = today.first {
+            let tf = DateFormatter()
+            tf.dateFormat = "HH:mm"
+            result.append(("Today, \(tf.string(from: firstToday.updatedAt))", today))
         }
-        if !today.isEmpty {
-            let newest = today.first?.updatedAt ?? Date()
-            groups.append(SessionGroup(id: "today", title: "Today, \(timeFmt.string(from: newest))", sessions: today))
-        }
-        if !yesterday.isEmpty {
-            groups.append(SessionGroup(id: "yesterday", title: "Yesterday", sessions: yesterday))
-        }
-        if !week.isEmpty {
-            groups.append(SessionGroup(id: "week", title: "Previous 7 Days", sessions: week))
-        }
-        if !earlier.isEmpty {
-            groups.append(SessionGroup(id: "earlier", title: "Earlier", sessions: earlier))
-        }
-        return groups
+        if !yesterday.isEmpty { result.append(("Yesterday", yesterday)) }
+        if !week.isEmpty { result.append(("Previous 7 Days", week)) }
+        if !earlier.isEmpty { result.append(("Earlier", earlier)) }
+        return result
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Top bar: Search pill + New Chat + Lock/Pin toggle + Close
+        HStack(alignment: .center, spacing: 10) {
+            if !appState.isHistoryDrawerOpen {
+                collapsedLeftEdgePill
+                Spacer()
+            } else {
+                expandedSidebarColumn
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+
+                if let selected = appState.selectedConversation {
+                    sessionDetailPane(session: selected)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .onAppear {
+            appState.refreshConversationSessions()
+        }
+    }
+
+    // MARK: - Collapsed Left-Edge Trigger Pill (matches reference Pic 2)
+
+    private var collapsedLeftEdgePill: some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                appState.toggleHistorySidebar()
+            }
+        }) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(red: 0.07, green: 0.08, blue: 0.10).opacity(0.92))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.white.opacity(isPillHovered ? 0.34 : 0.16), lineWidth: 1)
+                    )
+                    .offset(x: -10)
+
+                VStack(spacing: 4) {
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(Color.white.opacity(0.88))
+                        .frame(width: 3, height: 10)
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(Color.white.opacity(0.55))
+                        .frame(width: 3, height: 6)
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(Color.white.opacity(0.88))
+                        .frame(width: 3, height: 10)
+                }
+                .padding(.leading, 3)
+            }
+            .frame(width: isPillHovered ? 28 : 22, height: 84)
+            .clipped()
+            .shadow(color: Color.black.opacity(0.35), radius: 8, x: 2, y: 2)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.15)) {
+                isPillHovered = hovering
+            }
+        }
+        .help("Open History Sidebar (⌘H)")
+    }
+
+    // MARK: - Expanded Left Sidebar (matches reference Pic 1)
+
+    private var expandedSidebarColumn: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Top Header: Search pill + Lock + New Chat + Collapse
             HStack(spacing: 8) {
-                HStack(spacing: 6) {
+                HStack(spacing: 7) {
                     Image(systemName: "magnifyingglass")
-                        .foregroundColor(DesignTokens.Colors.textMutedDark)
                         .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(DesignTokens.Colors.textSecondaryDark)
 
                     TextField("Search", text: $searchQuery)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 13))
+                        .font(.system(size: 12.5))
                         .foregroundColor(DesignTokens.Colors.textPrimaryDark)
 
                     if !searchQuery.isEmpty {
@@ -111,249 +155,441 @@ public struct HistoryDrawerView: View {
                         }
                         .buttonStyle(.plain)
                     }
+
+                    Image(systemName: EncryptedChatHistoryManager.shared.isIncognito ? "lock.open.fill" : "lock.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Colors.textMutedDark)
+                        .help(EncryptedChatHistoryManager.shared.isIncognito ? "Incognito active" : "AES-256 Encrypted Local History")
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(Color.white.opacity(0.08))
-                .cornerRadius(14)
+                .cornerRadius(10)
 
-                Button(action: { appState.startNewChatSession() }) {
+                Button(action: {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                        appState.startNewConversationSession()
+                    }
+                }) {
                     Image(systemName: "square.and.pencil")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(DesignTokens.Colors.textPrimaryDark)
                         .frame(width: 28, height: 28)
                         .background(Color.white.opacity(0.08))
-                        .clipShape(Circle())
+                        .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
-                .help("New Conversation")
+                .help("New Session")
 
                 Button(action: {
-                    appState.isHistorySidebarPinned.toggle()
-                }) {
-                    Image(systemName: appState.isHistorySidebarPinned ? "lock.fill" : "lock.open")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(appState.isHistorySidebarPinned ? DesignTokens.Colors.accentBlue : DesignTokens.Colors.textMutedDark)
-                        .frame(width: 28, height: 28)
-                        .background(appState.isHistorySidebarPinned ? DesignTokens.Colors.accentBlue.opacity(0.18) : Color.white.opacity(0.08))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help(appState.isHistorySidebarPinned ? "Unpin sidebar (auto-close on selection)" : "Pin sidebar open")
-            }
-
-            // Dynamic Scrollable Session Threads
-            ScrollView(.vertical, showsIndicators: true) {
-                LazyVStack(alignment: .leading, spacing: 14) {
-                    if groupedSessions.isEmpty && filteredLegacyRecords.isEmpty {
-                        VStack(spacing: 8) {
-                            Image(systemName: "bubble.left.and.bubble.right")
-                                .font(.system(size: 22))
-                                .foregroundColor(DesignTokens.Colors.textMutedDark)
-                            Text(searchQuery.isEmpty ? "No saved sessions yet" : "No matching sessions")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(DesignTokens.Colors.textSecondaryDark)
-                            Text("Hold Fn or Ctrl to talk, then revisit threads anytime here.")
-                                .font(.system(size: 11))
-                                .foregroundColor(DesignTokens.Colors.textMutedDark)
-                                .multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 48)
-                    } else {
-                        ForEach(groupedSessions) { group in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(group.title)
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(DesignTokens.Colors.textMutedDark)
-                                    .padding(.horizontal, 6)
-
-                                ForEach(group.sessions) { session in
-                                    sessionRow(session)
-                                }
-                            }
-                        }
-
-                        if !filteredLegacyRecords.isEmpty {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Recent Activity")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(DesignTokens.Colors.textMutedDark)
-                                    .padding(.horizontal, 6)
-
-                                ForEach(filteredLegacyRecords.prefix(30)) { record in
-                                    legacyRecordRow(record)
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-
-            Divider()
-                .background(Color.white.opacity(0.08))
-
-            // Footer hints matching ChatGPT/reference drawer aesthetics
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("⌘H  — toggle history sidebar")
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundColor(DesignTokens.Colors.textSecondaryDark)
-                    Text("Click any thread to reopen & follow up")
-                        .font(.system(size: 10))
-                        .foregroundColor(DesignTokens.Colors.textMutedDark)
-                }
-
-                Spacer()
-
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.18)) {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
                         appState.isHistoryDrawerOpen = false
                     }
                 }) {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundColor(DesignTokens.Colors.textSecondaryDark)
-                        .frame(width: 24, height: 24)
-                        .background(Color.white.opacity(0.07))
-                        .clipShape(Circle())
+                        .frame(width: 26, height: 28)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
-                .help("Collapse Sidebar (⌘H)")
+                .help("Hide Sidebar (⌘H)")
             }
+
+            // Dynamic Scrollable Sectioned Sessions List
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    if groupedSections.isEmpty {
+                        VStack(spacing: 8) {
+                            Spacer().frame(height: 36)
+                            Image(systemName: "bubble.left.and.bubble.right")
+                                .font(.system(size: 24))
+                                .foregroundColor(DesignTokens.Colors.textMutedDark)
+                            Text(searchQuery.isEmpty ? "No sessions saved yet" : "No matching sessions")
+                                .font(.system(size: 12.5, weight: .semibold))
+                                .foregroundColor(DesignTokens.Colors.textPrimaryDark)
+                            Text("Speak with Voice.AI or type a prompt to start a persistent session.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Colors.textMutedDark)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 12)
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        ForEach(groupedSections, id: \.title) { section in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(section.title)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(DesignTokens.Colors.textMutedDark)
+                                    .padding(.horizontal, 6)
+                                    .padding(.top, 2)
+
+                                ForEach(section.items) { session in
+                                    sessionRow(session)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            // Footer Keyboard Shortcut Hints (matches reference Pic 1)
+            VStack(alignment: .leading, spacing: 3) {
+                Divider().overlay(Color.white.opacity(0.10)).padding(.bottom, 4)
+                HStack {
+                    Text("⌘H")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundColor(DesignTokens.Colors.textPrimaryDark)
+                    Text("— toggle sidebar")
+                        .font(.system(size: 10.5))
+                        .foregroundColor(DesignTokens.Colors.textMutedDark)
+                    Spacer()
+                    Text("\(appState.conversationSessions.count) sessions")
+                        .font(.system(size: 10))
+                        .foregroundColor(DesignTokens.Colors.textMutedDark)
+                }
+                HStack(spacing: 4) {
+                    Text("Click session")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(DesignTokens.Colors.textSecondaryDark)
+                    Text("to open & continue ·")
+                        .font(.system(size: 10.5))
+                        .foregroundColor(DesignTokens.Colors.textMutedDark)
+                    Text("Esc")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(DesignTokens.Colors.textSecondaryDark)
+                    Text("to close")
+                        .font(.system(size: 10.5))
+                        .foregroundColor(DesignTokens.Colors.textMutedDark)
+                }
+            }
+            .padding(.top, 2)
         }
         .padding(14)
-        .frame(width: 280)
+        .frame(width: 288)
         .frame(maxHeight: .infinity)
         .background(
             ZStack {
                 VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-                Color.black.opacity(0.68)
+                Color(red: 0.05, green: 0.06, blue: 0.08).opacity(0.84)
             }
         )
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.white.opacity(0.14), lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.45), radius: 20, x: 4, y: 0)
+        .shadow(color: Color.black.opacity(0.45), radius: 16, x: 4, y: 6)
+        .padding(.leading, 8)
     }
 
-    @ViewBuilder
-    private func sessionRow(_ session: VoiceChatSession) -> some View {
-        let isActive = session.id == appState.activeChatSessionId
+    private func sessionRow(_ session: ConversationSessionRecord) -> some View {
+        let isSelected = appState.selectedConversation?.id == session.id
         let isHovered = hoveredSessionId == session.id
+        let iconName = sessionIconName(for: session)
 
-        Button(action: {
-            appState.openChatSession(session)
-        }) {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(iconColor(for: session.iconName).opacity(0.18))
-                        .frame(width: 24, height: 24)
-                    Image(systemName: session.iconName)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(iconColor(for: session.iconName))
+        return HStack(spacing: 9) {
+            Button(action: {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                    appState.openConversationSession(session)
                 }
+            }) {
+                HStack(spacing: 9) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [DesignTokens.Colors.accentBlue, DesignTokens.Colors.accentCyan.opacity(0.85)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 22, height: 22)
+                        Image(systemName: iconName)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
 
-                VStack(alignment: .leading, spacing: 1) {
+                    VStack(alignment: .leading, spacing: 1.5) {
+                        HStack(spacing: 4) {
+                            Text(session.title)
+                                .font(.system(size: 12.5, weight: isSelected ? .semibold : .medium))
+                                .foregroundColor(DesignTokens.Colors.textPrimaryDark)
+                                .lineLimit(1)
+                            if session.isPinned {
+                                Image(systemName: "pin.fill")
+                                    .font(.system(size: 8.5))
+                                    .foregroundColor(DesignTokens.Colors.accentBlue)
+                            }
+                        }
+
+                        if isHovered || isSelected {
+                            Text("\(session.messages.count) msgs • \(relativeTime(session.updatedAt))")
+                                .font(.system(size: 10))
+                                .foregroundColor(DesignTokens.Colors.textMutedDark)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Spacer(minLength: 4)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isHovered || isSelected {
+                HStack(spacing: 4) {
+                    Button(action: {
+                        appState.togglePinConversationSession(id: session.id)
+                    }) {
+                        Image(systemName: session.isPinned ? "pin.slash" : "pin")
+                            .font(.system(size: 10))
+                            .foregroundColor(DesignTokens.Colors.textSecondaryDark)
+                            .padding(4)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: {
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            appState.deleteConversationSession(id: session.id)
+                        }
+                    }) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 10))
+                            .foregroundColor(DesignTokens.Colors.accentRed.opacity(0.85))
+                            .padding(4)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(isSelected ? Color.white.opacity(0.14) : (isHovered ? Color.white.opacity(0.08) : Color.clear))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(isSelected ? Color.white.opacity(0.20) : Color.clear, lineWidth: 1)
+        )
+        .onHover { hovering in
+            hoveredSessionId = hovering ? session.id : (hoveredSessionId == session.id ? nil : hoveredSessionId)
+        }
+    }
+
+    // MARK: - ChatGPT-style Open Session Detail & Continue Conversation Pane
+
+    private func sessionDetailPane(session: ConversationSessionRecord) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Session Detail Header
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(session.title)
-                        .font(.system(size: 12.5, weight: isActive ? .semibold : .medium))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundColor(DesignTokens.Colors.textPrimaryDark)
                         .lineLimit(1)
-
-                    let turnCount = max(1, session.messages.filter { $0.role == "user" }.count)
-                    Text("\(turnCount) turn\(turnCount == 1 ? "" : "s")")
-                        .font(.system(size: 10))
+                    Text("\(session.persona) • \(session.messages.count) messages • Active Session")
+                        .font(.system(size: 10.5))
                         .foregroundColor(DesignTokens.Colors.textMutedDark)
                 }
 
-                Spacer(minLength: 4)
+                Spacer()
 
-                if isHovered || session.isPinned {
-                    HStack(spacing: 4) {
-                        Button(action: { appState.togglePinChatSession(id: session.id) }) {
-                            Image(systemName: session.isPinned ? "pin.fill" : "pin")
-                                .font(.system(size: 10))
-                                .foregroundColor(session.isPinned ? DesignTokens.Colors.accentBlue : DesignTokens.Colors.textMutedDark)
+                Button(action: {
+                    if let md = EncryptedChatHistoryManager.shared.exportConversationMarkdown(id: session.id) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(md, forType: .string)
+                        copiedConversationId = session.id
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedConversationId = nil }
+                    }
+                }) {
+                    Image(systemName: copiedConversationId == session.id ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Colors.textSecondaryDark)
+                        .frame(width: 26, height: 26)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(7)
+                }
+                .buttonStyle(.plain)
+                .help("Copy Session Transcript")
+
+                Button(action: {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                        appState.selectedConversation = nil
+                    }
+                }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(DesignTokens.Colors.textSecondaryDark)
+                        .frame(width: 26, height: 26)
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(7)
+                }
+                .buttonStyle(.plain)
+                .help("Close Session View")
+            }
+
+            Divider().overlay(Color.white.opacity(0.10))
+
+            // Scrollable Conversation Turns
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(session.messages) { msg in
+                            messageBubble(msg, persona: session.persona)
+                                .id(msg.id)
                         }
-                        .buttonStyle(.plain)
-
-                        if isHovered {
-                            Button(action: { appState.deleteChatSession(id: session.id) }) {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(DesignTokens.Colors.accentRed.opacity(0.85))
-                            }
-                            .buttonStyle(.plain)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .onChange(of: session.messages.count) { _ in
+                    if let last = session.messages.last {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isActive ? Color.white.opacity(0.14) : (isHovered ? Color.white.opacity(0.08) : Color.clear))
-            )
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            hoveredSessionId = hovering ? session.id : (hoveredSessionId == session.id ? nil : hoveredSessionId)
-        }
-        .contextMenu {
-            Button(session.isPinned ? "Unpin Thread" : "Pin Thread") {
-                appState.togglePinChatSession(id: session.id)
-            }
-            Button("Delete Thread", role: .destructive) {
-                appState.deleteChatSession(id: session.id)
-            }
-        }
-    }
 
-    @ViewBuilder
-    private func legacyRecordRow(_ record: SessionRecord) -> some View {
-        Button(action: {
-            appState.openLegacyHistoryRecord(record)
-        }) {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(DesignTokens.Colors.accentBlue.opacity(0.16))
-                        .frame(width: 24, height: 24)
-                    Image(systemName: record.appIcon)
-                        .font(.system(size: 11))
-                        .foregroundColor(DesignTokens.Colors.accentBlue)
-                }
-
-                Text(record.prompt)
+            // Continue Session Composer (ChatGPT Follow-Up)
+            HStack(spacing: 8) {
+                TextField("Ask a follow-up in this session...", text: $followUpText)
+                    .textFieldStyle(.plain)
                     .font(.system(size: 12.5))
                     .foregroundColor(DesignTokens.Colors.textPrimaryDark)
-                    .lineLimit(1)
+                    .onSubmit {
+                        sendFollowUp()
+                    }
 
-                Spacer()
+                Button(action: {
+                    appState.triggerVoice(mode: .agent)
+                }) {
+                    Image(systemName: appState.isCurrentlyListening ? "waveform.circle.fill" : "mic.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(appState.isCurrentlyListening ? DesignTokens.Colors.accentBlue : DesignTokens.Colors.textSecondaryDark)
+                }
+                .buttonStyle(.plain)
+                .help("Speak Follow-up")
+
+                Button(action: sendFollowUp) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(followUpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? DesignTokens.Colors.textMutedDark : DesignTokens.Colors.accentBlue)
+                }
+                .buttonStyle(.plain)
+                .disabled(followUpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(0.03))
+            .padding(.horizontal, 11)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
             )
         }
-        .buttonStyle(.plain)
+        .padding(14)
+        .frame(width: 388)
+        .frame(maxHeight: .infinity)
+        .background(
+            ZStack {
+                VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
+                Color(red: 0.05, green: 0.06, blue: 0.08).opacity(0.88)
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.45), radius: 16, x: 4, y: 6)
     }
 
-    private func iconColor(for symbol: String) -> Color {
-        switch symbol {
-        case "globe": return DesignTokens.Colors.accentBlue
-        case "display": return Color.cyan
-        case "music.note": return Color.green
-        case "envelope.fill": return Color.orange
-        case "folder.fill": return Color.yellow
-        case "terminal.fill": return Color.purple
-        default: return DesignTokens.Colors.accentBlue
+    private func messageBubble(_ msg: MessageRecordItem, persona: String) -> some View {
+        let isUser = msg.role == "user"
+        return VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
+            HStack {
+                if isUser { Spacer() }
+                Text(isUser ? "You" : persona)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(DesignTokens.Colors.textMutedDark)
+                if !isUser { Spacer() }
+            }
+
+            HStack {
+                if isUser { Spacer(minLength: 36) }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(msg.content)
+                        .font(.system(size: 12.5))
+                        .foregroundColor(DesignTokens.Colors.textPrimaryDark)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if !msg.actions.isEmpty {
+                        ForEach(msg.actions) { act in
+                            HStack(spacing: 4) {
+                                Image(systemName: "bolt.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(DesignTokens.Colors.accentGreen)
+                                Text(act.toolName)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(DesignTokens.Colors.textSecondaryDark)
+                            }
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(6)
+                        }
+                    }
+                }
+                .padding(.horizontal, 11)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(isUser ? DesignTokens.Colors.accentBlue.opacity(0.28) : Color.white.opacity(0.07))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(isUser ? 0.18 : 0.08), lineWidth: 0.8)
+                )
+                if !isUser { Spacer(minLength: 24) }
+            }
         }
+    }
+
+    private func sendFollowUp() {
+        let q = followUpText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return }
+        followUpText = ""
+        appState.submitTypedPrompt(q)
+    }
+
+    private func sessionIconName(for session: ConversationSessionRecord) -> String {
+        let lower = session.title.lowercased()
+        if lower.contains("weather") || lower.contains("search") || lower.contains("screen") {
+            return "globe"
+        }
+        if lower.contains("mail") || lower.contains("email") {
+            return "envelope.fill"
+        }
+        if lower.contains("note") {
+            return "note.text"
+        }
+        if lower.contains("terminal") || lower.contains("code") || lower.contains("git") {
+            return "terminal.fill"
+        }
+        if lower.contains("music") || lower.contains("spotify") || lower.contains("youtube") {
+            return "play.fill"
+        }
+        return "globe"
+    }
+
+    private func relativeTime(_ date: Date) -> String {
+        let tf = DateFormatter()
+        tf.dateFormat = Calendar.current.isDateInToday(date) ? "HH:mm" : "MMM d"
+        return tf.string(from: date)
     }
 }

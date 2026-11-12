@@ -415,11 +415,10 @@ public enum AgentToolParser {
         if lower == "select all" {
             return .windowAction(action: "select_all")
         }
-        if lower == "copy" || lower == "copy that" || lower == "copy this" ||
-           lower == "copy selected text" || lower == "copy highlighted text" || lower == "copy text" {
+        if lower == "copy" || lower == "copy that" {
             return .windowAction(action: "copy")
         }
-        if lower == "paste" || lower == "paste that" || lower == "paste this" || lower == "paste here" {
+        if lower == "paste" || lower == "paste that" {
             return .windowAction(action: "paste")
         }
         if lower == "undo" {
@@ -478,10 +477,7 @@ public enum AgentToolParser {
             return .openUrl(url: nav.url, inBrowser: nav.browser)
         }
 
-        // 8. Generic Browser Navigation / New Tab ("open a new tab", "open a new tab with...", "tab kholo...", "Chrome mein tab kholo")
-        if lower == "open a new tab" || lower == "open new tab" || lower == "new tab" {
-            return .windowAction(action: "new_tab")
-        }
+        // 8. Generic Browser Navigation / New Tab ("open a new tab with...", "tab kholo...", "Chrome mein tab kholo")
         if lower.contains("open_tab") || lower.contains("naya tab") || lower.contains("new tab") || lower.contains("tab kholo") || lower.contains("open tab") {
             let searchQuery = extractBrowserQuery(from: normalized)
             return .browserSearch(query: searchQuery, engine: "google", background: false)
@@ -942,11 +938,7 @@ public enum AgentToolParser {
     
     private static func extractSearchQuery(from text: String) -> String {
         var str = text.lowercased()
-        let strips = [
-            "google pe search karo ", "google par search karo ", "google pe search karo", "google par search karo",
-            "search google for ", "search youtube for ", "search the web for ", "search web for ", "search for ",
-            "search karo ", "search karo", "dhoondo ", "dhoondo", "search ", "search"
-        ]
+        let strips = ["google pe search karo", "search karo", "dhoondo", "search", "google par search karo"]
         for s in strips {
             str = str.replacingOccurrences(of: s, with: "")
         }

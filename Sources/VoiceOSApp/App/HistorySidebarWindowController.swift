@@ -1,180 +1,207 @@
 import AppKit
-import Combine
 import SwiftUI
+import Combine
 import VoiceOSCore
 
-/// Custom panel that permits key input only when the sidebar is expanded so the Search field works
-/// without stealing focus from user applications while collapsed.
-private final class HistorySidebarPanel: NSPanel {
-    var allowsKeyFocus: Bool = false
+/// Custom click-through hosting view for the left-edge History Sidebar panel.
+public final class HistorySidebarHostingView<Content: View>: NSHostingView<Content> {
+    public weak var sidebarPanel: HistorySidebarPanel?
 
-    override var canBecomeKey: Bool { allowsKeyFocus }
-    override var canBecomeMain: Bool { false }
-}
-
-private struct LeftEdgeTriggerHandleView: View {
-    let onOpen: () -> Void
-    @State private var isHovering: Bool = false
-
-    var body: some View {
-        Button(action: onOpen) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.black.opacity(isHovering ? 0.85 : 0.62))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.white.opacity(isHovering ? 0.30 : 0.14), lineWidth: 1)
-                    )
-                if isHovering {
-                    VStack(spacing: 4) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 10, weight: .semibold))
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 8, weight: .bold))
-                    }
-                    .foregroundColor(.white)
-                } else {
-                    Capsule()
-                        .fill(Color.white.opacity(0.60))
-                        .frame(width: 3, height: 30)
-                }
-            }
-            .frame(width: isHovering ? 20 : 14, height: 76)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .animation(.spring(response: 0.20, dampingFraction: 0.8), value: isHovering)
+    public override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let panel = sidebarPanel, !panel.visibleSidebarBounds.isEmpty else {
+            return super.hitTest(point)
         }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovering = hovering
+        if !panel.visibleSidebarBounds.contains(point) {
+            return nil
         }
-        .help("Click left edge to open History (⌘H)")
+        return super.hitTest(point)
     }
 }
 
-/// Manages the left-edge screen handle and dynamic ChatGPT-style floating History Sidebar.
-public final class HistorySidebarWindowController {
-    private let appState: AppState
-    private let edgeHandlePanel: HistorySidebarPanel
-    private let sidebarPanel: HistorySidebarPanel
-    private var cancellables = Set<AnyCancellable>()
-    private var outsideClickMonitor: Any?
+/// Floating left-edge NSPanel for the collapsible History Sidebar pill, scrollable thread list,
+/// and ChatGPT-style active session conversation viewer.
+public final class HistorySidebarPanel: NSPanel {
+    public var allowsKeyFocus: Bool = false
+    public var visibleSidebarBounds: NSRect = .zero
 
-    public init(appState: AppState) {
-        self.appState = appState
-
-        let handleRect = Self.edgeHandleFrame()
-        let handle = HistorySidebarPanel(
-            contentRect: handleRect,
-            styleMask: [.borderless, .nonactivatingPanel, .utilityWindow],
-            backing: .buffered,
-            defer: false
-        )
-        handle.allowsKeyFocus = false
-        handle.isFloatingPanel = true
-        handle.isOpaque = false
-        handle.backgroundColor = .clear
-        handle.hasShadow = false
-        handle.level = .mainMenu + 2
-        handle.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces, .ignoresCycle]
-        handle.appearance = NSAppearance(named: .darkAqua)
-        handle.contentView = NSHostingView(
-            rootView: LeftEdgeTriggerHandleView { [weak appState] in
-                DispatchQueue.main.async {
-                    appState?.isHistoryDrawerOpen = true
-                }
-            }
-        )
-        self.edgeHandlePanel = handle
-
-        let drawerRect = Self.sidebarFrame()
-        let drawer = HistorySidebarPanel(
-            contentRect: drawerRect,
+    public init(contentRect: NSRect) {
+        super.init(
+            contentRect: contentRect,
             styleMask: [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow],
             backing: .buffered,
             defer: false
         )
-        drawer.allowsKeyFocus = true
-        drawer.isFloatingPanel = true
-        drawer.isOpaque = false
-        drawer.backgroundColor = .clear
-        drawer.hasShadow = false
-        drawer.level = .mainMenu + 2
-        drawer.collectionBehavior = [.fullScreenAuxiliary, .stationary, .canJoinAllSpaces, .ignoresCycle]
-        drawer.appearance = NSAppearance(named: .darkAqua)
-        drawer.contentView = NSHostingView(rootView: HistoryDrawerView(appState: appState))
-        self.sidebarPanel = drawer
 
-        // Show left-edge peek handle immediately on launch
-        edgeHandlePanel.orderFrontRegardless()
+        isFloatingPanel = true
+        isOpaque = false
+        titleVisibility = .hidden
+        titlebarAppearsTransparent = true
+        backgroundColor = .clear
+        isMovable = false
+        isReleasedWhenClosed = false
+        hasShadow = false
+        level = .floating
+        collectionBehavior = [
+            .fullScreenAuxiliary,
+            .stationary,
+            .canJoinAllSpaces,
+            .ignoresCycle
+        ]
+        appearance = NSAppearance(named: .darkAqua)
+    }
 
+    public override var canBecomeKey: Bool {
+        allowsKeyFocus
+    }
+
+    public override var canBecomeMain: Bool {
+        false
+    }
+
+    public override func cancelOperation(_ sender: Any?) {
+        allowsKeyFocus = false
+        resignKey()
+        NotificationCenter.default.post(name: .voiceAIHistorySidebarEscapePressed, object: nil)
+    }
+}
+
+public extension Notification.Name {
+    static let voiceAIHistorySidebarEscapePressed = Notification.Name("VoiceAIHistorySidebarEscapePressed")
+}
+
+/// Manages positioning, click-through hit-testing, and keyboard focus for the left-edge History Sidebar.
+public final class HistorySidebarWindowController: NSWindowController {
+    public static let panelWidth: CGFloat = 716.0
+    public static let collapsedPillWidth: CGFloat = 32.0
+    public static let collapsedPillHeight: CGFloat = 96.0
+
+    private let appState: AppState
+    private var cancellables = Set<AnyCancellable>()
+    private var screenObserver: Any?
+    private var escapeObserver: Any?
+    private var currentPanelHeight: CGFloat = 580.0
+
+    public static func targetScreen() -> NSScreen {
+        NSScreen.main ?? NSScreen.screens.first ?? NSScreen()
+    }
+
+    public init(appState: AppState) {
+        self.appState = appState
+        let screen = Self.targetScreen()
+        let visible = screen.visibleFrame
+        let height = min(620.0, max(460.0, visible.height * 0.72))
+        self.currentPanelHeight = height
+
+        let originX = screen.frame.origin.x
+        let originY = visible.midY - (height / 2.0)
+
+        let panel = HistorySidebarPanel(
+            contentRect: NSRect(x: originX, y: originY, width: Self.panelWidth, height: height)
+        )
+
+        let hostingView = HistorySidebarHostingView(
+            rootView: HistoryDrawerView(appState: appState)
+        )
+        hostingView.sidebarPanel = panel
+        panel.contentView = hostingView
+
+        super.init(window: panel)
+
+        updatePanelHitBoundsAndFocus(
+            isOpen: appState.isHistoryDrawerOpen,
+            hasSessionOpen: appState.selectedConversation != nil
+        )
+        bindState()
+        observeSystemEvents()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        if let screenObserver = screenObserver {
+            NotificationCenter.default.removeObserver(screenObserver)
+        }
+        if let escapeObserver = escapeObserver {
+            NotificationCenter.default.removeObserver(escapeObserver)
+        }
+    }
+
+    public func positionAtLeftEdge() {
+        guard let panel = window as? HistorySidebarPanel else { return }
+        let screen = Self.targetScreen()
+        let visible = screen.visibleFrame
+        let height = min(620.0, max(460.0, visible.height * 0.72))
+        self.currentPanelHeight = height
+        let originX = screen.frame.origin.x
+        let originY = visible.midY - (height / 2.0)
+        panel.setFrame(NSRect(x: originX, y: originY, width: Self.panelWidth, height: height), display: true)
+        updatePanelHitBoundsAndFocus(
+            isOpen: appState.isHistoryDrawerOpen,
+            hasSessionOpen: appState.selectedConversation != nil
+        )
+    }
+
+    private func bindState() {
         appState.$isHistoryDrawerOpen
-            .removeDuplicates()
+            .combineLatest(appState.$selectedConversation)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] isOpen in
-                self?.updatePresentation(isOpen: isOpen)
+            .sink { [weak self] isOpen, selectedSession in
+                self?.updatePanelHitBoundsAndFocus(
+                    isOpen: isOpen,
+                    hasSessionOpen: selectedSession != nil
+                )
             }
             .store(in: &cancellables)
     }
 
-    deinit {
-        if let monitor = outsideClickMonitor {
-            NSEvent.removeMonitor(monitor)
+    private func observeSystemEvents() {
+        screenObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.positionAtLeftEdge()
         }
-    }
 
-    private func updatePresentation(isOpen: Bool) {
-        if isOpen {
-            let rect = Self.sidebarFrame()
-            sidebarPanel.setFrame(rect, display: true)
-            edgeHandlePanel.orderOut(nil)
-            sidebarPanel.alphaValue = 0.0
-            sidebarPanel.orderFrontRegardless()
-            sidebarPanel.makeKey()
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.18
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                sidebarPanel.animator().alphaValue = 1.0
-            }
-            installOutsideClickMonitor()
-        } else {
-            removeOutsideClickMonitor()
-            sidebarPanel.orderOut(nil)
-            edgeHandlePanel.setFrame(Self.edgeHandleFrame(), display: true)
-            edgeHandlePanel.orderFrontRegardless()
-        }
-    }
-
-    private func installOutsideClickMonitor() {
-        removeOutsideClickMonitor()
-        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+        escapeObserver = NotificationCenter.default.addObserver(
+            forName: .voiceAIHistorySidebarEscapePressed,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
             guard let self = self else { return }
-            if !self.appState.isHistorySidebarPinned && self.appState.isHistoryDrawerOpen {
-                let mouseLoc = NSEvent.mouseLocation
-                if !self.sidebarPanel.frame.contains(mouseLoc) {
-                    DispatchQueue.main.async {
-                        self.appState.isHistoryDrawerOpen = false
-                    }
-                }
+            if self.appState.selectedConversation != nil {
+                self.appState.selectedConversation = nil
+            } else if self.appState.isHistoryDrawerOpen {
+                self.appState.isHistoryDrawerOpen = false
             }
         }
     }
 
-    private func removeOutsideClickMonitor() {
-        if let monitor = outsideClickMonitor {
-            NSEvent.removeMonitor(monitor)
-            outsideClickMonitor = nil
+    private func updatePanelHitBoundsAndFocus(isOpen: Bool, hasSessionOpen: Bool) {
+        guard let panel = window as? HistorySidebarPanel else { return }
+        let h = currentPanelHeight
+
+        if !isOpen {
+            let pillY = (h - Self.collapsedPillHeight) / 2.0
+            panel.visibleSidebarBounds = NSRect(
+                x: 0,
+                y: pillY,
+                width: Self.collapsedPillWidth,
+                height: Self.collapsedPillHeight
+            )
+            panel.allowsKeyFocus = false
+            if panel.isKeyWindow {
+                panel.resignKey()
+            }
+        } else {
+            let activeWidth: CGFloat = hasSessionOpen ? 706.0 : 308.0
+            panel.visibleSidebarBounds = NSRect(x: 0, y: 0, width: activeWidth, height: h)
+            panel.allowsKeyFocus = true
+            panel.orderFrontRegardless()
+            panel.makeKey()
         }
-    }
-
-    private static func edgeHandleFrame() -> NSRect {
-        let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        return NSRect(x: visible.minX, y: visible.midY - 38, width: 22, height: 76)
-    }
-
-    private static func sidebarFrame() -> NSRect {
-        let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let height = min(660, max(420, visible.height - 96))
-        let y = visible.midY - (height / 2.0)
-        return NSRect(x: visible.minX + 10, y: y, width: 280, height: height)
     }
 }
+

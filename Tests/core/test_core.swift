@@ -859,6 +859,20 @@ assertEqual(
     "gana bajao",
     "Wake phrase supports Hinglish commands"
 )
+assertTrue(
+    TheVoiceAmbientListener.extractCommand(from: "Your voice settings are saved", wakePhrase: "jarvis") == nil,
+    "Wake detector ignores ordinary sentences mentioning 'voice' without wake prefix"
+)
+assertEqual(
+    TheVoiceAmbientListener.extractCommand(from: "Hey voice check battery", wakePhrase: "jarvis"),
+    "check battery",
+    "Explicit 'Hey voice' prefix triggers fallback wake phrase cleanly"
+)
+assertEqual(
+    TheVoiceAmbientListener.extractCommand(from: "Hey Jarvis", wakePhrase: "jarvis"),
+    "",
+    "Bare wake phrase extracts empty payload for immediate active-listening handoff"
+)
 
 // 2. Streaming TTS Chunking, Barge-In Generation & Selectable Kokoro Voice
 let chunks = SpeechPipelineEngine.splitIntoSpeakableChunks(
@@ -1415,6 +1429,47 @@ assertTrue(formattedOCR.contains("Submit Order") && formattedOCR.contains("0.680
 let snappedPt = ComputerUseOperator.snapNormalizedPoint(forLabel: "submit", elements: ocrElements)
 assertTrue(snappedPt != nil && abs(snappedPt!.x - 0.68) < 0.001 && abs(snappedPt!.y - 0.72) < 0.001,
            "Label-based click snaps cleanly to matching OCR element center coordinate")
+
+// =========================================================================
+// [Suite 41] Floating History Sidebar (Cmd+H) & ChatGPT Multi-Turn Sessions
+// =========================================================================
+print("\n[Suite 41] History Sidebar (Cmd+H) & Multi-Turn Sessions")
+
+assertTrue(
+    HotkeyManager.isCommandPlusH(keyCode: 4, charactersIgnoringModifiers: "h", modifierFlags: [.command]),
+    "Command+H shortcut detected cleanly for History Sidebar toggle"
+)
+assertTrue(
+    !HotkeyManager.isCommandPlusH(keyCode: 4, charactersIgnoringModifiers: "h", modifierFlags: [.command, .shift]),
+    "Command+Shift+H is not confused with Command+H sidebar shortcut"
+)
+assertTrue(
+    !HotkeyManager.isCommandPlusH(keyCode: 8, charactersIgnoringModifiers: "c", modifierFlags: [.command]),
+    "Command+C is not treated as Command+H"
+)
+
+let histState = AppState()
+let initialDrawer = histState.isHistoryDrawerOpen
+histState.toggleHistorySidebar()
+assertEqual(histState.isHistoryDrawerOpen, !initialDrawer, "toggleHistorySidebar toggles sidebar visibility")
+
+histState.startNewConversationSession()
+histState.recordSession(mode: .agent, prompt: "What is Swift?", response: "Swift is Apple's systems language.", appName: "Voice.AI", appIcon: "globe")
+let firstSessionId = histState.activeConversationId
+histState.recordSession(mode: .agent, prompt: "Give a short example", response: "print(\"Hello, Swift!\")", appName: "Voice.AI", appIcon: "globe")
+assertTrue(firstSessionId != nil && histState.activeConversationId == firstSessionId,
+           "Follow-up turns stay grouped inside the same ChatGPT-style conversation session")
+
+if let activeSess = histState.conversationSessions.first(where: { $0.id == firstSessionId }) {
+    assertEqual(activeSess.messages.count, 4, "Multi-turn session accumulates user+assistant turns (4 messages)")
+    histState.startNewConversationSession()
+    assertTrue(histState.activeConversationId == nil, "startNewConversationSession clears active thread for a fresh session")
+    histState.openConversationSession(activeSess)
+    assertEqual(histState.activeConversationId, activeSess.id, "openConversationSession restores session ID for follow-up")
+    assertEqual(histState.selectedConversation?.id, activeSess.id, "openConversationSession opens session detail pane")
+} else {
+    assertTrue(false, "Expected active multi-turn conversation in conversationSessions")
+}
 
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")

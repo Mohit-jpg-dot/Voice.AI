@@ -78,6 +78,7 @@ public final class HotkeyManager: @unchecked Sendable {
     public var onKeyReleased: (@Sendable (KeyEventResult) -> Void)?
     public var onCircleToAskTriggered: (@Sendable () -> Void)?
     public var onClipboardDictationTriggered: (@Sendable () -> Void)?
+    public var onHistorySidebarToggleTriggered: (@Sendable () -> Void)?
     public var onEscapeStopTriggered: (@Sendable () -> Void)?
 
     public init() {}
@@ -181,6 +182,16 @@ public final class HotkeyManager: @unchecked Sendable {
                 }
             }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if Self.isCommandPlusH(
+                keyCode: event.keyCode,
+                charactersIgnoringModifiers: event.charactersIgnoringModifiers,
+                modifierFlags: flags
+            ) {
+                DispatchQueue.main.async {
+                    self.onHistorySidebarToggleTriggered?()
+                }
+                return true
+            }
             if flags == [.command, .shift] && event.keyCode == 8 { // Cmd+Shift+C
                 DispatchQueue.main.async {
                     self.onCircleToAskTriggered?()
@@ -218,6 +229,17 @@ public final class HotkeyManager: @unchecked Sendable {
         guard hasFunctionFlag else { return false }
         if keyCode == 2 { return true }
         return charactersIgnoringModifiers?.lowercased() == "d"
+    }
+
+    public static func isCommandPlusH(
+        keyCode: UInt16,
+        charactersIgnoringModifiers: String?,
+        modifierFlags: NSEvent.ModifierFlags
+    ) -> Bool {
+        let relevant = modifierFlags.intersection([.command, .shift, .option, .control])
+        guard relevant == .command else { return false }
+        if keyCode == 4 { return true } // 'h' on US QWERTY
+        return charactersIgnoringModifiers?.lowercased() == "h"
     }
 
     public func stopGlobalEventMonitoring() {

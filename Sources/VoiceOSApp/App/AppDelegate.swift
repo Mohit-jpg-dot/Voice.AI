@@ -8,6 +8,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     private var mainWindow: NSWindow?
     private var notchHUDController: NotchHUDWindowController?
     private var floatingOrbController: FloatingOrbWindowController?
+    private var historySidebarController: HistorySidebarWindowController?
     private var screenSelectionController: ScreenSelectionOverlayController?
     private var statusItem: NSStatusItem?
     private var cancellables = Set<AnyCancellable>()
@@ -50,6 +51,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         }
         if floatingOrbController == nil {
             setupFloatingOrb()
+        }
+        if historySidebarController == nil {
+            setupHistorySidebar()
         }
         if screenSelectionController == nil {
             screenSelectionController = ScreenSelectionOverlayController(appState: appState)
@@ -167,6 +171,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             }
         }
 
+        hk.onHistorySidebarToggleTriggered = { [weak self] in
+            DispatchQueue.main.async {
+                self?.toggleHistorySidebar()
+            }
+        }
+
         hk.onEscapeStopTriggered = { [weak self] in
             DispatchQueue.main.async {
                 ComputerUseOperator.shared.stopActiveRun()
@@ -203,6 +213,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         let toggleOrbItem = NSMenuItem(title: "Toggle Floating Orb", action: #selector(toggleFloatingOrb), keyEquivalent: "")
         toggleOrbItem.target = self
         menu.addItem(toggleOrbItem)
+
+        let toggleHistoryItem = NSMenuItem(title: "Toggle History Sidebar", action: #selector(toggleHistorySidebar), keyEquivalent: "h")
+        toggleHistoryItem.keyEquivalentModifierMask = [.command]
+        toggleHistoryItem.target = self
+        menu.addItem(toggleHistoryItem)
         
         let circleItem = NSMenuItem(title: "Circle to Ask (Lasso)", action: #selector(triggerCircleToAskFromMenu), keyEquivalent: "C")
         circleItem.keyEquivalentModifierMask = [.command, .shift]
@@ -274,6 +289,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     @objc private func toggleFloatingOrb() {
         appState.isFloatingOrbVisible.toggle()
     }
+
+    @objc private func toggleHistorySidebar() {
+        if historySidebarController == nil {
+            setupHistorySidebar()
+        }
+        historySidebarController?.positionAtLeftEdge()
+        appState.toggleHistorySidebar()
+        historySidebarController?.window?.orderFrontRegardless()
+    }
     
     @objc private func triggerCircleToAskFromMenu() {
         appState.triggerCircleToAsk()
@@ -336,6 +360,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             orbController.setVisibility(true)
         }
         self.floatingOrbController = orbController
+    }
+
+    private func setupHistorySidebar() {
+        let sidebarController = HistorySidebarWindowController(appState: appState)
+        sidebarController.window?.orderFrontRegardless()
+        self.historySidebarController = sidebarController
     }
     
     public func applicationWillTerminate(_ notification: Notification) {

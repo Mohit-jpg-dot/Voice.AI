@@ -1,306 +1,294 @@
-# Voice.AI — Autonomous Voice-First Computer Agent for macOS & Windows
+<div align="center">
 
-> A voice-first AI computer agent for macOS and Windows. Speaks Hindi, English, and Hinglish. Controls native applications, web browsers, and terminals; understands your screen live; and operates flexibly with your own Cloud API keys, 100% private offline local models (Ollama + Whisper), or in a lightweight zero-key Google Search mode.
+# Voice.AI
 
-🌐 **Live Website & Docs:** **[https://mohit-jpg-dot.github.io/Voice.AI/](https://mohit-jpg-dot.github.io/Voice.AI/)** · **[Interactive Docs Hub](website/docs.html)**
+**A voice-first AI agent that controls your computer.**
+Speak in English, Hindi, or Hinglish. Voice.AI opens apps, operates your browser and terminal, understands what is on your screen, and works with cloud models, fully offline local models, or a zero-key search mode.
 
-[Website](https://mohit-jpg-dot.github.io/Voice.AI/) • [Docs Hub](website/docs.html) • [English](README.md) • [हिन्दी में पढ़ें (Hindi Quickstart)](README.hi.md) • [Changelog](CHANGELOG.md) • [Contributing](CONTRIBUTING.md) • [Third-Party Notices](THIRD_PARTY_NOTICES.md)
-
-[![Live Website](https://img.shields.io/badge/Live%20Website-mohit--jpg--dot.github.io%2FVoice.AI-5865F2?logo=googlechrome&logoColor=white)](https://mohit-jpg-dot.github.io/Voice.AI/)
-[![macOS 14.0+ Ready](https://img.shields.io/badge/macOS-14.0%2B%20Sonoma%20%2F%20Tahoe-0071e3.svg)]()
-[![Windows 11 (In Preview)](https://img.shields.io/badge/Windows-11%20In%20Preview-0078d4.svg)]()
-[![Apple Silicon Native](https://img.shields.io/badge/Architecture-Apple%20Silicon%20(M1--M5)-black.svg)]()
-[![Core Tests: 342/342](https://img.shields.io/badge/macOS%20Tests-342%2F342%20PASSED-34c759.svg)]()
-[![Windows Core: 114/114](https://img.shields.io/badge/Windows%20Core-114%2F114%20PASSED-34c759.svg)]()
+[![macOS 14+](https://img.shields.io/badge/macOS-14.0%2B-0071e3.svg)](#installation)
+[![Windows 11](https://img.shields.io/badge/Windows%2011-preview-0078d4.svg)](#windows-preview)
+[![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-native-black.svg)](#installation)
+[![macOS tests](https://img.shields.io/badge/macOS%20tests-342%2F342-34c759.svg)](#testing)
+[![Windows core tests](https://img.shields.io/badge/Windows%20core-114%2F114-34c759.svg)](#testing)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
----
+[Website](https://mohit-jpg-dot.github.io/Voice.AI/) ·
+[Docs Hub](website/docs.html) ·
+[हिन्दी](README.hi.md) ·
+[Changelog](CHANGELOG.md) ·
+[Contributing](CONTRIBUTING.md)
 
-## 📋 Table of Contents
-- [Status Overview](#-status-overview)
-- [✅ Features Working Right Now (Verified & Tested)](#-features-working-right-now-verified--tested)
-- [🚧 Features Under Active Development (In Progress)](#-features-under-active-development-in-progress)
-- [Three Flexible AI Modes](#-three-flexible-ai-modes)
-- [Voice Commands Cheat Sheet](#-voice-commands-cheat-sheet)
-- [Installation & Quickstart](#-installation--quickstart)
-  - [macOS Installation (.dmg)](#macos-installation)
-  - [Windows Preview](#windows-preview)
-  - [Building from Source](#building-from-source-macos)
-- [Security, Privacy & Permissions](#-security-privacy--permissions)
-- [Documentation & Decision Records](#-documentation--decision-records)
+</div>
 
 ---
 
-## 🚦 Status Overview
+## Table of contents
 
-We believe in 100% honesty with no fake claims. Below is the exact breakdown of what is **fully working and verified today** versus what is **under active development**:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                        FEATURE STATUS AT A GLANCE                               │
-├─────────────────────────────────────────────────┬───────────────────────────────┤
-│ Feature                                         │ Current Status                │
-├─────────────────────────────────────────────────┼───────────────────────────────┤
-│ Dynamic Adaptive Notch HUD (Auto-Resizing)      │ ✅ WORKING NOW (macOS Native) │
-│ Now Playing Wings + Spotify / YouTube Control   │ ✅ WORKING NOW (macOS Native) │
-│ Coding Agents Live Monitor in Notch             │ ✅ WORKING NOW (macOS Native) │
-│ Hindi & Hinglish Sub-10ms Fast-Path (125+)      │ ✅ WORKING NOW (macOS & .NET) │
-│ Instant Offline Deterministic Math Engine       │ ✅ WORKING NOW (macOS & .NET) │
-│ Zero-Key Free Google Search Mode                │ ✅ WORKING NOW (macOS & .NET) │
-│ Universal Dictation (Hold-to-Talk 250ms)        │ ✅ WORKING NOW (macOS Native) │
-│ Fn + D Hands-Free Clipboard Dictation Mode      │ ✅ WORKING NOW (macOS Native) │
-│ Voice-Controlled Local / Cloud Model Switching  │ ✅ WORKING NOW (macOS Native) │
-│ Control-Key Computer-Use Operator Loop          │ ✅ WORKING NOW (macOS & .NET) │
-│ Consequential Action Safety Approvals           │ ✅ WORKING NOW (macOS & .NET) │
-│ Encrypted Account History & API Key Scrubbing   │ ✅ WORKING NOW (macOS & .NET) │
-│ Bring-Your-Own-Key Cloud LLMs (GPT/Claude)      │ ✅ WORKING NOW (macOS & .NET) │
-│ MCP Tool Registry & Permission Tiers (Phase 0)  │ ✅ WORKING NOW (macOS & .NET) │
-│ Typed Pub/Sub Event Bus Foundation (Phase 0)    │ ✅ WORKING NOW (macOS & .NET) │
-│ Encrypted Semantic Memory Store (Phase 0)       │ ✅ WORKING NOW (macOS & .NET) │
-│ Configurable On-Device Wake Word (Phase 1)      │ ✅ WORKING NOW (macOS Native) │
-│ Streaming TTS & Mid-Sentence Barge-In (Phase 1) │ ✅ WORKING NOW (macOS Native) │
-│ JARVIS/FRIDAY Persona & Risk Warnings (Phase 1) │ ✅ WORKING NOW (macOS & .NET) │
-│ Long-Term Memory Recall & Viewer UI (Phase 1)   │ ✅ WORKING NOW (macOS & .NET) │
-│ Multi-Step Routines & Protocols (Phase 1)       │ ✅ WORKING NOW (macOS & .NET) │
-│ Proactive Alert Rules Engine & Event Bus (Ph. 2)│ ✅ WORKING NOW (macOS & .NET) │
-│ Calendar, Email & Messages Workflows (Phase 2)  │ ✅ WORKING NOW (macOS Native) │
-│ On-Device Local File Search & RAG (Phase 2)     │ ✅ WORKING NOW (macOS & .NET) │
-│ VLM Screen Understanding & "Circle to Ask"      │ ✅ WORKING NOW (macOS Native) │
-│ Smart Home (HA / HomeKit / MQTT) (Phase 2)      │ ✅ WORKING NOW (macOS & .NET) │
-│ Opt-In Apple Health Import & Warnings (Phase 2) │ ✅ WORKING NOW (macOS & .NET) │
-│ Iron Legion Parallel Subagents (Phase 3)        │ ✅ WORKING NOW (macOS & .NET) │
-│ Engineering CAD, Physics & 3D Hologram (Ph. 3)  │ ✅ WORKING NOW (macOS & .NET) │
-│ Cyber Defense Scan & Lockdown Gate (Phase 3)    │ ✅ WORKING NOW (macOS & .NET) │
-│ Opt-In Local Camera & Gesture Vision (Phase 3)  │ ✅ WORKING NOW (macOS Native) │
-│ Phone Remote Companion & Approval Bridge (Ph. 3)│ ✅ WORKING NOW (macOS & .NET) │
-│ Runtime Plugin & MCP Manifest Loader (Phase 3)  │ ✅ WORKING NOW (macOS & .NET) │
-│ Interactive Website Docs Hub (37 Guides)        │ ✅ WORKING NOW (Web / Static) │
-├─────────────────────────────────────────────────┼───────────────────────────────┤
-│ Windows 10/11 WinUI 3 Native GUI Shell          │ 🚧 UNDER ACTIVE DEVELOPMENT   │
-│ In-App 1-Click Offline Model Downloader (Ollama)│ 🚧 UNDER ACTIVE DEVELOPMENT   │
-│ Deep In-Browser DOM Video Element Scraping      │ 🚧 UNDER ACTIVE DEVELOPMENT   │
-│ Live Interactive Desktop Computer-Use QA Matrix │ 🚧 PENDING ACCESSIBILITY QA   │
-└─────────────────────────────────────────────────┴───────────────────────────────┘
-```
+- [Overview](#overview)
+- [Project status](#project-status)
+- [Features](#features)
+- [AI modes](#ai-modes)
+- [Voice command reference](#voice-command-reference)
+- [Installation](#installation)
+- [Building from source](#building-from-source)
+- [Testing](#testing)
+- [Security and privacy](#security-and-privacy)
+- [Roadmap](#roadmap)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
-## ✅ Features Working Right Now (Verified & Tested)
+## Overview
 
-The following features are completely built, integrated, and verified with automated test suites:
+Voice.AI lets you do real work on your computer by speaking. It combines three layers:
 
-### 1. Dynamic Adaptive Notch HUD (macOS)
-- **Auto-Extending Sizing (Zero Text Truncation)**: The liquid glass notch drawer measures response length and expands smoothly from `118pt` up to `480pt` in height and `540pt` to `680pt` in width with Apple spring physics. Answers are never cut off with ellipses (`...`). When you ask a short question next, the notch auto-shrinks down to fit.
-- **Clickable Web Source Pills**: Wikipedia and Google web citations appear as interactive liquid glass pills (`[ Open on Wikipedia ↗ ]`) that open directly in your default browser.
+1. **Fast local intent routing.** Common commands in English, Hindi, and Hinglish are matched on-device in under 10 ms, with no model call.
+2. **A conversational brain.** Anything open-ended goes to the model you choose: a cloud provider with your own API key, a local Ollama model, or a free search-based mode.
+3. **A computer-use operator.** For open-ended goals, the agent looks at the screen, decides on the next action, and performs it, repeating until the task is done.
 
-### 2. Now Playing Dynamic Wings & Conversational Media Control
-- **Flanking Glass Wings**: When Spotify or YouTube is active, the resting notch expands flanking wings with real-time jumping audio EQ visualizers, app glyphs, and track titles.
-- **Conversational Playback Voice Commands**: Works directly with Spotify and active YouTube tabs:
-  - *"play the current video"* / *"video chalao"*
-  - *"pause karo"* / *"pause the music"*
-  - *"change it to next"* / *"agla gana chalao"*
-  - *"previous track"* / *"pichhla video"*
-
-### 3. Coding Agents Live Monitor Inside the Notch
-- **Subagent Dashboard**: Click the **Agents** tab in the notch to see your running autonomous coding subagents (Claude Code, Antigravity, local agents).
-- **Checklists & Clocks**: View completed steps with green checkmarks, active task spinners, and live elapsed runtimes.
-- **Interactive Question Approvals**: If an agent asks for clarification or permission, answer by voice or click directly in the notch without switching terminal windows.
-
-### 4. Sub-10ms Colloquial Hinglish & Hindi Fast-Path (125+ Patterns)
-- **Zero-Lag Intent Routing**: Handles natural mixed Hindi-English phrasing locally without waiting for cloud LLMs:
-  - *"WhatsApp kholo"* &rarr; Launches WhatsApp.
-  - *"Spotify band karo"* &rarr; Cleanly closes Spotify.
-  - *"Screen light thodi badhao"* &rarr; Adjusts display brightness.
-  - *"Aawaz kam karo"* &rarr; Lowers system volume.
-  - 100% verified across 125 test utterances (`125/125 PASSED`).
-
-### 5. Zero-Token Offline Deterministic Math Engine
-- **Instant Local Calculations**: Evaluates math queries in < 5ms with zero API token costs and zero internet:
-  - Arithmetic: `25 * 4` &rarr; `100` (handles trailing question marks and Hindi phrasing like *"25 into 4 kitna hota hai"*).
-  - Percentages: `15% of 80` &rarr; `12`.
-  - Powers & Roots: `2^8` &rarr; `256`, `square root of 144` &rarr; `12`.
-
-### 6. Zero-Key Free Google Search Mode
-- **Zero Cost, Real-Time Knowledge**: Operates completely free without needing any paid AI API keys. Combines MediaWiki action extracts, Open-Meteo real-time weather, and Google CSE with live source citations.
-
-### 7. Universal Dictation into Any App
-- **Hold-to-Talk Precision**: Hold `fn` (or `⌘`) for >= 250ms, speak in English, Hindi, or Hinglish, and release. Short taps (< 250ms) safely pass through untouched for Globe/Emoji.
-- **Clean Ingestion**: Automatically removes filler words (*"um"*, *"uh"*, *"like"*) and injects polished text directly into whichever app has focus (VS Code, Slack, Safari, Terminal).
-
-### 8. Consequential Action Safety Guardrail (Visual Approvals)
-- **Human-in-the-Loop Safety**: High-impact actions (such as sending WhatsApp messages or deleting files) are automatically intercepted. A high-contrast **Approval Card** appears in the notch displaying the exact payload preview with **Cancel** and **Approve** buttons before any keystrokes are executed.
-
-### 9. Per-Account Encrypted Storage & Key Scrubbing
-- **Strict Isolation**: Account chat histories and preferences are stored in separate PBKDF2/AES-GCM encrypted silos.
-- **Automatic Scrubbing**: Any API keys or credentials detected in conversation logs are automatically replaced with `[REDACTED_API_KEY]`.
-
-### 10. Bring-Your-Own-Key Cloud LLMs
-- Direct native support for OpenAI (GPT-4o), Anthropic (Claude 3.5), and Gemini 1.5 Pro using your own personal API keys stored securely in macOS Keychain.
-
-### 11. `Fn + D` Hands-Free Clipboard Dictation (`Suite 37`)
-- **Speak Once, Paste Anywhere**: Press `fn + D` (or `⌘⇧C`), speak naturally in English, Hindi, or Hinglish, and release. Polished text copies directly to the macOS clipboard with a compact Notch confirmation pill so you can paste anywhere (`⌘V`) without interrupting focus.
-
-### 12. Voice-Controlled Automatic AI Model Switching (`Suite 38`)
-- **Seamless Local ↔ Cloud Tier Switching**: Switch AI brains mid-conversation by voice alone:
-  - *"Switch to smaller local model"* / *"chote model pe jao"* &rarr; Selects the lightweight Ollama local tier (`3b`/smaller installed model).
-  - *"Switch to larger local model"* / *"8b model chalao"* &rarr; Upgrades to the larger local Ollama model (`8b`/`14b`).
-  - *"Switch to Claude"* / *"go to ChatGPT"* / *"use paid models"* &rarr; Routes immediately to configured cloud models.
-
-### 13. Native Control-Key (`⌃`) Computer-Use Operator Loop (`Suite 39` & Windows `Suite 14`)
-- **Iterative See → Decide → Act Screen Automation**: Adapted natively in Swift (`ComputerUseOperator`) and `.NET` (`ComputerUseLoopEngine`), combining display captures with Retina DPI-normalized coordinates and Accessibility UI actions (`maxSteps = 15`, `90s` time limit).
-- **Hard Safety Guardrails**: Wraps visible screen text inside `<UNTRUSTED_SCREEN_DATA>`, detects top-left corner failsafes, logs redacted `audit.json` + step screenshots to `~/.voiceos/computer_use_logs/`, blocks destructive/payment/send steps behind `.consequential` Notch Approval Cards, and halts immediately on `Esc` or spoken `"stop"` / `"ruko"`.
-
-### 14. Full JARVIS/FRIDAY Platform Architecture (Phases 0–3)
-- **Foundations & Autonomy**: MCP-compatible `ToolRegistry`, pub/sub `EventBus`, encrypted semantic `MemoryStore`, on-device wake word, barge-in TTS, multi-step Routines, proactive alert rules, local RAG search, Smart Home, opt-in Health trends, Iron Legion parallel subagents, CAD/physics/3D hologram viewer, Cyber Defense & Lockdown, opt-in camera gestures, Phone Remote Companion, and runtime plugin loading.
-
-### 15. Interactive Website Documentation Hub (`website/docs.html`)
-- **All App Docs in One Theme-Aligned Portal**: Replaced the placeholder `Affiliates` navbar tab across the public site with an interactive HTML reader bundling all 37 guides, phase architectures, Notch geometry studies, and verification reports with full-text `⌘K` search, category filters, internal `.md` cross-links, and copyable code blocks.
+Consequential actions, such as sending a message or deleting files, always stop for your explicit approval first.
 
 ---
 
-## 🚧 Features Under Active Development (In Progress)
+## Project status
 
-To ensure truthful engineering, these features are actively in progress and not yet marked as stable production releases:
+Voice.AI states plainly what is verified and what is still in progress.
 
-### 1. Windows 10/11 WinUI 3 Native Shell
-- **Current Status**: Shared .NET Core library (`VoiceAI.Core`) is complete with **114/114 unit tests passing** across 14 suites (Math, Grammar, Encrypted History, Safety Planner, Phase 0–3 engines, and `ComputerUseLoopEngine`).
-- **In Progress**: WinUI 3 top-center floating island UI rendering, low-level keyboard hook (`WH_KEYBOARD_LL`), WASAPI microphone streaming, and live Windows UIPI elevation handling (`Blocked: needs physical/VM Windows machine for live GUI QA`).
+| Area | Status |
+|:--|:--|
+| macOS native app | Working |
+| Windows shared core (`VoiceAI.Core`, .NET) | Working, 114/114 tests passing |
+| Windows 10/11 WinUI 3 shell | In development |
+| In-app one-click offline model downloader | In development |
+| Deep in-browser DOM video scraping | In development |
+| Live interactive QA of computer-use mode on real apps | Pending manual QA |
 
-### 2. Multi-Monitor Animated "Circle to Ask" Beacon Overlay
-- **Current Status**: `understandScreenQuestion` (VLM + Apple Vision OCR + privacy badges) and region capture are complete and verified in Phase 2 (`Suite 35`).
-- **In Progress**: Multi-monitor animated pulsing beacon cursor halo that tracks target buttons across external scaled displays.
-
-### 3. In-App 1-Click Offline Model Downloader
-- **Current Status**: Setup wizard UI exists for choosing Offline Mode. Local Ollama/Whisper endpoints can be connected manually or switched dynamically by voice.
-- **In Progress**: Built-in automated model catalog downloader that fetches, verifies, and launches bundled Ollama and Whisper daemons without requiring power-user terminal setup.
-
-### 4. Deep In-Browser DOM Video Element Scraping
-- **Current Status**: High-level window focusing and media playback controls work.
-- **In Progress**: Deep internal DOM element traversal for complex client-side single-page applications without triggering browser accessibility permission warnings.
-
-### 5. Live Desktop Accessibility QA for Computer-Use Mode
-- **Current Status**: Core See-Decide-Act loop, DPI scaling, corner failsafe, prompt-injection isolation, kill switches, and safety gates pass automated headless verification in macOS (`Suite 39`) and Windows (`Suite 14`).
-- **Pending Manual QA**: End-to-end interactive mouse-warp cursor clicks and live VLM calls on real macOS apps after granting Accessibility & Screen Recording permissions (see [real-test.md](real-test.md)).
+Computer-use mode passes its automated headless checks (see [Testing](#testing)). Interactive end-to-end checks on live macOS apps, with Accessibility and Screen Recording permissions granted, are tracked in [real-test.md](real-test.md).
 
 ---
 
-## 🧠 Three Flexible AI Modes
+## Features
 
-| Capability | Cloud API Mode | Free Offline Local Mode | Google Search Only Mode |
-|:---|:---:|:---:|:---:|
-| **Cost** | Uses your own API key | **100% Free** | **100% Free** |
-| **Internet Required** | Yes | **No (100% Offline)** | Yes (lightweight HTTP) |
-| **Hardware Footprint** | Extremely low (~45 MB RAM) | Moderate (~4 GB RAM) | Ultra-light (~35 MB RAM) |
-| **Reasoning & Coding** | Full generative reasoning | Local neural reasoning | Deterministic fact extraction |
-| **Factual Accuracy** | Model knowledge cutoff | Model weights cutoff | **Live web citations & sources** |
-| **Computer Control** | Full voice command suite | Full voice command suite | Full voice command suite |
-| **Current Status** | **✅ Working Now** | **🔄 Manual Daemon Setup** | **✅ Working Now** |
+### Voice control
+
+- **Hindi and Hinglish fast path.** More than 125 colloquial patterns handled locally in under 10 ms, for example *"WhatsApp kholo"*, *"Spotify band karo"*, and *"Aawaz kam karo"*. Verified on 125 test utterances.
+- **Media control.** Play, pause, next, and previous for Spotify and active YouTube tabs.
+- **Offline math engine.** Arithmetic, percentages, powers, and roots evaluated in under 5 ms with no tokens and no internet.
+- **Wake word and speech.** Configurable on-device wake word, streaming text-to-speech, and mid-sentence barge-in.
+
+### Dictation
+
+- **Universal dictation.** Hold `fn` (or `⌘`) for 250 ms or more, speak, and release. Filler words are removed and the text is inserted into whichever app has focus. Short taps pass through untouched.
+- **Clipboard dictation.** Press `fn + D` (or `⌘⇧C`), speak, and the cleaned text is copied to the clipboard with a short confirmation in the notch. Paste it anywhere with `⌘V`.
+
+### Model switching by voice
+
+Change the model behind every reply in the middle of a conversation:
+
+- *"Switch to smaller local model"* selects the lightweight local Ollama model.
+- *"Switch to larger local model"* selects the larger local Ollama model.
+- *"Switch to Claude"*, *"go to ChatGPT"*, or *"use paid models"* routes to your configured cloud model.
+
+### Computer-use operator (`⌃` Control key)
+
+An iterative see, decide, act loop that works on any open-ended screen goal, such as *"click the blue submit button"*. It is implemented natively in Swift (`ComputerUseOperator`) and .NET (`ComputerUseLoopEngine`).
+
+- Retina and DPI-normalized coordinates, plus Accessibility UI actions
+- Hard limits of 15 steps and 90 seconds per task
+- On-screen text wrapped in `<UNTRUSTED_SCREEN_DATA>` so it is treated as data, never as instructions
+- Corner failsafe, and an immediate halt on `Esc` or the spoken words "stop" or "ruko"
+- Redacted `audit.json` and per-step screenshots saved to `~/.voiceos/computer_use_logs/`
+- Destructive, payment, and send steps blocked behind approval cards
+
+### Safety approvals
+
+High-impact actions are intercepted before any keystroke is sent. An approval card in the notch shows the exact payload, with **Cancel** and **Approve** buttons.
+
+### Notch interface (macOS)
+
+- **Adaptive HUD** that grows and shrinks to fit each answer, so responses are never truncated.
+- **Now Playing wings** with a live equalizer, app glyph, and track title for Spotify and YouTube.
+- **Clickable source pills** that open Wikipedia and Google citations in your browser.
+- **Coding agents monitor.** See running subagents (Claude Code, Antigravity, local agents) with checklists and elapsed time, and answer their questions by voice.
+
+### Platform capabilities
+
+| Capability | Description |
+|:--|:--|
+| MCP tool registry | MCP-compatible registry with permission tiers |
+| Event bus | Typed publish/subscribe foundation |
+| Memory | Encrypted semantic memory with recall and a viewer UI |
+| Routines | Multi-step routines and protocols |
+| Proactive alerts | Rules engine driven by the event bus |
+| Workflows | Calendar, email, and messages (macOS) |
+| Local search | On-device file search and retrieval (RAG) |
+| Screen understanding | Vision-language model, Apple Vision OCR, and "Circle to Ask" (macOS) |
+| Smart home | Home Assistant, HomeKit, and MQTT |
+| Health | Opt-in Apple Health import and warnings |
+| Subagents | Parallel subagents ("Iron Legion") |
+| Engineering | CAD, physics, and 3D hologram viewer |
+| Cyber defense | Defense scan and lockdown gate |
+| Camera | Opt-in local camera and gesture vision (macOS) |
+| Phone companion | Remote approval bridge |
+| Plugins | Runtime plugin and MCP manifest loader |
+| Persona | JARVIS/FRIDAY persona with risk warnings |
 
 ---
 
-## 🗣️ Voice Commands Cheat Sheet
+## AI modes
 
-### Media & Playback Controls (Working Now)
-- *"Play the current video"* / *"Video chalao"* &rarr; Starts active YouTube/browser video.
-- *"Pause karo"* / *"Pause the music"* &rarr; Pauses Spotify or YouTube.
-- *"Change it to next"* / *"Agla gana chalao"* &rarr; Skips to the next track.
-- *"Previous track"* / *"Pichhla video"* &rarr; Returns to previous track.
+| | Cloud API | Offline local | Google Search only |
+|:--|:--:|:--:|:--:|
+| **Cost** | Your own API key | Free | Free |
+| **Internet** | Required | Not required | Required (light HTTP) |
+| **Memory footprint** | About 45 MB | About 4 GB | About 35 MB |
+| **Reasoning** | Full generative | Local model | Deterministic fact extraction |
+| **Knowledge** | Model cutoff | Model cutoff | Live web with citations |
+| **Computer control** | Full | Full | Full |
+| **Status** | Working | Manual daemon setup | Working |
 
-### Computer Control & System Fast-Path (Working Now)
-- *"WhatsApp kholo"* / *"Open Safari"* &rarr; Launches and focuses applications.
-- *"Close the app"* / *"Spotify band karo"* &rarr; Cleanly terminates applications.
-- *"Turn down the volume"* / *"Aawaz kam karo"* &rarr; Adjusts master audio volume.
-- *"Adjust brightness to 70%"* / *"Screen light badhao"* &rarr; Adjusts display brightness.
-- *"Take a screenshot"* / *"Screenshot lo"* &rarr; Captures display to clipboard.
-
-### Clipboard Dictation, Model Switching & Computer-Use (`⌃`)
-- **`Fn + D`** (or **`⌘⇧C`**) &rarr; Hands-free dictation copied straight to your clipboard for pasting anywhere (`⌘V`).
-- *"Switch to smaller local model"* / *"Chote model pe jao"* &rarr; Switches Ollama chat brain to the smaller installed model (`3b`).
-- *"Switch to larger local model"* / *"Go to Claude"* &rarr; Upgrades to your larger local (`8b`) or configured cloud LLM.
-- **`⌃` Control + Open-Ended Screen Goal** (e.g., *"Click the blue submit button"*) &rarr; Runs the iterative See-Decide-Act Computer-Use loop (`Esc` or say *"stop"* / *"ruko"* to halt).
-
-### Instant Offline Math & Real-Time Knowledge (Working Now)
-- *"What is 25 * 4?"* / *"25 into 4 kitna hota hai"* &rarr; Evaluates to `100` in < 5ms.
-- *"What is 15 percent of 80?"* &rarr; Evaluates to `12`.
-- *"Square root of 144"* &rarr; Evaluates to `12`.
-- *"What is photosynthesis?"* &rarr; Summarizes scientific definition with encyclopedic source pill.
-- *"What is the weather in Delhi?"* &rarr; Returns live temperature from Open-Meteo.
+Cloud mode supports OpenAI, Anthropic, and Gemini with your own keys. Offline mode uses Ollama and Whisper. The zero-key mode combines MediaWiki extracts, Open-Meteo weather, and Google CSE with source citations.
 
 ---
 
-## 📦 Installation & Quickstart
+## Voice command reference
 
-### macOS Installation
-1. Download the release disk image: [Voice.AI-1.0.0.dmg](website/downloads/Voice.AI-1.0.0.dmg) (Universal Apple Silicon Native).
-2. Open the `.dmg` and drag `Voice.AI.app` to your `Applications` folder.
-3. Launch Voice.AI. On first launch, follow the onboarding flow to select your preferred AI mode and grant **Accessibility** and **Microphone** permissions.
+### Media
 
-### Windows Preview
-- Shared core and service adapters are located in [`windows/VoiceAI.Windows`](windows/VoiceAI.Windows) (WinUI 3 / C#). See [Windows Developer Setup](docs/windows-dev-setup.md) for compiling with Visual Studio 2022 and `.NET 8`.
-- Run shared core verification suite:
-  ```powershell
-  dotnet run --project windows/tests/VoiceAI.Core.Tests/VoiceAI.Core.Tests.csproj
-  ```
+| Say | Result |
+|:--|:--|
+| "Play the current video" / "Video chalao" | Starts the active video |
+| "Pause karo" / "Pause the music" | Pauses Spotify or YouTube |
+| "Change it to next" / "Agla gana chalao" | Next track |
+| "Previous track" / "Pichhla video" | Previous track |
 
-### Building from Source (macOS)
+### System and apps
+
+| Say | Result |
+|:--|:--|
+| "Open Safari" / "WhatsApp kholo" | Launches and focuses the app |
+| "Close the app" / "Spotify band karo" | Quits the app |
+| "Turn down the volume" / "Aawaz kam karo" | Adjusts volume |
+| "Adjust brightness to 70%" / "Screen light badhao" | Adjusts brightness |
+| "Take a screenshot" / "Screenshot lo" | Captures the screen to the clipboard |
+
+### Dictation, models, and computer use
+
+| Input | Result |
+|:--|:--|
+| `fn + D` or `⌘⇧C` | Dictate to the clipboard |
+| "Switch to smaller local model" / "Chote model pe jao" | Smaller local model |
+| "Switch to larger local model" / "8b model chalao" | Larger local model |
+| "Go to Claude" / "Use paid models" | Cloud model |
+| `⌃` Control, then a goal | Runs the computer-use loop |
+| `Esc`, or "stop" / "ruko" | Halts the loop immediately |
+
+### Knowledge and math
+
+| Say | Result |
+|:--|:--|
+| "What is 25 * 4?" / "25 into 4 kitna hota hai" | `100` |
+| "What is 15 percent of 80?" | `12` |
+| "Square root of 144" | `12` |
+| "What is photosynthesis?" | Summary with a source pill |
+| "What is the weather in Delhi?" | Live temperature from Open-Meteo |
+
+---
+
+## Installation
+
+### macOS
+
+Requires macOS 14.0 (Sonoma) or later on Apple Silicon.
+
+1. Download [Voice.AI-1.0.0.dmg](website/downloads/Voice.AI-1.0.0.dmg). A [SHA-256 checksum](website/downloads/Voice.AI-1.0.0.dmg.sha256) is published next to it so you can verify the download.
+2. Open the disk image and drag **Voice.AI.app** into **Applications**.
+3. Launch the app and follow onboarding to pick an AI mode and grant **Accessibility** and **Microphone** permissions. Computer-use mode also needs **Screen Recording**. See [how to grant permissions](docs/how-to-grant-permissions.md) if a prompt does not appear.
+
+### Windows (preview)
+
+The shared core and service adapters live in [`windows/VoiceAI.Windows`](windows/VoiceAI.Windows) (WinUI 3 and C#). The native GUI shell is still in development. See the [Windows developer setup](docs/windows-dev-setup.md) to build with Visual Studio 2022 and .NET 8, and the [offline setup guide](docs/setup-free-offline-windows.md) for local models.
+
+---
+
+## Building from source
+
 ```bash
-# 1. Clone the repository
 git clone https://github.com/Mohit-jpg-dot/Voice.AI.git
 cd Voice.AI
 
-# 2. Compile VoiceOSCore library and Voice.AI.app bundle
-./scripts/build-app.sh
-
-# 3. Package the release DMG installer
-./scripts/make-dmg.sh
-
-# 4. Run the automated verification test suites
-./scripts/run-tests.sh core    # 342 / 342 PASSED (Suites 1-39)
-./scripts/run-tests.sh brain   # 28 / 28 PASSED
-./scripts/run-tests.sh google  # 83 / 83 PASSED
-./scripts/run-tests.sh hindi   # 125 / 125 PASSED
-./scripts/run-tests.sh auth    # Offline sandbox: 37/41 (Suite 3/5 require host disk & live network)
-
-# 5. Run the cross-platform Windows core suite (.NET)
-dotnet run --project windows/tests/VoiceAI.Core.Tests/VoiceAI.Core.Tests.csproj --no-restore  # 114 / 114 PASSED (Suites 1-14)
+./scripts/build-app.sh     # build VoiceOSCore and Voice.AI.app
+./scripts/make-dmg.sh      # package the release DMG
 ```
 
 ---
 
-## 🛡️ Security, Privacy & Permissions
+## Testing
 
-1. **Accessibility API (`AXUIElement`)**:
-   - Used exclusively to identify focused text inputs, inspect UI hierarchies, and inject polished text.
-2. **Microphone Access**:
-   - Audio is processed on-device (Apple Speech or local Whisper). Raw audio recordings are never uploaded to remote servers.
-3. **Screen Recording**:
-   - Used on-demand by `ScreenVisionService` using Apple Vision framework for offline text recognition. Pixels never leave your device.
-4. **Credential Safety**:
-   - All API keys (OpenAI, Claude, Gemini, Google CSE) are stored strictly in macOS Keychain (`ai.voice.app.auth`) or Windows Credential Manager / DPAPI.
-   - Built-in regex filters automatically scrub API keys before persisting logs.
+```bash
+./scripts/run-tests.sh core      # 342/342 (suites 1-39)
+./scripts/run-tests.sh brain     # 28/28
+./scripts/run-tests.sh google    # 83/83
+./scripts/run-tests.sh hindi     # 125/125
+./scripts/run-tests.sh auth      # 37/41 in an offline sandbox
+```
 
----
+The `auth` suite scores 37/41 offline because suites 3 and 5 need host disk access and a live network.
 
-## 📚 Documentation & Decision Records
+Windows core suite (.NET):
 
-- [Interactive Website Docs Hub (All 37 Guides)](website/docs.html)
-- [Cross-Platform Architecture Specification](docs/architecture-cross-platform.md)
-- [Phase 0: Core Foundations Architecture](docs/phase-0-foundations.md)
-- [Phase 1: JARVIS Feel Architecture](docs/phase-1-jarvis-feel.md)
-- [Phase 2: Proactive Assistant Architecture](docs/phase-2-proactive-assistant.md)
-- [Phase 3: Advanced Capabilities Architecture](docs/phase-3-advanced.md)
-- [Computer-Use Agent Mode QA Matrix](real-test.md)
-- [Free & Offline Setup Guide (Windows)](docs/setup-free-offline-windows.md)
-- [Windows Platform Parity & Test Report](docs/test-report-windows.md)
-- [Windows Developer Toolchain Setup](docs/windows-dev-setup.md)
-- [Documentation Sitemap](docs/index.md)
-- [Hindi Quickstart Guide (हिन्दी में पढ़ें)](README.hi.md)
-- [Third-Party Software & Model Notices](THIRD_PARTY_NOTICES.md)
-- [Contributing Guidelines](CONTRIBUTING.md)
-- [Release Changelog](CHANGELOG.md)
+```powershell
+dotnet run --project windows/tests/VoiceAI.Core.Tests/VoiceAI.Core.Tests.csproj --no-restore   # 114/114
+```
+
+Interactive computer-use test cases are in [real-test.md](real-test.md).
 
 ---
 
-## 📄 License
-Voice.AI is released under the [MIT License](LICENSE).  
-Copyright © 2026 Voice.AI Team.
+## Security and privacy
+
+- **Accessibility API.** Used only to find focused text fields, inspect UI structure, and insert text.
+- **Microphone.** Audio is processed on-device with Apple Speech or local Whisper. Raw recordings are never uploaded.
+- **Screen Recording.** Used on demand for offline text recognition with Apple Vision. Pixels stay on your device.
+- **Credentials.** API keys are stored in the macOS Keychain (`ai.voice.app.auth`) or Windows Credential Manager (DPAPI). Keys found in conversation logs are replaced with `[REDACTED_API_KEY]` before saving.
+- **Storage.** Each account's history and preferences are kept in a separate PBKDF2 and AES-GCM encrypted store.
+- **Approvals.** Sending, deleting, and payment actions always need explicit approval.
+- **Prompt injection.** Text read from the screen is treated as untrusted data and never as a command.
+
+---
+
+## Roadmap
+
+- [ ] Windows 10/11 WinUI 3 native shell (floating island UI, low-level keyboard hook, WASAPI microphone streaming, UIPI elevation handling)
+- [ ] One-click offline model downloader that fetches, verifies, and launches Ollama and Whisper
+- [ ] Multi-monitor animated "Circle to Ask" beacon overlay
+- [ ] Deep in-browser DOM video scraping without browser accessibility warnings
+- [ ] Live interactive QA of computer-use mode on real macOS apps
+
+---
+
+## Documentation
+
+- [Docs hub (all guides)](website/docs.html)
+- [Cross-platform architecture](docs/architecture-cross-platform.md)
+- Architecture phases: [Phase 0 foundations](docs/phase-0-foundations.md) · [Phase 1 JARVIS feel](docs/phase-1-jarvis-feel.md) · [Phase 2 proactive assistant](docs/phase-2-proactive-assistant.md) · [Phase 3 advanced](docs/phase-3-advanced.md)
+- Setup guides: [Cloud API](docs/setup-cloud.md) · [API keys](docs/setup-api-key.md) · [Ollama (local models)](docs/setup-ollama.md) · [Free offline mode](docs/setup-free-offline.md) · [Google Search key](docs/setup-google-search-key.md)
+- [How to grant permissions](docs/how-to-grant-permissions.md)
+- [Computer-use QA matrix](real-test.md)
+- [Windows parity and test report](docs/test-report-windows.md)
+- [Documentation sitemap](docs/index.md)
+- [Third-party notices](THIRD_PARTY_NOTICES.md)
+
+---
+
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, run the relevant test suite for the area you change, and follow the [Code of Conduct](CODE_OF_CONDUCT.md). To report a vulnerability, see [SECURITY.md](SECURITY.md) instead of opening a public issue.
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE). Copyright © 2026 Voice.AI Team.

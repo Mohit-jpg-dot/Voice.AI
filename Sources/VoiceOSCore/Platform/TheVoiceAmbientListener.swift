@@ -22,6 +22,9 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
     
     public private(set) var isListening: Bool = false
     private var isPausedForActiveSession: Bool = false
+    private var consecutiveErrorCount: Int = 0
+    private var pendingWakeWorkItem: DispatchWorkItem?
+    private var lastBargeInTime: Date = .distantPast
     private let wakePhraseKey = "VoiceAI_ConfiguredWakePhrase"
 
     public var wakePhrase: String {
@@ -85,14 +88,27 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
             initRecognizer()
         }
         
-        // Request authorization if needed
-        if SFSpeechRecognizer.authorizationStatus() == .notDetermined {
-            SFSpeechRecognizer.requestAuthorization { _ in }
-        }
-        if #available(macOS 10.14, *) {
-            if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
-                AVCaptureDevice.requestAccess(for: .audio) { _ in }
+        // Request authorization and auto-start once granted instead of racing audioEngine startup
+        let speechStatus = SFSpeechRecognizer.authorizationStatus()
+        if speechStatus == .notDetermined {
+            SFSpeechRecognizer.requestAuthorization { [weak self] status in
+                guard status == .authorized else { return }
+                DispatchQueue.main.async { self?.startAmbientListening() }
             }
+            return
+        }
+        guard speechStatus == .authorized else { return }
+
+        if #available(macOS 10.14, *) {
+            let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+            if micStatus == .notDetermined {
+                AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                    guard granted else { return }
+                    DispatchQueue.main.async { self?.startAmbientListening() }
+                }
+                return
+            }
+            guard micStatus == .authorized else { return }
         }
         
         let inputNode = audioEngine.inputNode
@@ -122,13 +138,14 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
             audioEngine.prepare()
             try audioEngine.start()
             isListening = true
+            consecutiveErrorCount = 0
         } catch {
             NSLog("[The Voice] Failed to start ambient audio engine: %@", error.localizedDescription)
             return
         }
         
         startRecognitionTask()
-        NSLog("[The Voice] Ambient hands-free wake word listening active ('Voice ...').")
+        NSLog("[The Voice] Ambient hands-free wake word listening active ('%@ ...').", activePhrase)
     }
     
     private func startRecognitionTask() {
@@ -138,20 +155,31 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
             guard let self = self else { return }
             
             if let result = result {
+                self.consecutiveErrorCount = 0
                 let text = result.bestTranscription.formattedString
-                self.evaluateWakeWord(in: text)
+                self.evaluateWakeWord(in: text, isFinal: result.isFinal)
             }
             
-            if error != nil {
-                // Restart cycle gracefully when Apple speech task times out
+            if let err = error {
+                let nsErr = err as NSError
+                // Ignore intentional cancellation when restarting/pausing
+                if nsErr.code == 216 || nsErr.code == 301 { return }
+                // Backoff gently when Apple speech task times out or hits transient error
                 if self.isListening && !self.isPausedForActiveSession {
-                    self.restartTask()
+                    self.consecutiveErrorCount += 1
+                    let delay = min(2.0, 0.35 * Double(self.consecutiveErrorCount))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                        guard let self = self, self.isListening && !self.isPausedForActiveSession else { return }
+                        self.restartTask()
+                    }
                 }
             }
         }
     }
     
     /// Pure helper for extracting an actionable command after a configurable wake phrase (English, Hindi & Hinglish).
+    /// Requires explicit greeting prefix for the secondary "voice" alias (unless wakePhrase itself is "voice")
+    /// so self-echo / ordinary conversation mentioning "voice" does not cause false wake triggers.
     public static func extractCommand(from transcript: String, wakePhrase: String) -> String? {
         let clean = transcript.replacingOccurrences(of: "[,.!?।]", with: " ", options: .regularExpression)
                               .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -159,11 +187,17 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
         guard !lower.isEmpty else { return nil }
 
         let targetPhrase = wakePhrase.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let candidates = Array(Set([targetPhrase.isEmpty ? "jarvis" : targetPhrase, "voice"]))
+        let primary = targetPhrase.isEmpty ? "jarvis" : targetPhrase
 
-        for phrase in candidates {
-            let escaped = NSRegularExpression.escapedPattern(for: phrase)
-            let pattern = #"\b(?:hey\s+|hi\s+|ok\s+|okay\s+|hello\s+|the\s+|arey\s+)?\#(escaped)\b"#
+        var patterns: [String] = []
+        let escapedPrimary = NSRegularExpression.escapedPattern(for: primary)
+        patterns.append(#"\b(?:hey\s+|hi\s+|ok\s+|okay\s+|hello\s+|the\s+|arey\s+)?\#(escapedPrimary)\b"#)
+        if primary != "voice" {
+            // Secondary fallback "voice" always requires a wake prefix to avoid accidental TTS self-barge-in
+            patterns.append(#"\b(?:hey|hi|ok|okay|hello|the|arey)\s+voice\b"#)
+        }
+
+        for pattern in patterns {
             if let match = lower.range(of: pattern, options: .regularExpression) {
                 var afterWake = String(clean[match.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
                 // Strip optional Hindi/English polite joiners immediately following the wake word
@@ -178,28 +212,58 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
         return nil
     }
 
-    /// Checks live stream for configured wake-word + instruction and triggers barge-in immediately.
-    private func evaluateWakeWord(in transcript: String) {
-        if let afterWake = Self.extractCommand(from: transcript, wakePhrase: wakePhrase) {
-            // Cooldown check (prevent multiple firings within 1.5 seconds)
-            guard Date().timeIntervalSince(lastTriggerTime) > 1.5 else { return }
-            lastTriggerTime = Date()
-            
-            NSLog("[WakeWord] Triggered ('%@'). Payload: '%@'", wakePhrase, afterWake)
+    /// Checks live stream for configured wake-word + instruction:
+    /// 1) Barges in on active TTS immediately when wake phrase is heard.
+    /// 2) Debounces trailing words (~0.45s) so "Hey Jarvis open Safari" isn't cut off mid-breath before triggering.
+    private func evaluateWakeWord(in transcript: String, isFinal: Bool) {
+        guard let afterWake = Self.extractCommand(from: transcript, wakePhrase: wakePhrase) else { return }
+
+        // Instant TTS interruption the moment wake word lands
+        if Date().timeIntervalSince(lastBargeInTime) > 0.8 {
+            lastBargeInTime = Date()
             SpeechPipelineEngine.shared.bargeIn()
+            ComputerUseOperator.shared.stopActiveRun()
+        }
+
+        // Prevent duplicate firings within cooldown window
+        guard Date().timeIntervalSince(lastTriggerTime) > 1.5 else { return }
+
+        let dispatchWake: (String) -> Void = { [weak self] payload in
+            guard let self = self else { return }
+            guard Date().timeIntervalSince(self.lastTriggerTime) > 1.5 else { return }
+            self.lastTriggerTime = Date()
+            self.pendingWakeWorkItem?.cancel()
+            self.pendingWakeWorkItem = nil
+
+            NSLog("[WakeWord] Triggered ('%@'). Payload: '%@'", self.wakePhrase, payload)
+            SpeechPipelineEngine.shared.bargeIn()
+            ComputerUseOperator.shared.stopActiveRun()
             EventBus.shared.publish(VoiceEvent(
                 kind: .custom("wake_word_triggered"),
                 source: "TheVoiceAmbientListener",
                 severity: .info,
-                payload: ["wake_phrase": wakePhrase, "has_command": afterWake.isEmpty ? "false" : "true"]
+                payload: ["wake_phrase": self.wakePhrase, "has_command": payload.isEmpty ? "false" : "true"]
             ))
-            
-            restartTask()
+
+            self.restartTask()
             DispatchQueue.main.async { [weak self] in
-                self?.onWakeWordTriggered?(afterWake)
+                self?.onWakeWordTriggered?(payload)
             }
+        }
+
+        if isFinal {
+            dispatchWake(afterWake)
             return
         }
+
+        // Coalesce streaming partial words right after wake word so full command is captured
+        pendingWakeWorkItem?.cancel()
+        let waitInterval: TimeInterval = afterWake.isEmpty ? 0.50 : 0.45
+        let work = DispatchWorkItem {
+            dispatchWake(afterWake)
+        }
+        pendingWakeWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + waitInterval, execute: work)
     }
     
     private func restartTask() {

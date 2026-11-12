@@ -89,15 +89,14 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
     // MARK: - Voice Pipeline Controls
 
     public func startRecording(mode: VoiceTriggerMode) {
+        // Clean up any stale audio/TTS session first without resuming ambient listener mid-handoff
+        if currentState != .idle {
+            cancel(resumeAmbient: false)
+        }
         TheVoiceAmbientListener.shared.pauseForRecording()
         
         // Stop any active streaming or queued TTS playback immediately (Barge-In)
         bargeIn()
-
-        // Clean up any stale audio session before starting fresh
-        if currentState != .idle {
-            cancel()
-        }
 
         self.currentMode = mode
         self.currentState = .recording(mode)
@@ -124,6 +123,7 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
         guard recordingFormat.sampleRate > 0 && recordingFormat.channelCount > 0 else {
             self.currentState = .error("Microphone input format invalid or access denied.")
             onStateChanged?(self.currentState)
+            TheVoiceAmbientListener.shared.resumeFromRecording()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 guard let self = self else { return }
                 self.currentState = .idle
@@ -301,6 +301,7 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
 
             self.currentState = .idle
             onStateChanged?(.idle)
+            TheVoiceAmbientListener.shared.resumeFromRecording()
             onTranscriptionCompleted?(transcript, mode)
             return
         }
@@ -334,7 +335,7 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
         }
     }
 
-    public func cancel() {
+    public func cancel(resumeAmbient: Bool = true) {
         silenceWorkItem?.cancel()
         silenceWorkItem = nil
         stopVADMonitor()
@@ -348,7 +349,9 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest = nil
-        TheVoiceAmbientListener.shared.resumeFromRecording()
+        if resumeAmbient {
+            TheVoiceAmbientListener.shared.resumeFromRecording()
+        }
 
         if speechSynthesizer.isSpeaking {
             speechSynthesizer.stopSpeaking(at: .immediate)

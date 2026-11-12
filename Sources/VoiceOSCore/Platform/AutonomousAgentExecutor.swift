@@ -200,6 +200,69 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             )
         }
 
+        if triggerMode == .agent,
+           let firewallResult = await CommandSafetyFirewall.shared.enforce(command: taskDescription) {
+            return firewallResult
+        }
+
+        // -------------------------------------------------------------
+        // Step -1.5: Section 1 Conversation Controls (Greeting, Stop Listening, Cancel, Repeat)
+        // -------------------------------------------------------------
+        if triggerMode == .agent {
+            let cleanLower = trimmed.lowercased()
+            if cleanLower == "hello" || cleanLower == "hi" || cleanLower == "hey" || cleanLower == "namaste" {
+                let greet = "Hello! How can I help you today?"
+                ConversationSessionContext.shared.recordReply(greet, forCommand: trimmed)
+                return AutonomousExecutionResult(success: true, summary: greet, targetAppName: AppBrand.name)
+            }
+            if cleanLower == "stop listening" || cleanLower == "pause listening" {
+                TheVoiceAmbientListener.shared.isTheVoiceModeEnabled = false
+                let msg = "Stopped listening. Press Fn or say your wake word when you need me."
+                ConversationSessionContext.shared.recordReply(msg, forCommand: trimmed)
+                return AutonomousExecutionResult(success: true, summary: msg, targetAppName: AppBrand.name)
+            }
+            if cleanLower == "cancel" || cleanLower == "never mind" || cleanLower == "nevermind" || cleanLower == "abort" {
+                SpeechPipelineEngine.shared.bargeIn()
+                ConversationSessionContext.shared.setPendingDeletePath(nil)
+                let msg = "Cancelled."
+                ConversationSessionContext.shared.recordReply(msg, forCommand: trimmed)
+                return AutonomousExecutionResult(success: false, summary: msg, targetAppName: AppBrand.name)
+            }
+            if cleanLower == "repeat that" || cleanLower == "say that again" || cleanLower == "repeat" {
+                let prev = ConversationSessionContext.shared.lastReply ?? "I haven't said anything yet."
+                return AutonomousExecutionResult(
+                    success: ConversationSessionContext.shared.lastReply != nil,
+                    summary: prev,
+                    targetAppName: AppBrand.name,
+                    executedSteps: ["Repeated previous spoken response"]
+                )
+            }
+            // Multi-app fast launch ("Open Chrome and Notepad")
+            if cleanLower.hasPrefix("open ") && cleanLower.contains(" and ") && !cleanLower.contains("search") && !cleanLower.contains("note:") && !cleanLower.contains("a note") && !cleanLower.contains("type") {
+                let body = String(trimmed.dropFirst(5))
+                let parts = body.components(separatedBy: " and ").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                if parts.count >= 2 && parts.allSatisfy({ $0.split(separator: " ").count <= 3 }) {
+                    var openedNames: [String] = []
+                    for appPart in parts {
+                        let res = await AgentActionDispatcher.shared.dispatch(transcript: "open \(appPart)")
+                        if res.success {
+                            openedNames.append(res.appName)
+                        }
+                    }
+                    if !openedNames.isEmpty {
+                        let summary = "Opened \(openedNames.joined(separator: " and "))."
+                        ConversationSessionContext.shared.recordReply(summary, forCommand: trimmed)
+                        return AutonomousExecutionResult(
+                            success: true,
+                            summary: summary,
+                            targetAppName: openedNames.joined(separator: ", "),
+                            executedSteps: openedNames.map { "Opened \($0)" }
+                        )
+                    }
+                }
+            }
+        }
+
         if PersonaManager.shared.evaluateSafetyGuardrail(userInput: trimmed) {
             return AutonomousExecutionResult(
                 success: true,
@@ -208,6 +271,25 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 targetURL: nil,
                 executedSteps: ["Adjusted tone via persona safety guardrail"]
             )
+        }
+
+        // -------------------------------------------------------------
+        // Step -1.2: System Utilities, Multi-Step Chains, Context Follow-ups & Error Guards
+        // (Must run before single-step file/tool parsers so chains like "Create X, then create Y" split cleanly)
+        // -------------------------------------------------------------
+        if triggerMode == .agent,
+           let utilResult = await RealWorldUtilityRouter.shared.handleUtilityOrFollowUp(taskDescription) {
+            ConversationSessionContext.shared.recordReply(utilResult.summary, forCommand: trimmed)
+            return utilResult
+        }
+
+        // -------------------------------------------------------------
+        // Step -1.1: Section 5 Sandboxed File & Folder Operations (+ Undo / Confirmed Delete)
+        // -------------------------------------------------------------
+        if triggerMode == .agent,
+           let fileResult = await SandboxFileManagerEngine.shared.handleFileCommand(trimmed) {
+            ConversationSessionContext.shared.recordReply(fileResult.summary, forCommand: trimmed)
+            return fileResult
         }
 
         // -------------------------------------------------------------
@@ -282,6 +364,7 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         // Step 1: Instant Deterministic Math Evaluation
         // -------------------------------------------------------------
         if let mathResult = MathEngine.shared.evaluate(trimmed) {
+            ConversationSessionContext.shared.recordReply(mathResult.displaySummary, forCommand: trimmed)
             LocalMemoryManager.shared.remember(
                 content: "\(trimmed) -> \(mathResult.displaySummary)",
                 category: "task",
@@ -331,6 +414,19 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 }
             } catch {
                 print("[AutonomousAgentExecutor] Conversation chatModel error: \(error)")
+                // Preserve dictated speech cleanly rather than falling back to Wikipedia lookup
+                let polished = DictationPolishEngine.shared.polish(
+                    rawText: taskDescription,
+                    profile: .general
+                ).polishedText.trimmingCharacters(in: .whitespacesAndNewlines)
+                let output = polished.isEmpty ? taskDescription : polished
+                ConversationSessionContext.shared.recordReply(output, forCommand: taskDescription)
+                return AutonomousExecutionResult(
+                    success: true,
+                    summary: output,
+                    targetAppName: "Dictation",
+                    executedSteps: ["Polished dictated speech locally"]
+                )
             }
         }
         
@@ -341,6 +437,7 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             // 1. Direct Native macOS Tools (<1ms, zero LLM round-trip for explicit commands)
             if let _ = AgentToolParser.parse(query: trimmed) {
                 let dispatchResult = await AgentActionDispatcher.shared.dispatch(transcript: trimmed)
+                ConversationSessionContext.shared.recordReply(dispatchResult.summary, forCommand: trimmed)
                 LocalMemoryManager.shared.remember(
                     content: "\(trimmed) -> \(dispatchResult.summary)",
                     category: "task",
@@ -355,12 +452,13 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 )
             }
 
-            // 1b. Direct local Apple Notes / Reminders / Finder tasks (reliable without risking LLM app hallucination)
+            // 1b. Direct local Apple Notes / Reminders / Finder tasks (never hijack explicit file/folder commands)
             let qLower = trimmed.lowercased()
+            let mentionsFileSystem = qLower.contains("file") || qLower.contains("folder") || qLower.contains(".txt") || qLower.contains("rename ") || qLower.contains("move ") || qLower.contains("copy ") || qLower.contains("delete ")
             let isDirectLocalUtilityTask =
-                ((qLower.contains("note") || qLower.contains("notes")) && (qLower.contains("create") || qLower.contains("add") || qLower.contains("write") || qLower.contains("take") || qLower.contains("likh") || qLower.contains("save"))) ||
+                (!mentionsFileSystem && (qLower.contains("note") || qLower.contains("notes")) && (qLower.contains("create") || qLower.contains("add") || qLower.contains("write") || qLower.contains("take") || qLower.contains("likh") || qLower.contains("save"))) ||
                 qLower.contains("remind me to ") || qLower.hasPrefix("reminder ") ||
-                qLower.contains("open downloads") || qLower.contains("show downloads") ||
+                qLower.contains("open downloads") || qLower.contains("show downloads") || qLower.contains("downloads folder") ||
                 qLower.contains("open documents") || qLower.contains("show documents")
             if isDirectLocalUtilityTask {
                 let dispatchResult = await AgentActionDispatcher.shared.dispatch(transcript: trimmed)
@@ -702,6 +800,19 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 } else if cmd.contains("sleep") {
                     _ = AccessibilityControlEngine.shared.performSystemControl("sleep")
                     executed.append("Put Mac to sleep")
+                } else if cmd == "copy" || cmd == "copy_selection" || cmd == "copy_text" {
+                    _ = AccessibilityControlEngine.shared.performWindowAction("copy")
+                    executed.append("Copied selection to clipboard")
+                } else if cmd == "paste" || cmd == "paste_text" {
+                    _ = AccessibilityControlEngine.shared.performWindowAction("paste")
+                    executed.append("Pasted from clipboard")
+                } else if cmd == "undo" || cmd == "redo" || cmd == "select_all" || cmd == "scroll_down" || cmd == "scroll_up" {
+                    _ = AccessibilityControlEngine.shared.performWindowAction(cmd)
+                    executed.append("Executed editor action: \(cmd)")
+                } else if cmd.contains("&&") || cmd.contains("osascript") || cmd.contains("json;") || cmd.contains("{") || cmd.contains("open /") {
+                    // Reject malformed shell/JSON strings emitted by small local models instead of leaking raw artifacts to HUD
+                    overallSuccess = false
+                    executed.append("I couldn't map that directly — try rephrasing a specific action.")
                 } else {
                     overallSuccess = false
                     executed.append("Unsupported system action: \(step.param)")

@@ -114,8 +114,11 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         }
     }
     
-    // Real History - loaded from UserDefaults
+    // Real History - loaded from UserDefaults & EncryptedChatHistoryManager
     @Published public var recentHistory: [SessionRecord] = []
+    @Published public var activeConversationId: String? = nil
+    @Published public var selectedConversation: ConversationSessionRecord? = nil
+    @Published public var conversationSessions: [ConversationSessionRecord] = []
     
     // Waveform visualization data for Notch HUD (values between 0.1 and 1.0)
     @Published public var audioLevels: [CGFloat] = [0.15, 0.2, 0.18, 0.22, 0.19, 0.25, 0.2, 0.18, 0.15, 0.12]
@@ -237,8 +240,23 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         // 5. Setup real connected macOS apps
         self.setupConnectedApps()
 
-        // 6. Compute real app usages
+        // 6. Compute real app usages & hydrate ChatGPT-style encrypted conversation sessions
         self.recomputeAppUsages()
+        let historyAccountId = AccountAuthService.shared.currentAccount?.id ?? "local"
+        EncryptedChatHistoryManager.shared.loadForAccount(accountId: historyAccountId)
+        var loadedSessions = EncryptedChatHistoryManager.shared.listConversations()
+        if loadedSessions.isEmpty && !self.recentHistory.isEmpty {
+            for item in self.recentHistory.prefix(30).reversed() {
+                _ = EncryptedChatHistoryManager.shared.recordTurn(
+                    conversationId: nil,
+                    userText: item.prompt,
+                    assistantText: item.response,
+                    persona: PersonaManager.shared.getActivePersona().rawValue
+                )
+            }
+            loadedSessions = EncryptedChatHistoryManager.shared.listConversations()
+        }
+        self.conversationSessions = loadedSessions
 
         // 7. Bind "THE VOICE" Hands-free ambient listener callback with interruption support
         TheVoiceAmbientListener.shared.onWakeWordTriggered = { [weak self] command in
@@ -535,13 +553,19 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                 wasApproved: action!.isApproved
             )
         ] : []
-        EncryptedChatHistoryManager.shared.recordTurn(
-            conversationId: nil,
+        if let saved = EncryptedChatHistoryManager.shared.recordTurn(
+            conversationId: self.activeConversationId,
             userText: prompt,
             assistantText: response,
             persona: PersonaManager.shared.getActivePersona().rawValue,
             actions: actionItems
-        )
+        ) {
+            self.activeConversationId = saved.id
+            if self.selectedConversation?.id == saved.id {
+                self.selectedConversation = saved
+            }
+            self.conversationSessions = EncryptedChatHistoryManager.shared.listConversations()
+        }
         
         // Persist to SQLite Database (APP-SECRET.md line 122-131)
         let userId = AccountAuthService.shared.currentAccount?.id ?? "local_user"
@@ -566,8 +590,59 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
 
     public func clearAllHistory() {
         self.recentHistory = []
+        self.activeConversationId = nil
+        self.selectedConversation = nil
+        self.conversationSessions = []
         UserDefaults.standard.removeObject(forKey: "VoiceOS_RecentHistory")
         recomputeAppUsages()
+    }
+
+    public func toggleHistorySidebar() {
+        refreshConversationSessions()
+        isHistoryDrawerOpen.toggle()
+    }
+
+    public func refreshConversationSessions() {
+        let historyAccountId = AccountAuthService.shared.currentAccount?.id ?? "local"
+        EncryptedChatHistoryManager.shared.loadForAccount(accountId: historyAccountId)
+        self.conversationSessions = EncryptedChatHistoryManager.shared.listConversations()
+        if let currentId = self.selectedConversation?.id {
+            self.selectedConversation = self.conversationSessions.first(where: { $0.id == currentId })
+        }
+    }
+
+    public func openConversationSession(_ session: ConversationSessionRecord) {
+        self.activeConversationId = session.id
+        self.selectedConversation = session
+        if let lastUser = session.messages.last(where: { $0.role == "user" }) {
+            self.currentTranscript = lastUser.content
+            self.lastPromptOrQuestion = lastUser.content
+        }
+        if let lastAssistant = session.messages.last(where: { $0.role == "assistant" }) {
+            self.currentAgentReply = lastAssistant.content
+            self.executionState = .completed(lastAssistant.content)
+        }
+    }
+
+    public func startNewConversationSession() {
+        self.activeConversationId = nil
+        self.selectedConversation = nil
+        self.currentTranscript = ""
+        self.currentAgentReply = ""
+        self.llmSuggestions = []
+        self.executionState = .idle
+    }
+
+    public func deleteConversationSession(id: String) {
+        EncryptedChatHistoryManager.shared.deleteConversation(id: id)
+        if activeConversationId == id { activeConversationId = nil }
+        if selectedConversation?.id == id { selectedConversation = nil }
+        refreshConversationSessions()
+    }
+
+    public func togglePinConversationSession(id: String) {
+        EncryptedChatHistoryManager.shared.togglePin(id: id)
+        refreshConversationSessions()
     }
 
     public func resetAllStatistics() {
@@ -1218,9 +1293,12 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     /// Halts ongoing execution or TTS speech, cancels background agent tasks,
     /// and either switches to active listening or immediately executes the user's new instruction.
     public func interruptAndExecute(instruction: String, mode: VoiceTriggerMode = .agent) {
-        // 1. Cancel ongoing autonomous agent task
+        // 1. Cancel ongoing autonomous agent or computer-use task
         currentExecutionTask?.cancel()
         currentExecutionTask = nil
+        if ComputerUseOperator.shared.isRunning {
+            ComputerUseOperator.shared.stopActiveRun()
+        }
         
         // 2. Stop any current speech playback immediately (barge-in)
         SpeechPipelineEngine.shared.bargeIn()

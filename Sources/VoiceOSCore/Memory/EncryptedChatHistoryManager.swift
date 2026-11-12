@@ -197,7 +197,7 @@ public final class EncryptedChatHistoryManager: @unchecked Sendable {
     ) -> ConversationSessionRecord? {
         if isIncognito || retentionPolicy == .never { return nil }
         
-        guard let accountId = AccountAuthService.shared.currentAccount?.id else { return nil }
+        let accountId = AccountAuthService.shared.currentAccount?.id ?? "local"
         
         lock.lock()
         defer { lock.unlock() }

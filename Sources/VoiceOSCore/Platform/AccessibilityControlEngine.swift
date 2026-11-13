@@ -1132,45 +1132,75 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
         let ws = NSWorkspace.shared
         
         // 1. Specific named application (e.g. "Spotify", "Safari", "WhatsApp")
-        if let targetName = appName?.trimmingCharacters(in: .whitespacesAndNewlines), !targetName.isEmpty {
-            let cleanTarget = targetName.lowercased()
-            
-            // Look up running apps
-            let matching = ws.runningApplications.filter {
-                let appTitle = ($0.localizedName ?? "").lowercased()
-                let bundleId = ($0.bundleIdentifier ?? "").lowercased()
-                return appTitle.contains(cleanTarget) || cleanTarget.contains(appTitle) || bundleId.contains(cleanTarget)
+        if let rawName = appName?.trimmingCharacters(in: .whitespacesAndNewlines), !rawName.isEmpty {
+            var targetName = rawName
+            for article in ["the ", "my ", "this ", "a ", "an "] {
+                if targetName.lowercased().hasPrefix(article) {
+                    targetName = String(targetName.dropFirst(article.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
             }
-            
+            for suffix in [" app", " application"] {
+                if targetName.lowercased().hasSuffix(suffix) {
+                    targetName = String(targetName.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            let cleanTarget = targetName.lowercased()
+            let selfPID = pid_t(ProcessInfo.processInfo.processIdentifier)
+
+            // Look up running apps (never match empty names or Voice.AI itself)
+            let matching = ws.runningApplications.filter { app in
+                guard app.processIdentifier != selfPID else { return false }
+                let appTitle = (app.localizedName ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let bundleId = (app.bundleIdentifier ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard !appTitle.isEmpty || !bundleId.isEmpty else { return false }
+                return (!appTitle.isEmpty && (appTitle == cleanTarget || appTitle.contains(cleanTarget) || (appTitle.count >= 4 && cleanTarget.contains(appTitle))))
+                    || (!bundleId.isEmpty && bundleId.contains(cleanTarget))
+            }
+
             if !matching.isEmpty {
                 for app in matching {
                     app.terminate()
                 }
-                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.35) {
-                    for app in matching {
-                        if !app.isTerminated {
-                            app.forceTerminate()
-                        }
+                Thread.sleep(forTimeInterval: 0.25)
+                var stillRunning = matching.filter { !$0.isTerminated }
+                if !stillRunning.isEmpty {
+                    for app in stillRunning {
+                        app.forceTerminate()
                     }
+                    Thread.sleep(forTimeInterval: 0.15)
+                    stillRunning = matching.filter { !$0.isTerminated }
                 }
-                BoringSoundEngine.shared.playDone()
                 let display = matching.first?.localizedName ?? targetName.capitalized
-                return (true, display, "Closed \(display) on your Mac.")
+                if !stillRunning.isEmpty {
+                    _ = executeAppleScript("tell application \"\(display)\" to quit")
+                    Thread.sleep(forTimeInterval: 0.15)
+                }
+                let anyClosed = matching.contains { $0.isTerminated } || matching.filter({ !$0.isTerminated }).isEmpty
+                if anyClosed {
+                    BoringSoundEngine.shared.playDone()
+                    return (true, display, "Closed \(display) on your Mac.")
+                }
+                return (false, display, "Could not close \(display) (app refused to terminate).")
             }
-            
-            // AppleScript quit fallback
-            let script = "tell application \"\(targetName)\" to quit"
-            _ = executeAppleScript(script)
-            
+
+            // AppleScript quit fallback (only if an actual .app bundle exists so macOS never shows "Where is <app>?")
+            let hasInstalledBundle = findApplicationUrl(named: targetName) != nil
+            let appleRes = hasInstalledBundle
+                ? executeAppleScript("tell application \"\(targetName)\" to quit")
+                : (success: false, output: nil)
+
             // CLI killall fallback
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
             proc.arguments = [targetName]
             try? proc.run()
             proc.waitUntilExit()
-            
-            BoringSoundEngine.shared.playDone()
-            return (true, targetName.capitalized, "Closed \(targetName.capitalized) on your Mac.")
+
+            if appleRes.success || proc.terminationStatus == 0 {
+                BoringSoundEngine.shared.playDone()
+                return (true, targetName.capitalized, "Closed \(targetName.capitalized) on your Mac.")
+            }
+            return (false, targetName.capitalized, "Could not find a running app named '\(targetName)' to close.")
         }
         
         // 2. Frontmost active application (e.g. user said "close the app", "close this app")

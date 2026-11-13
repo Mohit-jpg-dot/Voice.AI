@@ -19,6 +19,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         _ = VisualCursorOverlayController.shared
         
         let args = CommandLine.arguments
+        if args.contains("--demo-email-composer") || UserDefaults.standard.bool(forKey: "voiceos.demo_email_composer") {
+            launchNormalEnvironment()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.appState.openEmailComposerDemo()
+            }
+            return
+        }
+        
         if args.contains("--model-setup") || args.contains("--models") {
             launchNormalEnvironment()
             ModelSetupWindowController.shared.showWindow()
@@ -44,7 +52,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     
     private func launchNormalEnvironment() {
         if mainWindow == nil {
-            setupMainWindow()
+            setupMainWindow(showImmediately: false)
         }
         if notchHUDController == nil {
             setupNotchHUD()
@@ -58,7 +66,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         if screenSelectionController == nil {
             screenSelectionController = ScreenSelectionOverlayController(appState: appState)
         }
-        triggerProactiveGreeting()
+
+        LaunchOrbSplashController.shared.presentAndTransition { [weak self] in
+            guard let self else { return }
+            self.appState.isNotchHUDVisible = true
+            self.notchHUDController?.positionUnderNotch()
+            self.notchHUDController?.window?.orderFrontRegardless()
+            self.mainWindow?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            self.triggerProactiveGreeting()
+        }
         
         // Pre-warm Kokoro worker & Whisper diagnostics off main thread for instant first response
         _ = KokoroTTSEngine.shared
@@ -375,7 +392,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         return false
     }
 
-    private func setupMainWindow() {
+    private func setupMainWindow(showImmediately: Bool = true) {
         let window = NSWindow(
             contentRect: NSRect(x: 100, y: 100, width: 960, height: 680),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -394,7 +411,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         
         let hostingView = NSHostingView(rootView: MainWindowView(appState: appState))
         window.contentView = hostingView
-        window.makeKeyAndOrderFront(nil)
+        if showImmediately {
+            window.makeKeyAndOrderFront(nil)
+        }
         
         self.mainWindow = window
     }
@@ -420,7 +439,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     }
     
     public func applicationWillTerminate(_ notification: Notification) {
-        // Free all unified memory / VRAM immediately when app terminates
-        ModelLifecycleManager.shared.offloadAllModelsImmediately()
+        // Automatically shut down Ollama.app and kill all running Ollama processes + free VRAM
+        ModelLifecycleManager.shared.shutdownOllamaAndUnloadModels()
     }
 }

@@ -63,6 +63,123 @@ public final class CalendarMessagesService: CommunicationAndCalendarManaging, @u
         lock.withLock { injectedTestEvents = events }
     }
 
+    // MARK: - Event / Meeting / Reminder Drafts
+
+    private var activeEventDraft: CalendarEventDraft?
+
+    public func focusedEventDraft() -> CalendarEventDraft? {
+        lock.withLock { activeEventDraft }
+    }
+
+    public func createEventDraft(
+        title: String,
+        type: EventDraftType = .googleMeet,
+        dateString: String = "Thursday",
+        timeString: String = "2:00 – 2:30 PM",
+        participants: [String] = [],
+        platform: String = "Google Meet",
+        notes: String? = nil,
+        isReminder: Bool = false,
+        startsInMinutes: Int = 60,
+        durationMinutes: Int = 30
+    ) -> CalendarEventDraft {
+        let draft = CalendarEventDraft(
+            title: title.isEmpty ? "New Event" : title,
+            type: type,
+            dateString: dateString,
+            timeString: timeString,
+            participants: participants,
+            platform: platform,
+            notes: notes,
+            isReminder: isReminder,
+            startsInMinutes: startsInMinutes,
+            durationMinutes: durationMinutes
+        )
+        lock.withLock { activeEventDraft = draft }
+
+        EventBus.shared.publish(VoiceEvent(
+            kind: .calendarDraftCreated,
+            source: "CalendarMessagesService",
+            payload: [
+                "draft_id": draft.id,
+                "title": draft.title,
+                "type": draft.type.rawValue,
+                "date_string": draft.dateString,
+                "time_string": draft.timeString,
+                "participants": draft.participants.joined(separator: ", "),
+                "platform": draft.platform,
+                "is_reminder": draft.isReminder ? "true" : "false"
+            ]
+        ))
+
+        return draft
+    }
+
+    public func clearEventDraft() {
+        lock.withLock { activeEventDraft = nil }
+    }
+
+    public func saveDraft(_ draft: CalendarEventDraft) async -> IntegrationActionResult {
+        let cleanTitle = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveTitle = cleanTitle.isEmpty ? (draft.isReminder ? "Reminder" : "Event") : cleanTitle
+
+        if isDryRun {
+            lock.withLock { activeEventDraft = nil }
+            return IntegrationActionResult(
+                success: true,
+                summary: draft.isReminder
+                    ? "Added reminder: '\(effectiveTitle)' for \(draft.dateString) at \(draft.timeString)."
+                    : "Scheduled \(draft.type == .googleMeet ? "Google Meet" : "event"): '\(effectiveTitle)' on \(draft.dateString) from \(draft.timeString).",
+                appName: draft.isReminder ? "Apple Reminders" : (draft.type == .googleMeet ? "Google Meet" : "Apple Calendar"),
+                steps: [draft.isReminder ? "Saved reminder in Reminders" : "Created event in Calendar"]
+            )
+        }
+
+        if draft.isReminder || draft.type == .reminder {
+            let escaped = effectiveTitle.replacingOccurrences(of: "\"", with: "\\\"")
+            let script = """
+            tell application "Reminders"
+                activate
+                tell default list
+                    make new reminder with properties {name:"\(escaped)"}
+                end tell
+            end tell
+            """
+            let res = AccessibilityControlEngine.shared.executeAppleScript(script)
+            lock.withLock { activeEventDraft = nil }
+            return IntegrationActionResult(
+                success: res.success,
+                summary: res.success ? "Added reminder: \"\(effectiveTitle)\"" : "Could not add reminder: \(res.output ?? "Permission error")",
+                appName: "Apple Reminders",
+                steps: res.success ? ["Saved reminder in Reminders"] : ["Reminder error"]
+            )
+        } else {
+            let escaped = effectiveTitle.replacingOccurrences(of: "\"", with: "\\\"")
+            let meetNotes = draft.type == .googleMeet ? "\nVideo Call: Google Meet (https://meet.google.com/new)" : ""
+            let combinedNotes = ((draft.notes ?? "") + meetNotes).trimmingCharacters(in: .whitespacesAndNewlines)
+            let escapedNotes = combinedNotes.replacingOccurrences(of: "\"", with: "\\\"")
+            let script = """
+            tell application "Calendar"
+                activate
+                set startDt to (current date) + (\(max(0, draft.startsInMinutes)) * minutes)
+                set endDt to startDt + (\(max(5, draft.durationMinutes)) * minutes)
+                tell (first calendar)
+                    make new event at end with properties {summary:"\(escaped)", description:"\(escapedNotes)", start date:startDt, end date:endDt}
+                end tell
+            end tell
+            """
+            let res = AccessibilityControlEngine.shared.executeAppleScript(script)
+            lock.withLock { activeEventDraft = nil }
+            let appLabel = draft.type == .googleMeet ? "Google Meet" : "Apple Calendar"
+            return IntegrationActionResult(
+                success: res.success,
+                summary: res.success ? "Scheduled \(appLabel): '\(effectiveTitle)' for \(draft.dateString) at \(draft.timeString)." : "Could not schedule event: \(res.output ?? "Permission needed").",
+                appName: appLabel,
+                steps: res.success ? ["Created \(appLabel) entry '\(effectiveTitle)'"] : ["Calendar AppleScript error"]
+            )
+        }
+    }
+
     public func setTestMessages(_ messages: [MessageThreadPreview]?) {
         lock.withLock { injectedTestMessages = messages }
     }

@@ -163,6 +163,17 @@ public final class CodingAgentManager: @unchecked Sendable {
         
         notifyAgentsChanged(copy)
     }
+
+    public func failAgent(agentId: UUID, error: String) {
+        lock.lock()
+        if let idx = _agents.firstIndex(where: { $0.id == agentId }) {
+            _agents[idx].state = .failed(error: error)
+        }
+        let copy = _agents
+        lock.unlock()
+
+        notifyAgentsChanged(copy)
+    }
     
     private func notifyAgentsChanged(_ agents: [CodingAgentTask]) {
         DispatchQueue.main.async { [weak self] in

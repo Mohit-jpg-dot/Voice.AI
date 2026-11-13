@@ -5,6 +5,7 @@ Welcome to the internal engineering documentation and architectural records for 
 ---
 
 ## 1. Getting Started & Setup Guides
+- [App Integrations Setup Guide (All Apps)](../set-up-guide.md) — Unified in-app setup guide for Gmail, Apple Mail, Slack, Discord, WhatsApp, Spotify, and more.
 - [Setup with Cloud API Key](setup-api-key.md) — Walkthrough for configuring OpenAI, Anthropic Claude, or Google Gemini.
 - [Setup 100% Free & Offline (Ollama + Whisper)](setup-free-offline.md) — Automated in-app download and hardware verification for offline neural models.
 - [Setup Google Search Free Mode](setup-google-search-key.md) — Zero-cost, lightweight factual query mode without local neural weights.

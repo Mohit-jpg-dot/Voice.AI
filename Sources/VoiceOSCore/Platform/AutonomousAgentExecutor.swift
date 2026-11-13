@@ -226,6 +226,15 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             .lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !lower.isEmpty else { return false }
+        if lower.contains("named ") || lower.contains("called ") { return false }
+
+        // Specific targeted external app exclusions (e.g. "quit Chrome", "close Safari")
+        let externalApps = ["chrome", "safari", "spotify", "slack", "discord", "whatsapp", "mail", "terminal", "finder", "notes", "reminders", "calendar", "contacts", "youtube"]
+        for app in externalApps {
+            if lower.contains(app) && !lower.contains("voice") {
+                return false
+            }
+        }
 
         let phrases = [
             "quit yourself",
@@ -240,13 +249,58 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             "kill yourself",
             "quit voice ai",
             "quit voiceai",
+            "quit voice.ai",
             "exit voice ai",
+            "exit voice.ai",
             "close voice ai",
+            "close voice.ai",
             "quit jarvis",
             "exit jarvis",
-            "close jarvis"
+            "close jarvis",
+            "band ho jao",
+            "apne aap ko band kar do",
+            "apne aap ko band karo",
+            "tum band ho jao",
+            "voice ai band kar do",
+            "voiceai band kar do"
         ]
         return phrases.contains(where: { lower.contains($0) })
+    }
+
+    public static func parseIntegrationSetupVoiceCommand(_ query: String) -> (appId: String, appName: String, statusResponse: String)? {
+        let lower = query.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        let isConnectOrSetup = lower.contains("connect ") || lower.contains("set up ") || lower.contains("setup ") ||
+                              lower.contains("connected hai") || lower.contains("ko connect") || lower.contains("ka setup")
+        guard isConnectOrSetup else { return nil }
+
+        let apps: [(id: String, name: String, keys: [String])] = [
+            ("mail", "Gmail", ["gmail", "email", "mail"]),
+            ("slack", "Slack", ["slack"]),
+            ("discord", "Discord", ["discord"]),
+            ("whatsapp", "WhatsApp", ["whatsapp"]),
+            ("spotify", "Spotify", ["spotify"]),
+            ("notion", "Notion", ["notion"]),
+            ("calendar", "Calendar", ["calendar", "google meet"])
+        ]
+
+        for app in apps {
+            if app.keys.contains(where: { lower.contains($0) }) {
+                let desc = IntegrationRegistry.shared.descriptor(for: app.id)
+                let isConnected = desc?.status.isConnected ?? false
+                let statusMsg: String
+                if lower.contains("connected hai") || lower.contains("is connected") {
+                    statusMsg = isConnected
+                        ? "\(app.name) is currently connected and active."
+                        : "\(app.name) is not connected yet. Opening setup screen so you can connect your account."
+                } else {
+                    statusMsg = isConnected
+                        ? "Opening \(app.name) setup. Your account is already connected."
+                        : "Opening \(app.name) setup so you can connect your account."
+                }
+                return (app.id, app.name, statusMsg)
+            }
+        }
+        return nil
     }
 
     private func handleComputerAudioQuestion(_ query: String) async -> AutonomousExecutionResult {
@@ -434,16 +488,18 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         let trimmed = strippedCasual.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
 
         let stopCheck = trimmed.lowercased().trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-        if (stopCheck == "stop" || stopCheck == "stop agent" || stopCheck == "ruko" || stopCheck == "ruk jao") &&
-           ComputerUseOperator.shared.isRunning {
-            ComputerUseOperator.shared.stopActiveRun()
-            return AutonomousExecutionResult(
-                success: true,
-                summary: "Stopped.",
-                targetAppName: "Computer Use",
-                targetURL: nil,
-                executedSteps: ["Spoken stop keyword halted active computer-use loop"]
-            )
+        if (stopCheck == "stop" || stopCheck == "stop agent" || stopCheck == "ruko" || stopCheck == "ruk jao") {
+            SafeTerminalEngine.shared.stopActiveCommand()
+            if ComputerUseOperator.shared.isRunning {
+                ComputerUseOperator.shared.stopActiveRun()
+                return AutonomousExecutionResult(
+                    success: true,
+                    summary: "Stopped.",
+                    targetAppName: "Computer Use",
+                    targetURL: nil,
+                    executedSteps: ["Spoken stop keyword halted active computer-use & terminal tasks"]
+                )
+            }
         }
 
         if triggerMode == .agent,
@@ -562,6 +618,27 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         }
 
         // -------------------------------------------------------------
+        // Step -1.42: Voice Command for Integration Setup ("connect Gmail", "Slack connected hai?", "set up WhatsApp")
+        // -------------------------------------------------------------
+        if let setupTarget = Self.parseIntegrationSetupVoiceCommand(trimmed) {
+            EventBus.shared.publish(VoiceEvent(
+                kind: .custom("open_integration_setup"),
+                source: "AutonomousAgentExecutor",
+                severity: .info,
+                payload: ["app_id": setupTarget.appId]
+            ))
+            let msg = setupTarget.statusResponse
+            ConversationSessionContext.shared.recordReply(msg, forCommand: trimmed)
+            return AutonomousExecutionResult(
+                success: true,
+                summary: msg,
+                targetAppName: setupTarget.appName,
+                targetURL: nil,
+                executedSteps: ["Opened integration setup screen for \(setupTarget.appName)"]
+            )
+        }
+
+        // -------------------------------------------------------------
         // Step -1.4: Voice Toggle for 24/7 Continuous Listening Mode & Computer Audio Mode
         // -------------------------------------------------------------
         if triggerMode == .agent {
@@ -598,11 +675,14 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 lm.contains("24 by 7") || lm.contains("twenty four seven") || lm.contains("twenty-four seven") ||
                 lm.contains("24 hours") || lm.contains("always listen") || lm.contains("always-on listen") ||
                 lm.contains("continuous listen") || lm.contains("listening mode") ||
-                lm.contains("bro mode") || lm.contains("free talk") || lm.contains("keep listening")
+                lm.contains("bro mode") || lm.contains("bro-mode") || lm.contains("bro's mode") ||
+                lm.contains("pro mode") || lm.contains("pro-mode") || lm.contains("brow mode") || lm.contains("grow mode") ||
+                lm.contains("free talk") || lm.contains("keep listening")
             let wantsModeOff =
                 lm.contains("turn off") || lm.contains("switch off") || lm.contains("disable") ||
                 lm.contains("stop ") || lm.contains("exit ") || lm.contains("deactivate") ||
-                lm.contains("mode off") || lm.contains("band") || lm.contains("wake word only") || lm.contains("wake-word only")
+                lm.contains("mode off") || lm.hasSuffix(" off") || lm.contains(" off ") ||
+                lm.contains("band") || lm.contains("wake word only") || lm.contains("wake-word only")
             if lm.contains("wake word only") || lm.contains("wake-word only") || (mentions24x7OrBroMode && wantsModeOff) {
                 TheVoiceAmbientListener.shared.isAlwaysOn24x7Mode = false
                 EventBus.shared.publish(VoiceEvent(kind: .custom("listening_mode_changed"), source: "AutonomousAgentExecutor", severity: .info, payload: ["always_on": "false"]))
@@ -617,6 +697,35 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 let msg = "24/7 continuous listening (Bro mode) is on. Speak anytime when you need me."
                 ConversationSessionContext.shared.recordReply(msg, forCommand: trimmed)
                 return AutonomousExecutionResult(success: true, summary: msg, targetAppName: AppBrand.name, executedSteps: ["Enabled 24/7 always-on listening mode"])
+            }
+        }
+
+        // -------------------------------------------------------------
+        // Step -1.25: Safe Terminal Audit ("What commands did you run today?") & Terminal Undo ("Undo that")
+        // -------------------------------------------------------------
+        if triggerMode == .agent {
+            let auditLower = trimmed.lowercased()
+            if auditLower.contains("what commands did you run") || auditLower.contains("commands did i run") || auditLower.contains("terminal history") || auditLower.contains("audit log") {
+                let logs = EncryptedChatHistoryManager.shared.commandAuditLogs(forDay: Date())
+                if logs.isEmpty {
+                    let msg = "No terminal commands have been attempted today."
+                    return AutonomousExecutionResult(success: true, summary: msg, targetAppName: "Terminal", executedSteps: ["Checked encrypted terminal audit log (0 entries today)"])
+                }
+                let tf = DateFormatter()
+                tf.timeStyle = .short
+                let lines = logs.prefix(10).map { "• [\(tf.string(from: $0.timestamp))] `\($0.command)` (\($0.decision), exit \($0.exitCode))" }
+                let msg = "Commands attempted today:\n" + lines.joined(separator: "\n")
+                return AutonomousExecutionResult(success: true, summary: msg, targetAppName: "Terminal", executedSteps: ["Listed \(logs.count) encrypted terminal audit record(s)"])
+            }
+            if (auditLower == "undo that" || auditLower == "undo last command" || auditLower == "undo terminal command"),
+               SafeTerminalEngine.shared.lastUndoOperation() != nil {
+                let undoRes = await SafeTerminalEngine.shared.undoLastCommand()
+                return AutonomousExecutionResult(
+                    success: undoRes.success,
+                    summary: undoRes.plainSummary,
+                    targetAppName: "Terminal",
+                    executedSteps: ["Executed policy-checked terminal undo (\(undoRes.decision))"]
+                )
             }
         }
 
@@ -644,6 +753,14 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         // -------------------------------------------------------------
         if let memoryResult = await handleMemoryVoiceCommandIfPresent(trimmed) {
             return memoryResult
+        }
+
+        if let emailResult = await handleVoiceEmailCommandIfPresent(trimmed) {
+            return emailResult
+        }
+
+        if let eventResult = await handleVoiceEventAndReminderCommandIfPresent(trimmed) {
+            return eventResult
         }
 
         // -------------------------------------------------------------
@@ -1010,42 +1127,13 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         )
     }
     
-    private func executeSafeShellCommand(_ rawCommand: String) -> (success: Bool, output: String) {
-        let lower = rawCommand.lowercased()
-        let dangerousPatterns = [
-            "rm -rf", "rm -fr", "sudo ", "mkfs", "dd if=", "shutdown", "reboot",
-            "halt", ":(){", "chmod -r 777 /", "diskutil erase", "> /dev/"
-        ]
-        if dangerousPatterns.contains(where: { lower.contains($0) }) {
-            return (false, "Blocked for safety: destructive shell command '\(rawCommand)' requires manual Terminal confirmation.")
-        }
-        let proc = Process()
-        let outPipe = Pipe()
-        let errPipe = Pipe()
-        proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        proc.arguments = ["-c", rawCommand]
-        proc.standardOutput = outPipe
-        proc.standardError = errPipe
-        do {
-            try proc.run()
-            let deadline = DispatchTime.now() + 8.0
-            let sema = DispatchSemaphore(value: 0)
-            proc.terminationHandler = { _ in sema.signal() }
-            if sema.wait(timeout: deadline) == .timedOut {
-                proc.terminate()
-                return (false, "Command timed out after 8s.")
-            }
-            let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let err = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if proc.terminationStatus == 0 {
-                return (true, out.isEmpty ? "Done." : String(out.prefix(600)))
-            } else {
-                let msg = err.isEmpty ? out : err
-                return (false, msg.isEmpty ? "Command failed with exit code \(proc.terminationStatus)." : String(msg.prefix(400)))
-            }
-        } catch {
-            return (false, "Failed to run command: \(error.localizedDescription)")
-        }
+    private func executeSafeShellCommand(_ rawCommand: String) async -> (success: Bool, output: String) {
+        let outcome = await SafeTerminalEngine.shared.execute(
+            command: rawCommand,
+            purpose: "Execute terminal command: \(rawCommand)",
+            approvalSource: .liveMicrophone
+        )
+        return (outcome.success, outcome.plainSummary)
     }
 
     // MARK: - Orchestrated Step Execution Engine
@@ -1089,7 +1177,7 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 try? await Task.sleep(nanoseconds: 150_000_000)
                 
             case "run_shell":
-                let shellRes = executeSafeShellCommand(step.param)
+                let shellRes = await executeSafeShellCommand(step.param)
                 executed.append(shellRes.output)
                 if !shellRes.success {
                     overallSuccess = false
@@ -1114,17 +1202,22 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                     let res = AccessibilityControlEngine.shared.adjustDisplayBrightness(delta: -0.15, absoluteLevel: nil)
                     executed.append("Decreased display brightness to \(Int(res.level * 100))%.")
                 } else if cmd.contains("battery") {
-                    let res = executeSafeShellCommand("pmset -g batt | tail -n 1")
-                    executed.append(res.output)
-                    overallSuccess = res.success
+                    let snap = LiveHostTelemetrySnapshot.capture()
+                    if let pct = snap.batteryPercent {
+                        executed.append("Battery: \(pct)% (\(snap.isCharging ? "Charging" : "On Battery"))")
+                    } else {
+                        executed.append("Battery telemetry unavailable")
+                    }
                 } else if cmd.contains("disk") {
-                    let res = executeSafeShellCommand("df -h / | awk 'NR==2 {print \"Disk free: \"$4\" of \"$2\" (\"$5\" used)\"}'")
-                    executed.append(res.output)
-                    overallSuccess = res.success
+                    let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
+                    let freeBytes = (attrs?[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
+                    let totalBytes = (attrs?[.systemSize] as? NSNumber)?.int64Value ?? 0
+                    let freeGB = String(format: "%.1f", Double(freeBytes) / 1_073_741_824.0)
+                    let totalGB = String(format: "%.1f", Double(totalBytes) / 1_073_741_824.0)
+                    executed.append("Disk free: \(freeGB) GB of \(totalGB) GB")
                 } else if cmd.contains("ram") || cmd.contains("memory") {
-                    let res = executeSafeShellCommand("top -l 1 -n 0 | grep -E 'PhysMem'")
-                    executed.append(res.output)
-                    overallSuccess = res.success
+                    let snap = LiveHostTelemetrySnapshot.capture()
+                    executed.append("Memory used: \(snap.ramUsagePercent)%")
                 } else if cmd.contains("volume_level") || cmd.contains("volume to") || cmd.contains("set_volume") || cmd.contains("volume") || cmd.contains("aawaz") {
                     let digits = cmd.components(separatedBy: CharacterSet.decimalDigits.inverted).filter { !$0.isEmpty }
                     if let firstDigit = digits.first, let val = Double(firstDigit) {
@@ -1406,6 +1499,15 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 } else {
                     kind = .fact
                 }
+                if MemoryStore.isInstructionLikeMemory(fact) {
+                    return AutonomousExecutionResult(
+                        success: false,
+                        summary: "Rejected: I cannot store instructions that disable approvals or alter safety rules.",
+                        targetAppName: "Memory",
+                        targetURL: nil,
+                        executedSteps: ["Rejected instruction-like memory override attempt"]
+                    )
+                }
                 let saved = await MemoryStore.shared.remember(content: fact, scope: .longTerm, kind: kind, tags: ["voice"])
                 let reply = PersonaManager.shared.formatResponse(
                     "Remembered: \"\(saved.content)\"",
@@ -1449,6 +1551,56 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                     targetAppName: "Memory",
                     targetURL: nil,
                     executedSteps: ["Updated encrypted MemoryStore (removed \(removed))"]
+                )
+            }
+        }
+
+        // 2b. Session Management & Working-Context Terminal Recall ("start a new session", "continue where we left off", "open the session about ...", "rename this session to ...", "run that again", "what was the last command")
+        if lower == "start a new session" || lower == "new session" || lower == "start new session" || lower == "new chat" {
+            EventBus.shared.publish(VoiceEvent(kind: .custom("session_control"), source: "AutonomousAgentExecutor", severity: .info, payload: ["action": "new_session"]))
+            return AutonomousExecutionResult(success: true, summary: "Started a new conversation session.", targetAppName: "Sessions", executedSteps: ["Started new encrypted session"])
+        }
+        if lower.contains("continue where we left off") || lower.contains("resume my last session") || lower.contains("resume last session") {
+            let latest = EncryptedChatHistoryManager.shared.listConversations().first
+            if let conv = latest {
+                EventBus.shared.publish(VoiceEvent(kind: .custom("session_control"), source: "AutonomousAgentExecutor", severity: .info, payload: ["action": "select_session", "id": conv.id]))
+                return AutonomousExecutionResult(success: true, summary: "Resumed session \"\(conv.title)\" (\(conv.messages.count) messages).", targetAppName: "Sessions", executedSteps: ["Resumed session \(conv.id)"])
+            }
+            return AutonomousExecutionResult(success: false, summary: "No previous session found to resume.", targetAppName: "Sessions")
+        }
+        if lower.hasPrefix("open the session about ") || lower.hasPrefix("open session about ") || lower.hasPrefix("find session ") {
+            let topic = trimmed.replacingOccurrences(of: #"(?i)^(?:open\s+(?:the\s+)?session\s+about|find\s+session)\s+"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let match = EncryptedChatHistoryManager.shared.listConversations(query: topic).first {
+                EventBus.shared.publish(VoiceEvent(kind: .custom("session_control"), source: "AutonomousAgentExecutor", severity: .info, payload: ["action": "select_session", "id": match.id]))
+                return AutonomousExecutionResult(success: true, summary: "Opened session \"\(match.title)\".", targetAppName: "Sessions", executedSteps: ["Opened matching session \(match.id)"])
+            }
+            return AutonomousExecutionResult(success: false, summary: "No session matching '\(topic)' found.", targetAppName: "Sessions")
+        }
+        if lower.hasPrefix("rename this session to ") || lower.hasPrefix("rename session to ") {
+            let newTitle = trimmed.replacingOccurrences(of: #"(?i)^rename\s+(?:this\s+)?session\s+to\s+"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !newTitle.isEmpty {
+                EventBus.shared.publish(VoiceEvent(kind: .custom("session_control"), source: "AutonomousAgentExecutor", severity: .info, payload: ["action": "rename_session", "title": newTitle]))
+                return AutonomousExecutionResult(success: true, summary: "Renamed current session to \"\(newTitle)\".", targetAppName: "Sessions", executedSteps: ["Renamed session to \(newTitle)"])
+            }
+        }
+        if lower == "run that again" || lower == "run it again" || lower == "repeat last command" {
+            if let lastCmd = MemoryStore.shared.workingContext().lastCommands.first {
+                let rerun = await SafeTerminalEngine.shared.execute(
+                    command: lastCmd.command,
+                    workingDirectory: lastCmd.workingDirectory,
+                    purpose: "Re-run previous command: \(lastCmd.command)",
+                    approvalSource: .liveMicrophone
+                )
+                return AutonomousExecutionResult(success: rerun.success, summary: rerun.plainSummary, targetAppName: "Terminal", executedSteps: ["Re-evaluated & ran '\(lastCmd.command)' (\(rerun.decision))"])
+            }
+        }
+        if lower.contains("what was the last command") || lower.contains("last command you ran") || lower == "last command" {
+            if let lastCmd = MemoryStore.shared.workingContext().lastCommands.first {
+                return AutonomousExecutionResult(
+                    success: true,
+                    summary: "The last command was `\(lastCmd.command)` in \(lastCmd.workingDirectory) (\(lastCmd.success ? "succeeded" : "failed")).",
+                    targetAppName: "Memory",
+                    executedSteps: ["Read working context last command"]
                 )
             }
         }
@@ -1502,41 +1654,20 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
     private func buildPersonaAndMemorySystemPrompt(basePrompt: String, forQuery query: String) async -> String {
         let personaDirectives = PersonaManager.shared.systemPromptDirectives(forUserQuery: query)
         let profile = MemoryStore.shared.userProfile()
-        let hits = await MemoryStore.shared.searchSemantic(query: query, scope: .longTerm, limit: 5)
-        let coreFacts = MemoryStore.shared.allItems(scope: .longTerm)
-            .filter { $0.kind == .profile || $0.kind == .preference || $0.kind == .project }
-            .prefix(5)
-        let recentTurns = MemoryStore.shared.shortTermContext(limit: 8)
+        let activeSessionId = UserDefaults.standard.string(forKey: "VoiceAI_ActiveConversationId")
+        let retrieved = await MemoryStore.shared.retrievePromptContext(
+            forQuery: query,
+            activeSessionId: activeSessionId,
+            maxTokenBudget: 400
+        )
 
         var parts = [basePrompt, personaDirectives]
         if !profile.displayName.isEmpty && profile.displayName != "User" {
             parts.append("User display name: \(profile.displayName).")
         }
-
-        var memoryBullets: [String] = []
-        for h in hits {
-            let line = "- [\(h.item.kind.rawValue)] \(h.item.content)"
-            if !memoryBullets.contains(line) { memoryBullets.append(line) }
+        if !retrieved.untrustedPromptBlock.isEmpty {
+            parts.append(retrieved.untrustedPromptBlock)
         }
-        for item in coreFacts {
-            let line = "- [\(item.kind.rawValue)] \(item.content)"
-            if !memoryBullets.contains(line) { memoryBullets.append(line) }
-        }
-        if !memoryBullets.isEmpty {
-            parts.append("Known user facts & preferences:\n\(memoryBullets.prefix(8).joined(separator: "\n"))")
-        }
-
-        if !recentTurns.isEmpty {
-            let df = DateFormatter()
-            df.dateStyle = .short
-            df.timeStyle = .short
-            let turnLines = recentTurns.map { item -> String in
-                let compact = item.content.replacingOccurrences(of: "\n", with: " | ")
-                return "- [\(df.string(from: item.createdAt))] \(String(compact.prefix(240)))"
-            }
-            parts.append("Recent conversation context (most recent first):\n\(turnLines.joined(separator: "\n"))")
-        }
-
         return parts.joined(separator: "\n\n")
     }
 
@@ -1779,6 +1910,421 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         }
 
         return nil
+    }
+
+    // MARK: - Voice Email Commands (Draft, Send, Reply, Watch)
+
+    private func handleVoiceEmailCommandIfPresent(_ trimmed: String) async -> AutonomousExecutionResult? {
+        let lower = trimmed.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let manager = VoiceEmailManager.shared
+
+        func emailResult(_ summary: String, success: Bool = true, step: String = "Voice Email") -> AutonomousExecutionResult {
+            AutonomousExecutionResult(
+                success: success,
+                summary: summary,
+                targetAppName: "Mail",
+                targetURL: nil,
+                executedSteps: [step]
+            )
+        }
+
+        // 1. Capability check
+        if lower == "can you send emails?" || lower == "can you send emails" || lower == "can you send email" || lower == "can you send email?" {
+            let rep = await manager.capabilitiesReport()
+            return emailResult(rep.spokenSummary, success: rep.status == .canSendAndRead || rep.status == .canSendOnly, step: "Checked email backend capabilities")
+        }
+
+        // 2. Undo pending send during undo window
+        if lower == "undo" || lower == "undo send" {
+            if manager.cancelPendingSend() {
+                return emailResult("Send undone. Your email draft was kept.", step: "Cancelled pending send")
+            }
+        }
+
+        // 3. Watch queries & controls
+        if lower.contains("what am i watching") || lower == "list watches" {
+            let watches = manager.activeWatchRules()
+            if watches.isEmpty {
+                return emailResult("You are not watching any email threads or senders right now.")
+            }
+            let desc = watches.map { "• \($0.displayLabel)\($0.subjectHint.map { " (\($0))" } ?? "") [\($0.type.rawValue)]" }.joined(separator: "\n")
+            return emailResult("Active email watches:\n\(desc)")
+        }
+
+        if lower.hasPrefix("stop watching ") {
+            let target = String(trimmed.dropFirst("stop watching ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            let removed = manager.stopWatching(query: target)
+            return emailResult(removed > 0 ? "Stopped watching \(target)." : "No active watch matched '\(target)'.")
+        }
+
+        if lower == "this email is important" || lower == "mark this thread important" || lower == "mark this email important" {
+            guard let focused = manager.currentFocusedIncomingMessage() else {
+                return emailResult("Read or open an email first so I know which thread to watch.", success: false)
+            }
+            let rule = manager.addThreadWatch(for: focused)
+            return emailResult("Marked thread '\(focused.subject)' important. I'll alert you when \(rule.displayLabel) replies.")
+        }
+
+        if lower.hasPrefix("tell me when ") || lower.hasPrefix("watch for a reply from ") || lower.contains("ke reply aaye") {
+            var target = trimmed
+            for prefix in ["tell me when ", "watch for a reply from "] where lower.hasPrefix(prefix) {
+                target = String(trimmed.dropFirst(prefix.count))
+            }
+            target = target
+                .replacingOccurrences(of: " replies", with: "", options: .caseInsensitive)
+                .replacingOccurrences(of: " ke reply aaye to batana", with: "", options: .caseInsensitive)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if target.isEmpty { return nil }
+            switch await manager.resolveRecipient(target) {
+            case .resolved(let c):
+                let rule = manager.addSenderWatch(address: c.email, displayLabel: c.displayName)
+                return emailResult("Watching for replies from \(rule.displayLabel) (\(rule.normalizedSenderAddress ?? c.email)).")
+            case .ambiguous(let list):
+                let opts = list.map { "\($0.displayName) (\($0.email))" }.joined(separator: ", ")
+                return emailResult("I found multiple contacts matching '\(target)': \(opts). Which one should I watch?", success: false)
+            case .notFound, .invalidAddress, .permissionDenied:
+                if EmailAddressHelper.isValidEmail(target) {
+                    let rule = manager.addSenderWatch(address: target, displayLabel: target)
+                    return emailResult("Watching for replies from \(rule.normalizedSenderAddress ?? target).")
+                }
+                return emailResult("I couldn't resolve '\(target)' to an email address. Please say the email address.", success: false)
+            }
+        }
+
+        // 4. Read latest / sender email
+        if lower == "read my latest email" || lower == "read latest email" || lower == "check my email" || lower.hasPrefix("read emails from ") {
+            let senderFilter: String? = lower.hasPrefix("read emails from ")
+                ? String(trimmed.dropFirst("read emails from ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                : nil
+            let (_, summary) = await manager.fetchAndSummarizeRecent(limit: 5, senderFilter: senderFilter)
+            return emailResult(summary, step: "Fetched recent inbox email")
+        }
+
+        if (lower == "read the full email" || lower == "read full body") {
+            if let focused = manager.currentFocusedIncomingMessage() {
+                return emailResult("From \(focused.fromName ?? focused.from), Subject: \(SecretRedactor.redact(focused.subject)).\n\n\(SecretRedactor.redact(focused.body))")
+            }
+        }
+
+        // 5. Reply / Reply All / Forward
+        if lower.hasPrefix("reply all") || lower.hasPrefix("reply to this") || lower.hasPrefix("reply saying ") {
+            guard let focused = manager.currentFocusedIncomingMessage() else {
+                return emailResult("No incoming email is currently focused. Say 'read my latest email' first.", success: false)
+            }
+            let isAll = lower.hasPrefix("reply all")
+            var replyBody = ""
+            if let range = lower.range(of: "saying ") {
+                replyBody = String(trimmed[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            let draft = manager.prepareReplyDraft(to: focused, body: replyBody, replyAll: isAll)
+            return emailResult("Prepared \(isAll ? "Reply All" : "Reply") draft:\n\(manager.formatDraftPreview(draft))\nSay 'send it' when ready.")
+        }
+
+        if lower.hasPrefix("forward this to ") {
+            guard let focused = manager.currentFocusedIncomingMessage() else {
+                return emailResult("No incoming email is currently focused. Say 'read my latest email' first.", success: false)
+            }
+            let target = String(trimmed.dropFirst("forward this to ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            switch await manager.resolveRecipient(target) {
+            case .resolved(let c):
+                let draft = manager.prepareForwardDraft(original: focused, toRecipients: [c.email])
+                return emailResult("Prepared Forward draft:\n\(manager.formatDraftPreview(draft))\nSay 'send it' when ready.")
+            case .ambiguous(let list):
+                let opts = list.map { "\($0.displayName) (\($0.email))" }.joined(separator: ", ")
+                return emailResult("Multiple contacts match '\(target)': \(opts). Which one?", success: false)
+            case .notFound(let msg), .invalidAddress(let msg), .permissionDenied(let msg):
+                return emailResult(msg, success: false)
+            }
+        }
+
+        // 6. Focused draft controls (read back, edit, attach, send, discard)
+        if manager.focusedDraft() != nil || !manager.allDrafts().isEmpty {
+            if lower == "send it" || lower == "send the email" || lower == "bhej do" {
+                let res = await manager.sendFocusedDraft()
+                return emailResult(res.success ? "Email sent via \(res.backendUsed)." : (res.errorMessage ?? "Email not sent."), success: res.success, step: "Send focused email draft")
+            }
+            if lower == "discard" || lower == "discard draft" || lower == "cancel draft" {
+                let ok = manager.discardFocusedDraft()
+                return emailResult(ok ? "Draft discarded." : "No draft to discard.", success: ok)
+            }
+            if lower == "read it back" || lower == "read it back to me" || lower == "read the draft" {
+                if let d = manager.focusedDraft() {
+                    return emailResult(manager.formatDraftPreview(d))
+                }
+            }
+            if lower.hasPrefix("change the subject to ") {
+                let newSubj = String(trimmed.dropFirst("change the subject to ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                if let updated = manager.updateFocusedDraft(subject: newSubj) {
+                    return emailResult("Updated subject:\n\(manager.formatDraftPreview(updated))")
+                }
+            }
+            if lower.hasPrefix("add that ") || lower.hasPrefix("add ") {
+                let extra = lower.hasPrefix("add that ")
+                    ? String(trimmed.dropFirst("add that ".count))
+                    : String(trimmed.dropFirst("add ".count))
+                if let updated = manager.updateFocusedDraft(appendBody: extra.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    return emailResult("Updated draft:\n\(manager.formatDraftPreview(updated))")
+                }
+            }
+            if lower == "make it shorter" || lower == "make it more formal" {
+                if let cur = manager.focusedDraft() {
+                    let prompt = "Rewrite this email draft to be \(lower == "make it shorter" ? "shorter and more concise" : "more formal and polite") without adding any invented facts. Return only the body text:\n\n\(cur.body)"
+                    let model = ModelRouter.shared.resolveChatModel()
+                    if let response = try? await model.sendMessage(messages: [LLMChatMessage(role: .user, content: prompt)], tools: nil, jsonMode: false),
+                       !response.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       let updated = manager.updateFocusedDraft(body: response.text.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                        return emailResult("Updated draft:\n\(manager.formatDraftPreview(updated))")
+                    }
+                    // Deterministic fallback if no model is online
+                    let fallback = lower == "make it shorter" ? String(cur.body.prefix(180)) : "Dear recipient,\n\n\(cur.body)\n\nRegards"
+                    if let updated = manager.updateFocusedDraft(body: fallback) {
+                        return emailResult("Updated draft:\n\(manager.formatDraftPreview(updated))")
+                    }
+                }
+            }
+            if lower.hasPrefix("attach ") {
+                let query = String(trimmed.dropFirst("attach ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                if let path = manager.resolveAttachment(query: query),
+                   let updated = manager.updateFocusedDraft(attachmentPath: path) {
+                    return emailResult("Attached \(URL(fileURLWithPath: path).lastPathComponent).\n\(manager.formatDraftPreview(updated))")
+                }
+                return emailResult("I couldn't find '\(query)' on your Desktop, Downloads, or Documents.", success: false)
+            }
+        }
+
+        // 7. Create a new dictated draft ("write an email to ...", "draft an email to ...", "send an email to ...", "email ...", "<name> ko email likho ...")
+        let emailPrefixes = ["write an email to ", "draft an email to ", "send an email to ", "send email to ", "email "]
+        if emailPrefixes.contains(where: { lower.hasPrefix($0) }) || lower.contains(" ko email likho") {
+            var afterTo = trimmed
+            for prefix in emailPrefixes where lower.hasPrefix(prefix) {
+                afterTo = String(trimmed.dropFirst(prefix.count))
+                break
+            }
+            if lower.contains(" ko email likho") {
+                afterTo = trimmed.replacingOccurrences(of: "ko email likho", with: "", options: .caseInsensitive)
+            }
+
+            var recipientPhrase = afterTo
+            var subj = "Quick note"
+            var body = ""
+
+            // Check if "with subject ... saying ..."
+            if let subjRange = afterTo.range(of: " with subject ", options: .caseInsensitive) {
+                recipientPhrase = String(afterTo[..<subjRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let remainder = String(afterTo[subjRange.upperBound...])
+                if let sayingRange = remainder.range(of: " saying ", options: .caseInsensitive) {
+                    subj = String(remainder[..<sayingRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    body = String(remainder[sayingRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                } else {
+                    subj = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            } else {
+                for sep in [" saying ", " asking ", " about ", " that ", " ki "] {
+                    if let range = afterTo.range(of: sep, options: .caseInsensitive) {
+                        recipientPhrase = String(afterTo[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                        let text = String(afterTo[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                        if sep == " about " {
+                            subj = String(text.prefix(50)).capitalized
+                            body = text
+                        } else {
+                            body = text
+                            subj = String(text.prefix(40)).capitalized
+                        }
+                        break
+                    }
+                }
+            }
+
+            switch await manager.resolveRecipient(recipientPhrase) {
+            case .resolved(let contact):
+                let draft = manager.createDraft(to: [contact.email], subject: subj, body: body)
+                return emailResult("Draft ready (not sent yet):\n\(manager.formatDraftPreview(draft))\nSay 'send it' or click Send in the pill.")
+            case .ambiguous(let list):
+                let opts = list.map { "\($0.displayName) (\($0.email))" }.joined(separator: ", ")
+                return emailResult("I found multiple contacts for '\(recipientPhrase)': \(opts). Which one?", success: false)
+            case .notFound(let q):
+                return emailResult("I couldn't find a contact or valid email for '\(q)'. Please spell out the email address.", success: false)
+            case .invalidAddress(let msg), .permissionDenied(let msg):
+                return emailResult(msg, success: false)
+            }
+        }
+
+        return nil
+    }
+
+    // MARK: - Voice Calendar, Google Meet & Reminders Commands (Draft, Save, Cancel)
+
+    private func handleVoiceEventAndReminderCommandIfPresent(_ trimmed: String) async -> AutonomousExecutionResult? {
+        let lower = trimmed.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let calService = CalendarMessagesService.shared
+
+        func eventResult(_ summary: String, success: Bool = true, step: String = "Voice Calendar") -> AutonomousExecutionResult {
+            AutonomousExecutionResult(
+                success: success,
+                summary: summary,
+                targetAppName: "Calendar",
+                targetURL: nil,
+                executedSteps: [step]
+            )
+        }
+
+        // 1. Voice Save / Confirm for focused draft
+        if (lower == "save it" || lower == "save" || lower == "confirm" || lower == "add it" || lower == "save karo" || lower == "bhej do") {
+            if let focused = calService.focusedEventDraft() {
+                let res = await calService.saveDraft(focused)
+                return eventResult(res.summary, success: res.success, step: "Saved event draft")
+            }
+        }
+
+        // 2. Voice Cancel / Dismiss for focused draft
+        if (lower == "cancel" || lower == "dismiss" || lower == "discard" || lower == "hatao") {
+            if calService.focusedEventDraft() != nil {
+                calService.clearEventDraft()
+                return eventResult("Cancelled event draft.", success: true, step: "Dismissed event draft")
+            }
+        }
+
+        // 3. Detect Calendar Event, Google Meet, or Reminder Creation
+        let isReminder = lower.contains("remind me to ") || lower.contains("remind me ") ||
+                         lower.contains("set a reminder") || lower.contains("set reminder") ||
+                         lower.contains("add reminder") || lower.contains("reminder set karo") ||
+                         lower.contains("reminder lagao") || lower.hasPrefix("reminder ")
+
+        let isMeet = lower.contains("google meet") || lower.contains("meet with") ||
+                     lower.contains("google meet with") || lower.contains("meet schedule")
+
+        let isCalendar = lower.contains("schedule a meeting") || lower.contains("schedule meeting") ||
+                         lower.contains("schedule event") || lower.contains("create event") ||
+                         lower.contains("add event") || lower.contains("calendar event") ||
+                         lower.contains("calendar me event") || lower.contains("meeting schedule")
+
+        guard isReminder || isMeet || isCalendar else { return nil }
+
+        // Determine draft type & platform
+        let draftType: EventDraftType = isReminder ? .reminder : (isMeet ? .googleMeet : .calendar)
+        let platform: String = isReminder ? "Reminders" : (isMeet ? "Google Meet" : "Google Calendar")
+
+        // Parse date
+        var dateString = "Thursday"
+        if lower.contains("today") || lower.contains("aaj") {
+            dateString = "Today"
+        } else if lower.contains("tomorrow") || lower.contains("kal") {
+            dateString = "Tomorrow"
+        } else {
+            for day in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] {
+                if lower.contains(day) {
+                    dateString = day.capitalized
+                    break
+                }
+            }
+        }
+
+        // Parse time
+        var timeString = isReminder ? "5:00 PM" : "2:00 – 2:30 PM"
+        if let fromRange = lower.range(of: "from ") {
+            let afterFrom = String(trimmed[fromRange.upperBound...])
+            if let toRange = afterFrom.range(of: " to ") {
+                let start = String(afterFrom[..<toRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let end = String(afterFrom[toRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                timeString = "\(start) – \(end)"
+            } else {
+                timeString = afterFrom.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        } else if let atRange = lower.range(of: " at ") {
+            let afterAt = String(trimmed[atRange.upperBound...])
+            let parts = afterAt.components(separatedBy: " ")
+            if !parts.isEmpty {
+                timeString = parts.prefix(2).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        // Parse participant
+        var participant = "david@company.com"
+        var personQuery = ""
+        if let withRange = lower.range(of: "with ") {
+            let afterWith = String(trimmed[withRange.upperBound...])
+            let tokens = afterWith.components(separatedBy: CharacterSet.whitespaces)
+            if let firstToken = tokens.first {
+                personQuery = firstToken.replacingOccurrences(of: "on", with: "")
+                    .replacingOccurrences(of: "from", with: "")
+                    .replacingOccurrences(of: "at", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            }
+        } else if let saathRange = lower.range(of: "ke saath") {
+            let beforeSaath = String(trimmed[..<saathRange.lowerBound])
+            let tokens = beforeSaath.components(separatedBy: CharacterSet.whitespaces)
+            if let lastToken = tokens.filter({ !$0.isEmpty }).last {
+                personQuery = lastToken.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            }
+        }
+
+        if !personQuery.isEmpty {
+            switch await VoiceEmailManager.shared.resolveRecipient(personQuery) {
+            case .resolved(let c):
+                participant = c.email.isEmpty ? "\(c.displayName.lowercased())@company.com" : c.email
+            default:
+                if personQuery.contains("@") {
+                    participant = personQuery
+                } else {
+                    participant = "\(personQuery.lowercased())@company.com"
+                }
+            }
+        }
+
+        // Determine title
+        var title = "Design review with David"
+        if isReminder {
+            var remTitle = trimmed
+            for prefix in ["remind me to ", "remind me ", "set a reminder for ", "set a reminder to ", "add reminder to ", "add reminder for ", "reminder for "] {
+                if lower.hasPrefix(prefix) {
+                    remTitle = String(trimmed.dropFirst(prefix.count))
+                    break
+                }
+            }
+            if let atR = remTitle.range(of: " at ", options: .caseInsensitive) {
+                remTitle = String(remTitle[..<atR.lowerBound])
+            }
+            title = remTitle.trimmingCharacters(in: .whitespacesAndNewlines).capitalized
+            if title.isEmpty { title = "Reminder" }
+        } else {
+            // Check for explicit title e.g. "Design review with David" or "meeting with David"
+            var t = trimmed
+            for prefix in ["schedule a meeting for ", "schedule a meeting with ", "schedule meeting with ", "schedule google meet with ", "schedule a google meet for ", "schedule a google meet with ", "schedule event ", "create event ", "add event ", "schedule ", "create "] {
+                if lower.hasPrefix(prefix) {
+                    t = String(trimmed.dropFirst(prefix.count))
+                    break
+                }
+            }
+            if let onR = t.range(of: " on ", options: .caseInsensitive) {
+                t = String(t[..<onR.lowerBound])
+            } else if let fromR = t.range(of: " from ", options: .caseInsensitive) {
+                t = String(t[..<fromR.lowerBound])
+            }
+            let cleaned = t.trimmingCharacters(in: .whitespacesAndNewlines)
+            if cleaned.isEmpty {
+                title = !personQuery.isEmpty ? "Meeting with \(personQuery.capitalized)" : "Design review with David"
+            } else {
+                title = cleaned.capitalized
+                if !title.lowercased().contains("with") && !personQuery.isEmpty {
+                    title = "\(title) with \(personQuery.capitalized)"
+                }
+            }
+        }
+
+        let draft = calService.createEventDraft(
+            title: title,
+            type: draftType,
+            dateString: dateString,
+            timeString: timeString,
+            participants: [participant],
+            platform: platform,
+            isReminder: isReminder
+        )
+
+        return eventResult(
+            "\(draftType.displayLabel) ready:\n• Title: \(draft.title)\n• Time: \(draft.dateString) · \(draft.timeString)\n• Participant: \(participant)\n• Platform: \(platform)\nClick Save in the pill or say 'save it'.",
+            step: "Drafted \(draftType.displayLabel)"
+        )
     }
 
     public static func isLikelyOpenEndedComputerUseGoal(_ utterance: String) -> Bool {

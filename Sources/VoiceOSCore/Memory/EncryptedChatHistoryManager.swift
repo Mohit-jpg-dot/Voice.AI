@@ -66,6 +66,7 @@ public struct ConversationSessionRecord: Codable, Identifiable, Sendable {
     public var isPinned: Bool
     public let createdAt: Date
     public var updatedAt: Date
+    public var rollingSummary: String?
     public var messages: [MessageRecordItem]
     
     public init(
@@ -76,6 +77,7 @@ public struct ConversationSessionRecord: Codable, Identifiable, Sendable {
         isPinned: Bool = false,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
+        rollingSummary: String? = nil,
         messages: [MessageRecordItem] = []
     ) {
         self.id = id
@@ -85,6 +87,7 @@ public struct ConversationSessionRecord: Codable, Identifiable, Sendable {
         self.isPinned = isPinned
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.rollingSummary = rollingSummary
         self.messages = messages
     }
 }
@@ -230,6 +233,14 @@ public final class EncryptedChatHistoryManager: @unchecked Sendable {
             session.messages.append(userMessage)
             session.messages.append(assistantMessage)
             session.updatedAt = timestamp
+            if session.messages.count > 12 {
+                let olderTurns = session.messages.dropLast(6)
+                let summaryLines = olderTurns.suffix(8).map { msg in
+                    let role = msg.role == "user" ? "User" : "Assistant"
+                    return "\(role): \(String(msg.content.prefix(120)))"
+                }
+                session.rollingSummary = "Earlier in this session (\(olderTurns.count) messages): " + summaryLines.joined(separator: " | ")
+            }
             inMemorySessions[idx] = session
         } else {
             // Auto-title from first prompt
@@ -352,19 +363,25 @@ public final class EncryptedChatHistoryManager: @unchecked Sendable {
     
     // MARK: - AES-256 Encryption at Rest
     
-    private func getHistoryFilePath(for accountId: String) -> URL {
+    private func historyStorageDirectory() -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let baseDir = appSupport.appendingPathComponent("Voice.AI", isDirectory: true).appendingPathComponent("History", isDirectory: true)
-        let dir: URL
         do {
             try FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
-            dir = baseDir
+            // Verify directory is actually writable inside sandbox
+            let probe = baseDir.appendingPathComponent(".probe_\(ProcessInfo.processInfo.processIdentifier)")
+            try Data().write(to: probe)
+            try? FileManager.default.removeItem(at: probe)
+            return baseDir
         } catch {
             let fallback = FileManager.default.temporaryDirectory.appendingPathComponent("VoiceAIHistory", isDirectory: true)
             try? FileManager.default.createDirectory(at: fallback, withIntermediateDirectories: true)
-            dir = fallback
+            return fallback
         }
-        
+    }
+
+    private func getHistoryFilePath(for accountId: String) -> URL {
+        let dir = historyStorageDirectory()
         // Hash accountId for file name
         let hash = sha256(accountId)
         return dir.appendingPathComponent("history_\(hash).enc")
@@ -463,6 +480,113 @@ public final class EncryptedChatHistoryManager: @unchecked Sendable {
         
         guard status == kCCSuccess else { return nil }
         return Data(outBuffer.prefix(numBytesDecrypted))
+    }
+
+    // MARK: - Encrypted Terminal Audit Log (Metadata Only — Never Stores Output Bodies)
+
+    public struct CommandAuditRecord: Codable, Identifiable, Sendable, Equatable {
+        public let id: String
+        public let accountId: String
+        public let timestamp: Date
+        public let command: String
+        public let workingDirectory: String
+        public let classification: String
+        public let decision: String // "approved" | "approved_auto" | "denied" | "blocked"
+        public let exitCode: Int32
+        public let durationMs: Int
+
+        public init(
+            id: String = UUID().uuidString,
+            accountId: String,
+            timestamp: Date = Date(),
+            command: String,
+            workingDirectory: String,
+            classification: String,
+            decision: String,
+            exitCode: Int32,
+            durationMs: Int
+        ) {
+            self.id = id
+            self.accountId = accountId
+            self.timestamp = timestamp
+            self.command = command
+            self.workingDirectory = workingDirectory
+            self.classification = classification
+            self.decision = decision
+            self.exitCode = exitCode
+            self.durationMs = durationMs
+        }
+    }
+
+    private func auditFileURL(for accountId: String) -> URL {
+        return historyStorageDirectory().appendingPathComponent("cmd_audit_\(sha256(accountId)).enc")
+    }
+
+    public func recordCommandAudit(
+        command: String,
+        workingDirectory: String,
+        classification: String,
+        decision: String,
+        exitCode: Int32,
+        durationMs: Int,
+        timestamp: Date = Date(),
+        accountId overrideAccountId: String? = nil
+    ) {
+        let accId = overrideAccountId ?? AccountAuthService.shared.currentAccount?.id ?? "local"
+        lock.lock()
+        defer { lock.unlock() }
+
+        var logs = loadAuditLogsLocked(for: accId)
+        let entry = CommandAuditRecord(
+            accountId: accId,
+            timestamp: timestamp,
+            command: SecretRedactor.redact(command),
+            workingDirectory: workingDirectory,
+            classification: classification,
+            decision: decision,
+            exitCode: exitCode,
+            durationMs: durationMs
+        )
+        logs.insert(entry, at: 0)
+        if logs.count > 500 {
+            logs = Array(logs.prefix(500))
+        }
+        persistAuditLogsLocked(logs, for: accId)
+    }
+
+    public func commandAuditLogs(forDay day: Date? = nil, accountId overrideAccountId: String? = nil) -> [CommandAuditRecord] {
+        let accId = overrideAccountId ?? AccountAuthService.shared.currentAccount?.id ?? "local"
+        lock.lock()
+        defer { lock.unlock() }
+        let all = loadAuditLogsLocked(for: accId)
+        guard let targetDay = day else { return all }
+        let cal = Calendar.current
+        return all.filter { cal.isDate($0.timestamp, inSameDayAs: targetDay) }
+    }
+
+    public func clearCommandAuditLogs(accountId overrideAccountId: String? = nil) {
+        let accId = overrideAccountId ?? AccountAuthService.shared.currentAccount?.id ?? "local"
+        lock.lock()
+        defer { lock.unlock() }
+        try? FileManager.default.removeItem(at: auditFileURL(for: accId))
+    }
+
+    private func loadAuditLogsLocked(for accountId: String) -> [CommandAuditRecord] {
+        let url = auditFileURL(for: accountId)
+        guard let cipher = try? Data(contentsOf: url),
+              let plain = aesDecrypt(data: cipher, key: getOrCreateEncryptionKey(for: accountId)),
+              let decoded = try? JSONDecoder().decode([CommandAuditRecord].self, from: plain) else {
+            return []
+        }
+        return decoded
+    }
+
+    private func persistAuditLogsLocked(_ logs: [CommandAuditRecord], for accountId: String) {
+        guard let encoded = try? JSONEncoder().encode(logs),
+              let cipher = aesEncrypt(data: encoded, key: getOrCreateEncryptionKey(for: accountId)) else {
+            return
+        }
+        try? cipher.write(to: auditFileURL(for: accountId), options: .atomic)
     }
     
     private func sha256(_ string: String) -> String {

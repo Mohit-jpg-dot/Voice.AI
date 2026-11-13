@@ -39,6 +39,8 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     }
     @Published public var isHistoryDrawerOpen: Bool = false
     @Published public var isAppBuilderOpen: Bool = false
+    @Published public var activeEmailDraft: EmailDraft? = nil
+    @Published public var activeEventDraft: CalendarEventDraft? = nil
     
     public var isCurrentlyListening: Bool {
         if case .listening = executionState { return true }
@@ -273,6 +275,11 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
             loadedSessions = EncryptedChatHistoryManager.shared.listConversations()
         }
         self.conversationSessions = loadedSessions
+        if let savedId = UserDefaults.standard.string(forKey: "VoiceAI_ActiveConversationId"),
+           let resumed = loadedSessions.first(where: { $0.id == savedId }) ?? loadedSessions.first {
+            self.activeConversationId = resumed.id
+            self.selectedConversation = resumed
+        }
 
         // 7. Bind "THE VOICE" Hands-free ambient listener callback with interruption support
         TheVoiceAmbientListener.shared.onWakeWordTriggered = { [weak self] command in
@@ -286,6 +293,17 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
             return self.islandState != .resting ||
                    self.isMediaExpanded ||
                    SpeechPipelineEngine.shared.currentState == .speaking
+        }
+        TheVoiceAmbientListener.shared.onHotCaptureStarted = { [weak self] initial in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.cancelPendingAutoCollapse()
+                self.recordingWatchdogWorkItem?.cancel()
+                GoogleSearchEngine.shared.clearLastAnswer()
+                self.currentTranscript = initial
+                self.executionState = .listening(.agent)
+                self.islandState = .voiceCompact(.agent)
+            }
         }
         TheVoiceAmbientListener.shared.onHotCaptureLevels = { [weak self] levels in
             self?.audioLevels = levels
@@ -341,6 +359,34 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                 }
             }
         }
+        EventBus.shared.subscribe(matching: .custom("session_control")) { [weak self] evt in
+            let action = evt.payload["action"] ?? ""
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                switch action {
+                case "new_session":
+                    self.activeConversationId = nil
+                    self.selectedConversation = nil
+                    UserDefaults.standard.removeObject(forKey: "VoiceAI_ActiveConversationId")
+                case "select_session":
+                    if let sid = evt.payload["id"],
+                       let conv = EncryptedChatHistoryManager.shared.getConversation(id: sid) {
+                        self.activeConversationId = conv.id
+                        self.selectedConversation = conv
+                        UserDefaults.standard.set(conv.id, forKey: "VoiceAI_ActiveConversationId")
+                        self.conversationSessions = EncryptedChatHistoryManager.shared.listConversations()
+                    }
+                case "rename_session":
+                    if let title = evt.payload["title"], let sid = self.activeConversationId {
+                        EncryptedChatHistoryManager.shared.renameConversation(id: sid, newTitle: title)
+                        self.conversationSessions = EncryptedChatHistoryManager.shared.listConversations()
+                        self.selectedConversation = EncryptedChatHistoryManager.shared.getConversation(id: sid)
+                    }
+                default:
+                    break
+                }
+            }
+        }
 
         // 7. Bind voice pipeline
         setupVoicePipelineBindings()
@@ -359,6 +405,46 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
             }
         }
         ToolApprovalCoordinator.shared.setPresenter(self)
+
+        EventBus.shared.subscribe(matching: .emailDraftCreated) { [weak self] event in
+            guard let self = self else { return }
+            let to = (event.payload["to"] ?? "").split(separator: ",").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            let subj = event.payload["subject"] ?? ""
+            let body = event.payload["body"] ?? ""
+            let draftId = event.payload["draft_id"] ?? UUID().uuidString
+            let draft = EmailDraft(id: draftId, to: to, subject: subj, body: body)
+            DispatchQueue.main.async {
+                self.presentEmailDraft(draft)
+            }
+        }
+
+        EventBus.shared.subscribe(matching: .calendarDraftCreated) { [weak self] event in
+            guard let self = self else { return }
+            let id = event.payload["draft_id"] ?? UUID().uuidString
+            let title = event.payload["title"] ?? "New Event"
+            let typeStr = event.payload["type"] ?? "google_meet"
+            let type = EventDraftType(rawValue: typeStr) ?? .googleMeet
+            let dateStr = event.payload["date_string"] ?? "Thursday"
+            let timeStr = event.payload["time_string"] ?? "2:00 – 2:30 PM"
+            let participantsStr = event.payload["participants"] ?? ""
+            let parts = participantsStr.isEmpty ? [] : participantsStr.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            let platform = event.payload["platform"] ?? type.defaultPlatform
+            let isRem = event.payload["is_reminder"] == "true"
+
+            let draft = CalendarEventDraft(
+                id: id,
+                title: title,
+                type: type,
+                dateString: dateStr,
+                timeString: timeStr,
+                participants: parts,
+                platform: platform,
+                isReminder: isRem
+            )
+            DispatchQueue.main.async {
+                self.presentCalendarEventDraft(draft)
+            }
+        }
 
         // 10. Phase 2 Proactive Rules, RAG folders, and Smart Home state bindings
         self.proactiveAlerts = ProactiveRulesEngine.shared.activeAlerts()
@@ -392,9 +478,21 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                 self?.activeBrainStatusLabel = "\(mode) • \(model)"
             }
         }
+        EventBus.shared.subscribe(matching: .custom("email_watch_reply")) { evt in
+            let isSilent = evt.payload["silent"] == "true"
+            let sender = evt.payload["sender"] ?? "Someone"
+            let subject = evt.payload["subject"] ?? "your email"
+            if !isSilent && ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] != "1" {
+                let text = "\(sender) replied to '\(subject)'."
+                DispatchQueue.main.async {
+                    SpeechPipelineEngine.shared.speakResponse(text)
+                }
+            }
+        }
         let env = ProcessInfo.processInfo.environment
         if NSApp != nil && env["VOICE_AI_TEST_MODE"] != "1" {
             ProactiveRulesEngine.shared.startMonitoring(intervalSeconds: 60)
+            VoiceEmailManager.shared.startWatchMonitoring()
         }
     }
     
@@ -634,6 +732,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
             actions: actionItems
         ) {
             self.activeConversationId = saved.id
+            UserDefaults.standard.set(saved.id, forKey: "VoiceAI_ActiveConversationId")
             if self.selectedConversation?.id == saved.id {
                 self.selectedConversation = saved
             }
@@ -1140,29 +1239,43 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         return next
     }
 
-    public func scheduleAutoCollapseAfterSpeech(delaySeconds: Double = 0.55, forToken token: UUID) {
+    public func scheduleAutoCollapse(after delaySeconds: Double = 1.0, forToken token: UUID? = nil) {
         autoCollapseWorkItem?.cancel()
+        let targetToken = token ?? activeResponseToken
+
         let work = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
-            guard self.activeResponseToken == token else { return }
-            guard !self.isPinned, !self.isTypingFocused, !self.isHoveringPill, !self.isCurrentlyListening, !self.isAwaitingRedirectConfirmation else { return }
-            guard SpeechPipelineEngine.shared.currentState != .speaking else { return }
+            guard self.activeResponseToken == targetToken else { return }
+            // Only keep open if user explicitly pinned the island, is actively typing, listening, or awaiting confirmation
+            guard !self.isPinned, !self.isTypingFocused, !self.isCurrentlyListening, !self.isAwaitingRedirectConfirmation else { return }
+
+            // If speech synthesis is still actively speaking the answer, wait until speech ends
+            if SpeechPipelineEngine.shared.currentState == .speaking {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                    self?.scheduleAutoCollapse(after: 0.6, forToken: targetToken)
+                }
+                return
+            }
+
             self.autoCollapseWorkItem = nil
             self.isMediaExpanded = false
-            if case .hoverExpanded = self.islandState {
-                self.islandState = .resting
-            }
+            self.isHoveringPill = false
+
+            self.islandState = .resting
             if case .completed = self.executionState {
                 self.executionState = .idle
             }
         }
-        autoCollapseWorkItem = work
+        self.autoCollapseWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds, execute: work)
     }
 
+    public func scheduleAutoCollapseAfterSpeech(delaySeconds: Double = 0.55, forToken token: UUID) {
+        scheduleAutoCollapse(after: delaySeconds, forToken: token)
+    }
+
     private func presentCompletedAgentResult(_ result: AutonomousExecutionResult, forPrompt prompt: String) {
-        cancelPendingAutoCollapse()
-        let responseToken = self.activeResponseToken
+        let responseToken = cancelPendingAutoCollapse()
 
         if result.success {
             BoringSoundEngine.shared.playDone()
@@ -1209,10 +1322,21 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
             appIcon: "sparkles"
         )
 
-        // Speak the full response cleanly ONCE, and automatically collapse the pill smoothly after speech finishes
+        let isActionTask = summaryLower.contains("closed ") || summaryLower.contains("opened ") ||
+                           summaryLower.contains("quit ") || summaryLower.contains("launched ") ||
+                           summaryLower.contains("saved ") || summaryLower.contains("scheduled ") ||
+                           summaryLower.contains("muted ") || summaryLower.contains("unmuted ") ||
+                           summaryLower.contains("set volume") || summaryLower.contains("brightness") ||
+                           summaryLower.contains("playing ") || summaryLower.contains("paused ")
+
+        // 1. Guaranteed fallback auto-collapse timer (so pill ALWAYS collapses even if speech is fast, muted, or skipped)
+        let fallbackDelay = isActionTask ? 2.0 : max(3.5, Double(result.summary.count) * 0.08 + 2.0)
+        self.scheduleAutoCollapse(after: fallbackDelay, forToken: responseToken)
+
+        // 2. Event-driven collapse triggered immediately after speech synthesis finishes
         SpeechPipelineEngine.shared.speakResponse(result.summary) { [weak self] in
             DispatchQueue.main.async {
-                self?.scheduleAutoCollapseAfterSpeech(delaySeconds: 0.55, forToken: responseToken)
+                self?.scheduleAutoCollapse(after: isActionTask ? 0.6 : 1.2, forToken: responseToken)
             }
         }
         if result.success {
@@ -1372,7 +1496,13 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                     sourceTitle: "Ollama Brain Suggestions"
                 )
                 self.chatMessages = LocalChatMemoryManager.shared.allMessages()
-                SpeechPipelineEngine.shared.speakResponse(outcome.insight)
+                let responseToken = self.cancelPendingAutoCollapse()
+                self.scheduleAutoCollapse(after: max(4.0, Double(outcome.insight.count) * 0.08 + 2.0), forToken: responseToken)
+                SpeechPipelineEngine.shared.speakResponse(outcome.insight) { [weak self] in
+                    DispatchQueue.main.async {
+                        self?.scheduleAutoCollapse(after: 1.2, forToken: responseToken)
+                    }
+                }
             }
         }
     }
@@ -1413,7 +1543,13 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                     isScreenContext: true
                 )
                 self.chatMessages = LocalChatMemoryManager.shared.allMessages()
-                SpeechPipelineEngine.shared.speakResponse(finalSummary)
+                let responseToken = self.cancelPendingAutoCollapse()
+                self.scheduleAutoCollapse(after: max(4.0, Double(finalSummary.count) * 0.08 + 2.0), forToken: responseToken)
+                SpeechPipelineEngine.shared.speakResponse(finalSummary) { [weak self] in
+                    DispatchQueue.main.async {
+                        self?.scheduleAutoCollapse(after: 1.2, forToken: responseToken)
+                    }
+                }
             }
         }
     }
@@ -1618,5 +1754,102 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         }
         executionState = .idle
         islandState = isPinned ? .pinned : .resting
+    }
+
+    // MARK: - Email Draft Presentation & Real-Time Send
+    public func presentEmailDraft(_ draft: EmailDraft) {
+        self.activeEmailDraft = draft
+        self.islandState = .emailDraftExpanded(draft)
+        self.activeNotchTab = .ask
+        BoringSoundEngine.shared.playNotchOpen()
+    }
+
+    public func openEmailComposerDemo() {
+        let demoDraft = EmailDraft(
+            to: ["david@company.com"],
+            subject: "Project update and Thursday sync",
+            body: "Hi David,\n\nThe designs look great. Let's sync Thursday.\n\nBest"
+        )
+        presentEmailDraft(demoDraft)
+    }
+
+    public func dismissEmailDraft() {
+        self.activeEmailDraft = nil
+        if let action = currentAction, action.appName.lowercased().contains("mail") || (action.payload["tool_name"] ?? "").contains("email") {
+            dismissAction()
+        } else {
+            islandState = isPinned ? .pinned : .resting
+        }
+    }
+
+    public func sendActiveEmailDraft(customDraft: EmailDraft? = nil) {
+        if let action = currentAction, action.appName.lowercased().contains("mail") || (action.payload["tool_name"] ?? "").contains("email") {
+            approveCurrentAction()
+            self.activeEmailDraft = nil
+            return
+        }
+
+        guard let draftToSend = customDraft ?? activeEmailDraft ?? VoiceEmailManager.shared.focusedDraft() else { return }
+
+        Task { @MainActor in
+            self.executionState = .executing("Sending email to \(draftToSend.to.joined(separator: ", "))...")
+            let result = await VoiceEmailManager.shared.sendDraft(draftToSend, undoWindowOverride: 0) { _ in true }
+            if result.success {
+                BoringSoundEngine.shared.playDone()
+                self.activeEmailDraft = nil
+                self.executionState = .completed("✓ Email sent to \(draftToSend.to.joined(separator: ", ")).")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    if !self.isPinned {
+                        self.islandState = .resting
+                    }
+                }
+            } else {
+                self.executionState = .error(result.errorMessage ?? "Failed to send email.")
+            }
+        }
+    }
+
+    public func presentCalendarEventDraft(_ draft: CalendarEventDraft) {
+        self.activeEventDraft = draft
+        self.islandState = .calendarEventExpanded(draft)
+        self.activeNotchTab = .ask
+        BoringSoundEngine.shared.playNotchOpen()
+    }
+
+    public func dismissCalendarEventDraft() {
+        self.activeEventDraft = nil
+        CalendarMessagesService.shared.clearEventDraft()
+        if let action = currentAction, action.appName.lowercased().contains("calendar") || action.appName.lowercased().contains("reminder") || (action.payload["tool_name"] ?? "").contains("calendar") {
+            dismissAction()
+        } else {
+            islandState = isPinned ? .pinned : .resting
+        }
+    }
+
+    public func saveActiveCalendarEventDraft(customDraft: CalendarEventDraft? = nil) {
+        if let action = currentAction, action.appName.lowercased().contains("calendar") || action.appName.lowercased().contains("reminder") || (action.payload["tool_name"] ?? "").contains("calendar") {
+            approveCurrentAction()
+            self.activeEventDraft = nil
+            return
+        }
+
+        guard let draftToSave = customDraft ?? activeEventDraft ?? CalendarMessagesService.shared.focusedEventDraft() else { return }
+
+        Task { @MainActor in
+            self.executionState = .executing("Saving \(draftToSave.title)...")
+            let result = await CalendarMessagesService.shared.saveDraft(draftToSave)
+            if result.success {
+                BoringSoundEngine.shared.playDone()
+                self.activeEventDraft = nil
+                self.executionState = .completed("✓ \(result.summary)")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    if !self.isPinned {
+                        self.islandState = .resting
+                    }
+                }
+            } else {
+                self.executionState = .error(result.summary)
+            }
+        }
     }
 }

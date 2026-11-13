@@ -30,4 +30,6 @@ VoiceOS executes actions across your operating system driven by voice input. Sec
 | **Malicious Remote Phone Control** | QR-paired end-to-end encrypted relay with device-specific Ed25519 keys, biometrics (Face ID) re-auth for sensitive scopes, and Mac-side visual indicator. |
 | **Memory Poisoning** | Local SQLite memory database is schema-versioned, HMAC-signed, with complete provenance auditing ("Why do you think that?"). |
 | **Password Fields & Terminals** | Secure text input fields (`NSSecureTextField` / AX role `AXSecureTextField`) are detected and skipped; dictation will never capture or insert into credentials. |
+| **Messaging Prompt Injection** | Incoming Slack, Discord, and WhatsApp content is scrubbed of injection triggers and isolated inside `<UNTRUSTED_MESSAGE_DATA>` tags. Messages can never invoke tools. |
+| **Messaging Connectors & ToS** | Send actions strictly require `.consequential` Notch Approval Card. Zero unofficial WhatsApp libraries (ban prevention); zero Discord self-bots (Discord ToS compliance). Tokens stored in `ai.voice.app.auth` Keychain. |
 

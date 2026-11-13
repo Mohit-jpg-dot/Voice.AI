@@ -211,6 +211,51 @@ public final class ToolRegistry: ToolRegistryProtocol, @unchecked Sendable {
             return ToolInvocationResult(success: false, summary: "Tool '\(name)' is not registered.")
         }
 
+        if name == "run_terminal_command" && !bypassApproval {
+            let outcome = await SafeTerminalEngine.shared.execute(
+                command: arguments["command"] ?? "",
+                workingDirectory: arguments["working_directory"],
+                purpose: arguments["purpose"],
+                approvalSource: .liveMicrophone,
+                customApprovalHandler: customApprovalHandler
+            )
+            EventBus.shared.publish(VoiceEvent(
+                kind: .toolInvoked,
+                source: "ToolRegistry",
+                severity: outcome.success ? .info : .warning,
+                payload: [
+                    "tool": tool.name,
+                    "tier": tool.permissionTier.rawValue,
+                    "source": tool.source.label,
+                    "success": outcome.success ? "true" : "false",
+                    "decision": outcome.decision
+                ]
+            ))
+            return ToolInvocationResult(
+                success: outcome.success,
+                summary: outcome.plainSummary,
+                data: [
+                    "decision": outcome.decision,
+                    "classification": outcome.classification.rawValue,
+                    "command_hash": outcome.commandHash,
+                    "untrusted_output": outcome.untrustedWrappedOutput
+                ],
+                requiresApproval: outcome.classification != .blocked,
+                wasApproved: outcome.decision == "approved" || outcome.decision == "approved_auto"
+            )
+        }
+
+        if (name == "email_send" || name == "email_reply") && !bypassApproval {
+            let res = await VoiceEmailManager.shared.sendFocusedDraft(customApprovalHandler: customApprovalHandler)
+            return ToolInvocationResult(
+                success: res.success,
+                summary: res.success ? "Email sent via \(res.backendUsed)." : (res.errorMessage ?? "Email send cancelled or failed."),
+                data: ["backend": res.backendUsed, "message_id": res.confirmedMessageId ?? ""],
+                requiresApproval: true,
+                wasApproved: res.success
+            )
+        }
+
         var pendingAction: AgentAction? = nil
         if !bypassApproval && tool.permissionTier == .consequential {
             let argPreview = SecretRedactor.redactDictionary(arguments)
@@ -360,6 +405,13 @@ public final class ToolRegistry: ToolRegistryProtocol, @unchecked Sendable {
         )
 
         registerIntegrationTool(
+            name: "whatsapp_read", appName: "WhatsApp",
+            description: "Read unread messages or recent conversation from WhatsApp.",
+            tier: .readOnly, appId: "whatsapp", operation: "read",
+            props: ["recipient": ToolSchemaProperty(description: "Optional contact name or phone")]
+        )
+
+        registerIntegrationTool(
             name: "slack_send", appName: "Slack",
             description: "Send a message to a Slack channel or DM. Requires user approval.",
             tier: .consequential, appId: "slack", operation: "send",
@@ -370,12 +422,44 @@ public final class ToolRegistry: ToolRegistryProtocol, @unchecked Sendable {
             required: ["recipient", "body"]
         )
         registerIntegrationTool(
+            name: "slack_read", appName: "Slack",
+            description: "Read unread messages or channel history from Slack.",
+            tier: .readOnly, appId: "slack", operation: "read",
+            props: ["recipient": ToolSchemaProperty(description: "Optional channel name or DM target")]
+        )
+        registerIntegrationTool(
+            name: "slack_react", appName: "Slack",
+            description: "Add an emoji reaction to a message in Slack.",
+            tier: .reversible, appId: "slack", operation: "react",
+            props: [
+                "recipient": ToolSchemaProperty(description: "Channel or message target"),
+                "body": ToolSchemaProperty(description: "Emoji to add (e.g. thumbsup)")
+            ],
+            required: ["recipient", "body"]
+        )
+        registerIntegrationTool(
             name: "discord_send", appName: "Discord",
             description: "Send a message to a Discord channel or user. Requires user approval.",
             tier: .consequential, appId: "discord", operation: "send",
             props: [
                 "recipient": ToolSchemaProperty(description: "#channel or @user"),
                 "body": ToolSchemaProperty(description: "Message text")
+            ],
+            required: ["recipient", "body"]
+        )
+        registerIntegrationTool(
+            name: "discord_read", appName: "Discord",
+            description: "Read unread messages or channel history from Discord.",
+            tier: .readOnly, appId: "discord", operation: "read",
+            props: ["recipient": ToolSchemaProperty(description: "Optional channel name or target")]
+        )
+        registerIntegrationTool(
+            name: "discord_react", appName: "Discord",
+            description: "Add an emoji reaction to a message in Discord.",
+            tier: .reversible, appId: "discord", operation: "react",
+            props: [
+                "recipient": ToolSchemaProperty(description: "Channel or message target"),
+                "body": ToolSchemaProperty(description: "Emoji to add")
             ],
             required: ["recipient", "body"]
         )
@@ -881,6 +965,125 @@ public final class ToolRegistry: ToolRegistryProtocol, @unchecked Sendable {
             let steps = Int(args["max_steps"] ?? "15") ?? 15
             let res = await ComputerUseOperator.shared.runAgentTask(goal: goal, maxSteps: steps)
             return ToolInvocationResult(success: res.success, summary: res.summary)
+        })
+        register(RegisteredTool(
+            name: "run_terminal_command",
+            appName: "Terminal",
+            description: "Execute a validated macOS terminal command inside allowed user directories after CommandPolicy verification and voice/UI approval.",
+            inputSchema: RegisteredToolSchema(
+                properties: [
+                    "command": ToolSchemaProperty(description: "Shell command to execute within allowed roots"),
+                    "working_directory": ToolSchemaProperty(description: "Working directory (Desktop, Documents, Downloads, or VoiceAI-Workspace)"),
+                    "purpose": ToolSchemaProperty(description: "Plain-English explanation shown on the approval card")
+                ],
+                required: ["command", "purpose"]
+            ),
+            permissionTier: .consequential,
+            source: .builtIn
+        ) { args in
+            let outcome = await SafeTerminalEngine.shared.execute(
+                command: args["command"] ?? "",
+                workingDirectory: args["working_directory"],
+                purpose: args["purpose"],
+                approvalSource: .liveMicrophone
+            )
+            return ToolInvocationResult(
+                success: outcome.success,
+                summary: outcome.plainSummary,
+                data: [
+                    "decision": outcome.decision,
+                    "classification": outcome.classification.rawValue,
+                    "command_hash": outcome.commandHash,
+                    "untrusted_output": outcome.untrustedWrappedOutput
+                ],
+                requiresApproval: outcome.classification != .blocked,
+                wasApproved: outcome.decision == "approved" || outcome.decision == "approved_auto"
+            )
+        })
+
+        // Voice Email Tools
+        register(RegisteredTool(
+            name: "email_capabilities",
+            appName: "Mail",
+            description: "Test the active email backend (Mail.app, Gmail API, IMAP/SMTP, or mailto:) and report whether reading/sending is available.",
+            permissionTier: .readOnly
+        ) { _ in
+            let rep = await VoiceEmailManager.shared.capabilitiesReport()
+            return ToolInvocationResult(
+                success: rep.status == .canSendAndRead || rep.status == .canSendOnly,
+                summary: rep.spokenSummary,
+                data: ["status": rep.status.rawValue, "backend": rep.activeBackend, "reason": rep.reason, "fix": rep.fixInstructions]
+            )
+        })
+
+        register(RegisteredTool(
+            name: "email_read",
+            appName: "Mail",
+            description: "Fetch and summarize recent incoming emails (wrapped in <UNTRUSTED_EMAIL_DATA>).",
+            inputSchema: RegisteredToolSchema(properties: ["sender": ToolSchemaProperty(description: "Optional sender name or email filter")]),
+            permissionTier: .readOnly
+        ) { args in
+            let (msgs, summary) = await VoiceEmailManager.shared.fetchAndSummarizeRecent(limit: 5, senderFilter: args["sender"])
+            let untrusted = msgs.first.map { VoiceEmailManager.wrapUntrustedEmailData(subject: $0.subject, body: $0.body, sender: $0.from) } ?? ""
+            return ToolInvocationResult(success: !msgs.isEmpty, summary: summary, data: ["count": "\(msgs.count)", "untrusted_email": untrusted])
+        })
+
+        register(RegisteredTool(
+            name: "email_draft",
+            appName: "Mail",
+            description: "Create or update a persistent encrypted email draft without sending.",
+            inputSchema: RegisteredToolSchema(properties: [
+                "to": ToolSchemaProperty(description: "Recipient email or contact query"),
+                "subject": ToolSchemaProperty(description: "Email subject"),
+                "body": ToolSchemaProperty(description: "Email body")
+            ]),
+            permissionTier: .reversible
+        ) { args in
+            let draft = VoiceEmailManager.shared.createDraft(
+                to: (args["to"] ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty },
+                subject: args["subject"] ?? "",
+                body: args["body"] ?? ""
+            )
+            return ToolInvocationResult(success: true, summary: VoiceEmailManager.shared.formatDraftPreview(draft), data: ["draft_id": draft.id])
+        })
+
+        register(RegisteredTool(
+            name: "email_send",
+            appName: "Mail",
+            description: "Send the focused persistent email draft after .consequential approval card and undo window.",
+            permissionTier: .consequential
+        ) { _ in
+            let res = await VoiceEmailManager.shared.sendFocusedDraft()
+            return ToolInvocationResult(success: res.success, summary: res.success ? "Email sent via \(res.backendUsed)." : (res.errorMessage ?? "Email not sent."), requiresApproval: true, wasApproved: res.success)
+        })
+
+        register(RegisteredTool(
+            name: "email_reply",
+            appName: "Mail",
+            description: "Reply to the currently focused incoming email after .consequential approval card and undo window.",
+            inputSchema: RegisteredToolSchema(properties: ["body": ToolSchemaProperty(description: "Reply text")]),
+            permissionTier: .consequential
+        ) { _ in
+            let res = await VoiceEmailManager.shared.sendFocusedDraft()
+            return ToolInvocationResult(success: res.success, summary: res.success ? "Reply sent via \(res.backendUsed)." : (res.errorMessage ?? "Reply not sent."), requiresApproval: true, wasApproved: res.success)
+        })
+
+        register(RegisteredTool(
+            name: "email_watch",
+            appName: "Mail",
+            description: "Watch a thread or sender for replies and alert the user via ProactiveRulesEngine and EventBus.",
+            inputSchema: RegisteredToolSchema(properties: ["sender": ToolSchemaProperty(description: "Sender email or name to watch")]),
+            permissionTier: .reversible
+        ) { args in
+            if let sender = args["sender"], !sender.isEmpty {
+                let rule = VoiceEmailManager.shared.addSenderWatch(address: sender, displayLabel: sender)
+                return ToolInvocationResult(success: true, summary: "Watching for replies from \(rule.displayLabel).")
+            }
+            if let focused = VoiceEmailManager.shared.currentFocusedIncomingMessage() {
+                let rule = VoiceEmailManager.shared.addThreadWatch(for: focused)
+                return ToolInvocationResult(success: true, summary: "Watching thread '\(focused.subject)' for replies from \(rule.displayLabel).")
+            }
+            return ToolInvocationResult(success: false, summary: "No email or sender specified to watch.")
         })
     }
 

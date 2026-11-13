@@ -6,6 +6,8 @@ public enum IslandPresentationState: Equatable, Sendable {
     case hoverExpanded // expanded due to pointer hover
     case voiceCompact(VoiceTriggerMode) // compact transcription state
     case approvalExpanded(AgentAction) // auto-expanded for action confirmation
+    case emailDraftExpanded(EmailDraft) // auto-expanded for email drafting & real-time send
+    case calendarEventExpanded(CalendarEventDraft) // auto-expanded for event/meet/reminder drafting & real-time save
     case circleToAskActive // selection overlay active on screen
     case selectionReview(ScreenCropResult) // showing selected crop in island
     case pinned // pinned open by user

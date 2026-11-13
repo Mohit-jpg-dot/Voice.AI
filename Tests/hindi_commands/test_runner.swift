@@ -90,6 +90,13 @@ for item in items {
         if let expAct = item.expected_args["action"], action != expAct {
             isArgsMatch = false
         }
+    case .appIntegration(let app, let operation, _):
+        if let expApp = item.expected_args["app"], app.lowercased() != expApp.lowercased() {
+            isArgsMatch = false
+        }
+        if let expOp = item.expected_args["operation"], operation.lowercased() != expOp.lowercased() {
+            isArgsMatch = false
+        }
     default:
         break
     }

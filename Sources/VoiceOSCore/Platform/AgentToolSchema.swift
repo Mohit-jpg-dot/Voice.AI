@@ -238,8 +238,10 @@ public enum AgentToolParser {
         
         // 0. Application Closure & Quitting ("close the app", "close this app", "close the application named Spotify on my Mac", "quit Spotify", "close Spotify", "app band karo", "spotify band karo")
         if !query.lowercased().contains("pause") && !lower.contains("pause") {
-            if let closeTarget = extractAppToClose(from: normalized) {
-                return .closeApp(name: closeTarget.isEmpty ? nil : closeTarget)
+            if !AutonomousAgentExecutor.isSelfQuitCommand(query) {
+                if let closeTarget = extractAppToClose(from: normalized) {
+                    return .closeApp(name: closeTarget.isEmpty ? nil : closeTarget)
+                }
             }
         }
         
@@ -337,10 +339,12 @@ public enum AgentToolParser {
         
         // 2. Volume & Audio Mute Control (avoid hijacking geometry/physics questions or YouTube player mute/unmute)
         let isYouTubeAudioCommand = lower.contains("youtube") || lower == "mute video" || lower == "unmute video"
-        let isVolumeQuery = !isConceptualAudioQuery(lower) && !isYouTubeAudioCommand && (
-                            lower.contains("volume") || lower.contains("aawaz") || lower.contains("sound") ||
-                            lower.contains("mute") || lower.contains("unmute") || lower.contains("louder") ||
-                            lower.contains("quieter") || lower.contains("turn it up") || lower.contains("turn it down"))
+        let isVolumeQuery = !isConceptualAudioQuery(lower) && !isYouTubeAudioCommand &&
+                            !lower.contains("sounds good") && !lower.contains("sound good") &&
+                            (lower.contains("volume") || lower.contains("aawaz") ||
+                             (lower.contains("sound") && !lower.contains("discord") && !lower.contains("slack") && !lower.contains("whatsapp")) ||
+                             lower.contains("mute") || lower.contains("unmute") || lower.contains("louder") ||
+                             lower.contains("quieter") || lower.contains("turn it up") || lower.contains("turn it down"))
         if isVolumeQuery {
             if lower.contains("unmute") || (lower.contains("mute") && (lower.contains("hatao") || lower.contains("off") || lower.contains("un") || lower.contains("kholo"))) {
                 return .systemControl(action: "unmute")
@@ -517,7 +521,7 @@ public enum AgentToolParser {
         }
         
         // 6. Hinglish/Generic Messaging ("Rahul ko WhatsApp pe message bhejo ki main late hoon", "slack pe team ko message bhejo...")
-        if lower.contains("bhejo") || lower.contains("send message") || lower.contains("message bhejo") || lower.contains("whatsapp pe message") {
+        if lower.contains("bhejo") || lower.contains("send message") || lower.contains("message bhejo") || lower.contains("whatsapp pe message") || lower.contains("whatsapp pe bolo") || lower.contains("whatsapp pe likho") {
             let (app, recipient, body) = extractMessageParameters(from: normalized)
             if !recipient.isEmpty {
                 return .messageDraft(app: app, recipient: recipient, body: body)
@@ -872,8 +876,14 @@ public enum AgentToolParser {
         
         if let kiRange = lower.range(of: " ki ") {
             body = String(text[kiRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let boloRange = lower.range(of: " bolo ") {
+            body = String(text[boloRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let likhoRange = lower.range(of: " likho ") {
+            body = String(text[likhoRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
         } else if let thatRange = lower.range(of: " that ") {
             body = String(text[thatRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let sayingRange = lower.range(of: " saying ") {
+            body = String(text[sayingRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
         } else {
             body = text
         }
@@ -1180,6 +1190,8 @@ public enum AgentToolParser {
             "quit the app ",
             "quit this app ",
             "quit app ",
+            "close the ",
+            "quit the ",
             "close ",
             "quit ",
             "kill ",
@@ -1291,15 +1303,36 @@ public enum AgentToolParser {
             }
         }
 
-        // 2. Slack & Discord ("send slack message to #dev saying ...", "draft discord message...", "open #general in slack")
-        if lower.contains("slack") || lower.contains("discord") {
-            let appId = lower.contains("slack") ? "slack" : "discord"
-            if lower.contains("read ") || lower.contains("check ") || lower.contains("summarize ") {
+        // 2. Slack & Discord ("send slack message to #dev saying ...", "draft discord message...", "open #general in slack", "message #general on Slack: standup in 5 minutes", "Slack pe general channel me likho...", "Reply to the last message on Discord with 'sounds good'", "Discord pe jawab do...", "Read my unread Slack messages", "Mere unread messages padho", "React with a thumbs up", "Set my Slack status to in a meeting", "Search Slack for invoice", "Open the dev-team channel", "dev-team khol do")
+        if lower.contains("slack") || lower.contains("discord") || lower.contains("dev-team") || lower.contains("thumbs up") || lower.contains("unread messages padho") {
+            let appId = lower.contains("discord") ? "discord" : "slack"
+            
+            if lower.contains("react") || lower.contains("thumbs up") {
+                let emoji = lower.contains("thumbs up") ? "thumbsup" : "heart"
+                return .appIntegration(app: appId, operation: "react", params: ["emoji": emoji])
+            }
+            if lower.contains("status") {
+                let statusText = extractAfterMarkers(textForExtraction, markers: [" status to ", " status: ", " status "]) ?? "in a meeting"
+                return .appIntegration(app: appId, operation: "set_status", params: ["status": statusText])
+            }
+            if lower.contains("search") || lower.contains("dhoondo") {
+                let q = extractAfterMarkers(textForExtraction, markers: [" for ", " dhoondo "]) ?? ""
+                return .appIntegration(app: appId, operation: "search", params: ["query": q.isEmpty ? textForExtraction : q])
+            }
+            if lower.contains("reply") || lower.contains("jawab") {
+                let body = extractAfterMarkers(textForExtraction, markers: [" with '", " with \"", " with ", " saying ", " ki ", ": ", " jawab do "]) ?? "sounds good"
+                return .appIntegration(app: appId, operation: "reply", params: ["body": body.trimmingCharacters(in: CharacterSet(charactersIn: "'\""))])
+            }
+            if lower.contains("read ") || lower.contains("check ") || lower.contains("summarize ") || lower.contains("padho") || lower.contains("unread") {
                 return .appIntegration(app: appId, operation: "read", params: [:])
             }
-            let hasExplicitSend = (lower.contains("send") || lower.contains("post") || lower.contains("bhej")) && !lower.contains("draft")
-            let isDraft = lower.contains("draft") || lower.contains("compose") || lower.contains("write") || lower.contains("likh")
-            let body = extractAfterMarkers(textForExtraction, markers: [" saying ", " that ", " ki ", ": "]) ?? ""
+            if (lower.contains("channel") || lower.contains("dev-team")) && (lower.contains("khol") || lower.contains("open")) {
+                let target = extractChannelOrPerson(from: textForExtraction, appName: appId)
+                return .appIntegration(app: appId, operation: "open_channel", params: ["recipient": target.isEmpty ? "dev-team" : target])
+            }
+            let hasExplicitSend = (lower.contains("send") || lower.contains("post") || lower.contains("bhej") || lower.contains("likh") || lower.contains("message #") || lower.contains("message")) && !lower.contains("draft")
+            let isDraft = lower.contains("draft") || lower.contains("compose") || lower.contains("write")
+            let body = extractAfterMarkers(textForExtraction, markers: [" saying ", " that ", " ki ", ": ", " me likho ", " pe likho "]) ?? ""
             let target = extractChannelOrPerson(from: textForExtraction, appName: appId)
             if hasExplicitSend || isDraft || !body.isEmpty || !target.isEmpty {
                 let op = hasExplicitSend ? "send" : (isDraft || !body.isEmpty ? "draft" : "open_channel")
@@ -1310,11 +1343,15 @@ public enum AgentToolParser {
             }
         }
 
-        // 3. WhatsApp English/Rich ("draft whatsapp message to Rahul saying ...", "open Rahul chat on whatsapp", "read whatsapp")
+        // 3. WhatsApp English/Rich ("draft whatsapp message to Rahul saying ...", "open Rahul chat on whatsapp", "read whatsapp", "What did Priya say on WhatsApp?", "Priya ne kya bheja?", "dictate and send")
         // Note: preserve existing Hinglish "Rahul ko WhatsApp pe message bhejo..." for `.messageDraft` parity!
-        if lower.contains("whatsapp") || lower.contains("whatapp") {
-            if lower.contains("read ") || lower.contains("check ") || lower.contains("summarize ") {
-                return .appIntegration(app: "whatsapp", operation: "read", params: [:])
+        if lower.contains("whatsapp") || lower.contains("whatapp") || lower.contains("kya bheja") || lower.contains("dictate and send") {
+            if lower.contains("dictate and send") || lower.contains("dictate") {
+                return .appIntegration(app: "whatsapp", operation: "dictate_send", params: [:])
+            }
+            if lower.contains("read ") || lower.contains("check ") || lower.contains("summarize ") || lower.contains("kya bheja") || lower.contains("what did") {
+                let target = extractRecipientAfter(textForExtraction, prepositions: [" did ", " from ", " se "]) ?? extractChannelOrPerson(from: textForExtraction, appName: "whatsapp")
+                return .appIntegration(app: "whatsapp", operation: "read", params: ["recipient": target.isEmpty ? "Priya" : target])
             }
             if lower.contains("chat with ") || (lower.contains("open ") && lower.contains(" chat")) {
                 let target = extractRecipientAfter(textForExtraction, prepositions: [" with ", " chat ", " to "]) ?? extractChannelOrPerson(from: textForExtraction, appName: "whatsapp")
@@ -1325,9 +1362,9 @@ public enum AgentToolParser {
                 let recipient = extractRecipientAfter(textForExtraction, prepositions: [" to ", " for "]) ?? ""
                 return .appIntegration(app: "whatsapp", operation: "draft", params: ["recipient": recipient, "body": body])
             }
-            if lower.hasPrefix("send a whatsapp") || lower.hasPrefix("send whatsapp") {
-                let body = extractAfterMarkers(textForExtraction, markers: [" saying ", " that ", ": "]) ?? ""
-                let recipient = extractRecipientAfter(textForExtraction, prepositions: [" to "]) ?? ""
+            if lower.hasPrefix("send a whatsapp") || lower.hasPrefix("send whatsapp") || (lower.contains("send ") && lower.contains("whatsapp")) {
+                let body = extractAfterMarkers(textForExtraction, markers: [" saying ", " that ", " bolo ", ": "]) ?? ""
+                let recipient = extractRecipientAfter(textForExtraction, prepositions: [" to "]) ?? extractChannelOrPerson(from: textForExtraction, appName: "whatsapp")
                 return .appIntegration(app: "whatsapp", operation: "send", params: ["recipient": recipient, "body": body])
             }
         }

@@ -4,6 +4,7 @@ import AppKit
 
 public struct AgentHubView: View {
     @ObservedObject var appState: AppState
+    @State private var selectedSection: Int = 0 // 0 = App Builder (Beta), 1 = Command Hub
     @State private var promptText: String = ""
     @State private var executionLogs: [String] = []
     
@@ -27,18 +28,49 @@ public struct AgentHubView: View {
     }
     
     public var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit6) {
-                // Header
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit4) {
+            // Header
+            HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Agent Hub")
-                        .font(DesignTokens.Typography.fontTitle1)
-                        .foregroundColor(DesignTokens.Colors.textPrimary)
+                    HStack(spacing: 8) {
+                        Text("Agent Hub")
+                            .font(DesignTokens.Typography.fontTitle1)
+                            .foregroundColor(DesignTokens.Colors.textPrimary)
+
+                        Text("BETA")
+                            .font(.system(size: 10, weight: .bold))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(DesignTokens.Colors.accentBlue.opacity(0.18))
+                            .foregroundColor(DesignTokens.Colors.accentBlue)
+                            .clipShape(Capsule())
+                    }
                     
-                    Text("Dispatch voice or text actions to native Mac apps, automation scripts, and search engines.")
+                    Text("Build live apps & websites with the AI Builder agent, or dispatch Mac automation commands.")
                         .font(DesignTokens.Typography.fontSubheadline)
                         .foregroundColor(DesignTokens.Colors.textMuted)
                 }
+
+                Spacer()
+
+                Picker("", selection: $selectedSection) {
+                    Text("App Builder (Beta)").tag(0)
+                    Text("Command Hub").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 260)
+            }
+            .padding(.horizontal, DesignTokens.Spacing.unit6)
+            .padding(.top, DesignTokens.Spacing.unit5)
+
+            if selectedSection == 0 {
+                AppBuilderView(appState: appState)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.horizontal, DesignTokens.Spacing.unit6)
+                    .padding(.bottom, DesignTokens.Spacing.unit5)
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit6) {
                 
                 // Prompt Input Box
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.unit3) {
@@ -236,8 +268,12 @@ public struct AgentHubView: View {
                     )
                 }
             }
-            .padding(DesignTokens.Spacing.unit6)
+            .padding(.horizontal, DesignTokens.Spacing.unit6)
+            .padding(.bottom, DesignTokens.Spacing.unit6)
+            }
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

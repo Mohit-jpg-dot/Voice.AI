@@ -159,9 +159,26 @@ public final class AppIntegrationEngine: @unchecked Sendable {
     public func isAppIntegrated(_ rawApp: String) -> Bool {
         let id = canonicalIntegrationId(for: rawApp)
         lock.lock()
-        let enabled = cachedSettings.enabledApps[id] ?? true
+        let explicit = cachedSettings.enabledApps[id]
+        let settings = cachedSettings
         lock.unlock()
-        return enabled
+        if let explicit = explicit {
+            return explicit
+        }
+        // By default, only enable 3rd party connectors if credentials exist; local macOS tools default to true
+        switch id {
+        case "slack":
+            let token = KeychainService.shared.get(.slackUserToken) ?? ""
+            return !token.isEmpty || !settings.slackWebhookURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case "discord":
+            let token = KeychainService.shared.get(.discordBotToken) ?? ""
+            return !token.isEmpty || !settings.discordWebhookURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case "notion":
+            let token = KeychainService.shared.get(.notionToken) ?? ""
+            return !token.isEmpty || !settings.notionToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        default:
+            return true
+        }
     }
 
     public func setAppIntegrated(_ rawApp: String, enabled: Bool) {
@@ -529,6 +546,18 @@ public final class AppIntegrationEngine: @unchecked Sendable {
         let autoSend = (operation == "send")
 
         if operation == "read" {
+            if let wa = MessagingRouter.shared.connector(for: .whatsapp) {
+                let unread = (try? await wa.readUnread(limit: 5)) ?? []
+                if !unread.isEmpty {
+                    let formatted = unread.map { "\($0.senderName): \($0.text)" }.joined(separator: "\n")
+                    return IntegrationActionResult(
+                        success: true,
+                        summary: "WhatsApp messages:\n\(formatted)",
+                        appName: "WhatsApp",
+                        steps: ["Read unread WhatsApp messages via connector"]
+                    )
+                }
+            }
             let captured = await ScreenVisionService.shared.captureFullScreenWithImage()
             let llm = await AutonomousAgentExecutor.shared.analyzeScreenWithActiveModel(
                 pngData: captured.pngData,
@@ -543,6 +572,20 @@ public final class AppIntegrationEngine: @unchecked Sendable {
                 appName: "WhatsApp",
                 steps: ["Read active WhatsApp chat"]
             )
+        }
+
+        if autoSend && !recipient.isEmpty && !body.isEmpty, let wa = MessagingRouter.shared.connector(for: .whatsapp) {
+            do {
+                let id = try await wa.sendMessage(target: recipient, text: body, attachments: nil)
+                return IntegrationActionResult(
+                    success: true,
+                    summary: "Sent WhatsApp message to \(recipient): \"\(body)\" (ID: \(id)).",
+                    appName: "WhatsApp",
+                    steps: ["Sent WhatsApp message via connector"]
+                )
+            } catch {
+                // fall through to deep link
+            }
         }
 
         if isDryRun {
@@ -629,6 +672,18 @@ public final class AppIntegrationEngine: @unchecked Sendable {
         let autoSend = (operation == "send")
 
         if operation == "read" {
+            if let slack = MessagingRouter.shared.connector(for: .slack) {
+                let msgs = target.isEmpty ? (try? await slack.readUnread(limit: 5)) : (try? await slack.readConversation(target: target, limit: 5))
+                if let messages = msgs, !messages.isEmpty {
+                    let formatted = messages.map { "\($0.senderName): \($0.text)" }.joined(separator: "\n")
+                    return IntegrationActionResult(
+                        success: true,
+                        summary: "Slack messages:\n\(formatted)",
+                        appName: "Slack",
+                        steps: ["Read Slack messages via connector"]
+                    )
+                }
+            }
             let captured = await ScreenVisionService.shared.captureFullScreenWithImage()
             let llm = await AutonomousAgentExecutor.shared.analyzeScreenWithActiveModel(
                 pngData: captured.pngData,
@@ -643,6 +698,20 @@ public final class AppIntegrationEngine: @unchecked Sendable {
                 appName: "Slack",
                 steps: ["Read active Slack channel"]
             )
+        }
+
+        if autoSend && !target.isEmpty && !body.isEmpty, let slack = MessagingRouter.shared.connector(for: .slack) {
+            do {
+                let ts = try await slack.sendMessage(target: target, text: body, attachments: nil)
+                return IntegrationActionResult(
+                    success: true,
+                    summary: "Sent Slack message to \(target): \"\(body)\" (ts: \(ts)).",
+                    appName: "Slack",
+                    steps: ["Sent message via official Slack Web API"]
+                )
+            } catch {
+                // fall through
+            }
         }
 
         if isDryRun {
@@ -690,6 +759,18 @@ public final class AppIntegrationEngine: @unchecked Sendable {
         let autoSend = (operation == "send")
 
         if operation == "read" {
+            if let discord = MessagingRouter.shared.connector(for: .discord) {
+                let msgs = target.isEmpty ? (try? await discord.readUnread(limit: 5)) : (try? await discord.readConversation(target: target, limit: 5))
+                if let messages = msgs, !messages.isEmpty {
+                    let formatted = messages.map { "\($0.senderName): \($0.text)" }.joined(separator: "\n")
+                    return IntegrationActionResult(
+                        success: true,
+                        summary: "Discord messages:\n\(formatted)",
+                        appName: "Discord",
+                        steps: ["Read Discord messages via connector"]
+                    )
+                }
+            }
             let captured = await ScreenVisionService.shared.captureFullScreenWithImage()
             let llm = await AutonomousAgentExecutor.shared.analyzeScreenWithActiveModel(
                 pngData: captured.pngData,
@@ -704,6 +785,20 @@ public final class AppIntegrationEngine: @unchecked Sendable {
                 appName: "Discord",
                 steps: ["Read active Discord channel"]
             )
+        }
+
+        if autoSend && !target.isEmpty && !body.isEmpty, let discord = MessagingRouter.shared.connector(for: .discord) {
+            do {
+                let id = try await discord.sendMessage(target: target, text: body, attachments: nil)
+                return IntegrationActionResult(
+                    success: true,
+                    summary: "Sent Discord message to \(target): \"\(body)\" (ID: \(id)).",
+                    appName: "Discord",
+                    steps: ["Sent Discord message via connector"]
+                )
+            } catch {
+                // fall through
+            }
         }
 
         if isDryRun {

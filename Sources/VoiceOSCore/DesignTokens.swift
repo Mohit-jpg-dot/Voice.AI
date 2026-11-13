@@ -242,5 +242,23 @@ public enum DesignTokens {
         public let x: CGFloat
         public let y: CGFloat
     }
+
+    // MARK: - Email Composer Tokens (from design-ref/pill-email-composer.png)
+    public enum EmailComposer {
+        // Measured from screenshot @ 2x scale
+        public static let cardBackground = Color(red: 0.125, green: 0.125, blue: 0.133) // #202022
+        public static let headerBackground = Color(red: 0.176, green: 0.176, blue: 0.188) // #2d2d30
+        public static let recipientChipBg = Color(red: 0.133, green: 0.161, blue: 0.200) // #222933
+        public static let recipientChipBorder = Color(red: 0.184, green: 0.227, blue: 0.298) // #2f3a4c
+        public static let recipientChipText = Color(red: 0.541, green: 0.706, blue: 0.973) // #8ab4f8
+        public static let dividerLine = Color.white.opacity(0.08)
+        public static let sendButtonBg = Color(red: 0.086, green: 0.443, blue: 0.886) // #1671e2
+        public static let cardBorder = Color.white.opacity(0.12)
+        public static let cardGlow = Color(red: 0.12, green: 0.42, blue: 0.95).opacity(0.35)
+        public static let sideWings = Color(red: 0.08, green: 0.40, blue: 0.90).opacity(0.35)
+        public static let cardCornerRadius: CGFloat = 22.0
+        public static let chipCornerRadius: CGFloat = 9999.0
+        public static let sendButtonCornerRadius: CGFloat = 9999.0
+    }
 }
 

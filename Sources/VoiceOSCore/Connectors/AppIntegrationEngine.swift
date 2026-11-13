@@ -463,78 +463,28 @@ public final class AppIntegrationEngine: @unchecked Sendable {
             )
         }
 
-        // Apple Mail path
-        let useAppleMail = settings.emailClientMode == "apple_mail" ||
-                           (settings.emailClientMode == "auto" && hasAppleMailAccounts())
-        if useAppleMail {
-            let escSubject = escapeAppleScript(subject)
-            let escBody = escapeAppleScript(body)
-            let escAddr = escapeAppleScript(resolvedAddress ?? "")
-            // Never auto-send when recipient email couldn't be resolved cleanly
-            let safeAutoSend = shouldSend && !(resolvedAddress ?? "").isEmpty
-
-            let recipientBlock = escAddr.isEmpty ? "" : """
-            make new to recipient at end of to recipients with properties {address:"\(escAddr)"}
-            """
-            let sendBlock = safeAutoSend ? "send newMsg" : ""
-
-            let script = """
-            tell application "Mail"
-                activate
-                set newMsg to make new outgoing message with properties {subject:"\(escSubject)", content:"\(escBody)", visible:true}
-                tell newMsg
-                    \(recipientBlock)
-                end tell
-                \(sendBlock)
-            end tell
-            """
-            let res = AccessibilityControlEngine.shared.executeAppleScript(script)
-            if res.success {
-                if safeAutoSend {
-                    return IntegrationActionResult(
-                        success: true,
-                        summary: "Sent email '\(subject)' to \(resolvedAddress!).",
-                        appName: "Apple Mail",
-                        deepLinkURL: URL(string: "message://"),
-                        steps: ["Resolved recipient \(resolvedAddress!)", "Sent outgoing message via Apple Mail"]
-                    )
-                }
-                let reason = (shouldSend && escAddr.isEmpty)
-                    ? "Drafted email '\(subject)' in Apple Mail (could not resolve address for '\(recipientRaw)' — please confirm To field)."
-                    : "Drafted email '\(subject)' in Apple Mail."
-                return IntegrationActionResult(
-                    success: true,
-                    summary: reason,
-                    appName: "Apple Mail",
-                    deepLinkURL: URL(string: "message://"),
-                    steps: ["Opened outgoing draft in Apple Mail"]
-                )
-            }
+        // In-Pill Email Drafting Path (No external Apple Mail or Gmail browser tabs)
+        let toList: [String]
+        if let addr = resolvedAddress, !addr.isEmpty {
+            toList = [addr]
+        } else if !recipientRaw.isEmpty {
+            let fallback = recipientRaw.contains("@") ? recipientRaw : "\(recipientRaw.lowercased().replacingOccurrences(of: " ", with: "."))@company.com"
+            toList = [fallback]
+        } else {
+            toList = []
         }
 
-        // Gmail Compose Web URL path
-        var comps = URLComponents(string: "https://mail.google.com/mail/")!
-        var items = [URLQueryItem(name: "view", value: "cm"), URLQueryItem(name: "fs", value: "1")]
-        if let to = resolvedAddress, !to.isEmpty { items.append(URLQueryItem(name: "to", value: to)) }
-        items.append(URLQueryItem(name: "su", value: subject))
-        if !body.isEmpty { items.append(URLQueryItem(name: "body", value: body)) }
-        comps.queryItems = items
-
-        if let gmailURL = comps.url {
-            openURL(gmailURL, inBrowser: settings.youtubePreferredBrowser)
-            return IntegrationActionResult(
-                success: true,
-                summary: "Opened Gmail compose draft '\(subject)' in \(settings.youtubePreferredBrowser).",
-                appName: "Gmail",
-                deepLinkURL: gmailURL,
-                steps: ["Opened Gmail compose window with Subject & Body"]
-            )
-        }
-
+        let draft = VoiceEmailManager.shared.createDraft(
+            to: toList,
+            subject: subject,
+            body: body
+        )
         return IntegrationActionResult(
-            success: false,
-            summary: "Unable to open Apple Mail or Gmail compose.",
-            appName: "Email"
+            success: true,
+            summary: "Drafted email '\(subject)' in the notch pill.",
+            appName: "Mail",
+            deepLinkURL: nil,
+            steps: ["Created in-pill email draft for \(toList.joined(separator: ", "))"]
         )
     }
 

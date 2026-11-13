@@ -135,7 +135,7 @@ public struct NotchGlassIslandView: View {
         }
         
         if currentEmailDraft != nil || currentEventDraft != nil {
-            return (520.0, 275.0)
+            return (550.0, 395.0)
         }
 
         // Compact Pill Mode (matches reference Image 1 & 10)
@@ -257,7 +257,41 @@ public struct NotchGlassIslandView: View {
                 if appState.isNotchMediaDisplayEnabled && appState.isMediaExpanded, let media = appState.currentMedia {
                     aestheticMediaPanel(media: media)
                 } else if isOpen {
-                    if isCompactMode || appState.isCompactResponseMode {
+                    if let draft = currentEmailDraft {
+                        VStack(spacing: 0) {
+                            EmailDraftCardView(
+                                appState: appState,
+                                draft: draft,
+                                onSend: { updatedDraft in
+                                    appState.sendActiveEmailDraft(customDraft: updatedDraft)
+                                },
+                                onDismiss: {
+                                    appState.dismissEmailDraft()
+                                }
+                            )
+                            .id(draft.id)
+                        }
+                        .padding(.top, max(physicalNotchHeight + 4.0, 36.0))
+                        .padding(.bottom, 12)
+                        .transition(.opacity)
+                    } else if let eventDraft = currentEventDraft {
+                        VStack(spacing: 0) {
+                            CalendarEventDraftCardView(
+                                appState: appState,
+                                draft: eventDraft,
+                                onSave: { updatedDraft in
+                                    appState.saveActiveCalendarEventDraft(customDraft: updatedDraft)
+                                },
+                                onDismiss: {
+                                    appState.dismissCalendarEventDraft()
+                                }
+                            )
+                            .id(eventDraft.id)
+                        }
+                        .padding(.top, max(physicalNotchHeight + 4.0, 36.0))
+                        .padding(.bottom, 12)
+                        .transition(.opacity)
+                    } else if isCompactMode || appState.isCompactResponseMode {
                         compactResponsePillView
                     } else {
                         openNotchContent
@@ -395,11 +429,31 @@ public struct NotchGlassIslandView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     isFieldFocused = true
                 }
+            } else if case .emailDraftExpanded = newState {
+                isCompactMode = false
+                appState.isCompactResponseMode = false
+                appState.activeNotchTab = .ask
+            } else if case .calendarEventExpanded = newState {
+                isCompactMode = false
+                appState.isCompactResponseMode = false
+                appState.activeNotchTab = .ask
             } else if case .resting = newState {
                 isFieldFocused = false
                 isHovering = false
                 hoverTask?.cancel()
                 isCompactMode = true
+            }
+        }
+        .onChange(of: appState.activeEmailDraft) { _, newDraft in
+            if newDraft != nil {
+                isCompactMode = false
+                appState.isCompactResponseMode = false
+            }
+        }
+        .onChange(of: appState.activeEventDraft) { _, newDraft in
+            if newDraft != nil {
+                isCompactMode = false
+                appState.isCompactResponseMode = false
             }
         }
     }
@@ -586,14 +640,28 @@ public struct NotchGlassIslandView: View {
             HStack(spacing: 0) {
                 // Left Wing: Source Icon (placed safely to the left of the MacBook camera notch)
                 HStack(spacing: 4) {
-                    ZStack {
-                        Circle()
-                            .fill(media.source == .spotify ? Color(red: 0.11, green: 0.73, blue: 0.33) : (media.source == .youtube ? Color.red : Color(red: 0.98, green: 0.14, blue: 0.24)))
-                            .frame(width: 17, height: 17)
-                            .shadow(color: (media.source == .spotify ? Color.green : Color.red).opacity(0.4), radius: 3)
-                        Image(systemName: media.source.iconName)
-                            .font(.system(size: 8.5, weight: .bold))
-                            .foregroundColor(.white)
+                    if media.source == .spotify {
+                        SpotifyBrandIconView(size: 18)
+                    } else if media.source == .youtube {
+                        ZStack {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 17, height: 17)
+                                .shadow(color: Color.red.opacity(0.4), radius: 3)
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    } else {
+                        ZStack {
+                            Circle()
+                                .fill(Color(red: 0.98, green: 0.14, blue: 0.24))
+                                .frame(width: 17, height: 17)
+                                .shadow(color: Color.red.opacity(0.4), radius: 3)
+                            Image(systemName: media.source.iconName)
+                                .font(.system(size: 8.5, weight: .bold))
+                                .foregroundColor(.white)
+                        }
                     }
                 }
                 .frame(width: 45, alignment: .center)
@@ -717,7 +785,7 @@ public struct NotchGlassIslandView: View {
             
             // Middle Row: Album Artwork + Title & Scrubber
             HStack(spacing: 12) {
-                // Album Art / Video Thumbnail Container
+                // Real Song Album Art / Video Thumbnail Container
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(
@@ -731,15 +799,45 @@ public struct NotchGlassIslandView: View {
                             )
                         )
                         .frame(width: 48, height: 48)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                        )
-                    
-                    Image(systemName: media.source == .spotify ? "music.note" : "play.rectangle.fill")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(media.source == .spotify ? Color(red: 0.11, green: 0.85, blue: 0.4) : Color.red)
+
+                    if !media.artworkUrl.isEmpty {
+                        // Handle file:// paths (Spotify sometimes returns local temp art) vs https:// URLs
+                        let artStr = media.artworkUrl
+                        if artStr.hasPrefix("file://") || artStr.hasPrefix("/"),
+                           let nsImg = resolveLocalArtwork(artStr) {
+                            Image(nsImage: nsImg)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 48, height: 48)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        } else if let artUrl = URL(string: artStr) {
+                            AsyncImage(url: artUrl) { phase in
+                                switch phase {
+                                case .success(let img):
+                                    img
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 48, height: 48)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                case .failure, .empty:
+                                    mediaArtworkPlaceholder(media: media)
+                                @unknown default:
+                                    mediaArtworkPlaceholder(media: media)
+                                }
+                            }
+                        } else {
+                            mediaArtworkPlaceholder(media: media)
+                        }
+                    } else {
+                        mediaArtworkPlaceholder(media: media)
+                    }
                 }
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                )
                 
                 // Track Info & Progress Bar
                 VStack(alignment: .leading, spacing: 3) {
@@ -859,6 +957,28 @@ public struct NotchGlassIslandView: View {
                 )
         )
         .shadow(color: Color.black.opacity(0.7), radius: 16, x: 0, y: 8)
+    }
+    
+    @ViewBuilder
+    private func mediaArtworkPlaceholder(media: NowPlayingItem) -> some View {
+        if media.source == .spotify {
+            SpotifyBrandIconView(size: 26)
+        } else {
+            Image(systemName: media.source == .youtube ? "play.rectangle.fill" : "music.note")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(media.source == .youtube ? Color.red : Color(red: 0.11, green: 0.85, blue: 0.4))
+        }
+    }
+    
+    /// Resolves a local file:// or absolute path artwork string to NSImage.
+    private func resolveLocalArtwork(_ artStr: String) -> NSImage? {
+        let filePath: String
+        if artStr.hasPrefix("file://"), let fu = URL(string: artStr) {
+            filePath = fu.path
+        } else {
+            filePath = artStr
+        }
+        return NSImage(contentsOfFile: filePath)
     }
     
     // MARK: - Now Playing Mini Player Bar (Interactive Playback Controls)
@@ -2460,6 +2580,67 @@ public struct HoverActionButton: View {
         .onHover { hovering in
             withAnimation(.smooth(duration: 0.2)) {
                 self.isHovering = hovering
+            }
+        }
+    }
+}
+
+// MARK: - Authentic Spotify Brand Icon
+public struct SpotifyBrandIconView: View {
+    public let size: CGFloat
+    
+    public init(size: CGFloat = 18) {
+        self.size = size
+    }
+    
+    public var body: some View {
+        // Use NSWorkspace to get Spotify icon - works for any install location
+        let spotifyIcon: NSImage? = {
+            let ws = NSWorkspace.shared
+            let spotifyPath = "/Applications/Spotify.app"
+            if FileManager.default.fileExists(atPath: spotifyPath) {
+                return ws.icon(forFile: spotifyPath)
+            }
+            // Fallback: check user Applications
+            let userPath = (NSHomeDirectory() as NSString).appendingPathComponent("Applications/Spotify.app")
+            if FileManager.default.fileExists(atPath: userPath) {
+                return ws.icon(forFile: userPath)
+            }
+            return MacOSAppIconResolver.icon(for: "spotify")
+        }()
+        if let icon = spotifyIcon {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+        } else {
+            // Authentic Spotify brand logo vector fallback
+            ZStack {
+                Circle()
+                    .fill(Color(red: 0.114, green: 0.843, blue: 0.376))
+                    .frame(width: size, height: size)
+                
+                Canvas { context, sz in
+                    let w = sz.width
+                    let h = sz.height
+                    let center = CGPoint(x: w * 0.45, y: h * 0.52)
+                    let strokeColor = Color(red: 0.08, green: 0.08, blue: 0.08)
+                    
+                    var path1 = Path()
+                    path1.addArc(center: CGPoint(x: center.x, y: center.y + h * 0.18), radius: w * 0.34, startAngle: .degrees(225), endAngle: .degrees(315), clockwise: false)
+                    context.stroke(path1, with: .color(strokeColor), style: StrokeStyle(lineWidth: w * 0.09, lineCap: .round))
+                    
+                    var path2 = Path()
+                    path2.addArc(center: CGPoint(x: center.x, y: center.y + h * 0.18), radius: w * 0.25, startAngle: .degrees(225), endAngle: .degrees(315), clockwise: false)
+                    context.stroke(path2, with: .color(strokeColor), style: StrokeStyle(lineWidth: w * 0.08, lineCap: .round))
+                    
+                    var path3 = Path()
+                    path3.addArc(center: CGPoint(x: center.x, y: center.y + h * 0.18), radius: w * 0.16, startAngle: .degrees(225), endAngle: .degrees(315), clockwise: false)
+                    context.stroke(path3, with: .color(strokeColor), style: StrokeStyle(lineWidth: w * 0.07, lineCap: .round))
+                }
+                .frame(width: size, height: size)
             }
         }
     }

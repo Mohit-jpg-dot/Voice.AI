@@ -546,26 +546,73 @@ public enum AgentToolParser {
         
         // 8. Media Transport Controls (Spotify / YouTube / Apple Music)
         let targetMediaApp = resolveActiveMediaApp(userQuery: lower)
+        let cleanLower = lower
+            .replacingOccurrences(of: #"[^\w\s]"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Next Track / Video ("change it", "change to next", "change it to next", "next song", "next video", "skip", "agla gana")
-        let isNextSong = lower == "change it" || lower == "change it to next" || lower == "change to next" ||
-                         lower == "change the song" || lower == "change song" || lower == "change track" ||
-                         lower == "change video" || lower == "change the video" || lower.contains("change it to next") ||
-                         lower == "skip" || lower == "skip song" || lower == "skip this" || lower == "skip track" || lower == "skip video" ||
-                         lower == "next song" || lower == "next track" || lower == "next video" || lower == "next" ||
-                         lower.contains("agla gana") || lower.contains("agla gaana") || lower.contains("agla video") ||
-                         lower == "agla" || lower.contains("gana badlo") || lower.contains("gaana badlo") ||
-                         lower == "badlo" || lower == "badal do"
+        // Next Track / Video ("change it", "change to next", "change it to next", "next song", "next video", "skip", "agla gana", "spotify change song to next")
+        let isNextSong = cleanLower.contains("change song to next") ||
+                         cleanLower.contains("change the song to next") ||
+                         cleanLower.contains("change to next") ||
+                         cleanLower.contains("change it to next") ||
+                         cleanLower.contains("change track to next") ||
+                         cleanLower.contains("song to next") ||
+                         cleanLower.contains("track to next") ||
+                         cleanLower.contains("next song") ||
+                         cleanLower.contains("next track") ||
+                         cleanLower.contains("next video") ||
+                         cleanLower.contains("play next song") ||
+                         cleanLower.contains("play next track") ||
+                         cleanLower.contains("play next") ||
+                         cleanLower.contains("skip song") ||
+                         cleanLower.contains("skip track") ||
+                         cleanLower.contains("skip this") ||
+                         cleanLower.contains("skip video") ||
+                         cleanLower.contains("skip to next") ||
+                         cleanLower.contains("agla gana") ||
+                         cleanLower.contains("agla gaana") ||
+                         cleanLower.contains("agla video") ||
+                         cleanLower.contains("gana badlo") ||
+                         cleanLower.contains("gaana badlo") ||
+                         cleanLower.contains("song badlo") ||
+                         cleanLower.contains("track badlo") ||
+                         cleanLower.contains("badal do") ||
+                         cleanLower == "change it" || cleanLower == "change song" || cleanLower == "change the song" ||
+                         cleanLower == "change track" || cleanLower == "change video" || cleanLower == "change the video" ||
+                         cleanLower == "skip" || cleanLower == "next" || cleanLower == "agla" || cleanLower == "badlo" ||
+                         cleanLower == "spotify next" || cleanLower == "spotify skip" || cleanLower == "youtube next" ||
+                         cleanLower == "music next"
         if isNextSong {
             return .mediaPlay(app: targetMediaApp, query: nil, action: "next")
         }
         
-        // Previous Track / Video ("previous", "previus", "change it to previous", "previous song", "previous video", "pichla gana")
-        let isPreviousSong = lower == "previous" || lower == "previus" || lower == "previous song" || lower == "previous video" ||
-                             lower == "previous track" || lower == "last song" || lower == "prev" || lower == "prev song" ||
-                             lower == "prev video" || lower.contains("change it to previous") || lower.contains("change to previous") ||
-                             lower.contains("change it to previus") || lower.contains("pichla gana") || lower.contains("pichla gaana") ||
-                             lower.contains("pichla video") || lower == "pichla" || lower == "peeche karo" || lower == "peeche"
+        // Previous Track / Video ("previous", "previus", "change it to previous", "previous song", "previous video", "pichla gana", "spotify change song to previous")
+        let isPreviousSong = cleanLower.contains("change song to previous") ||
+                             cleanLower.contains("change the song to previous") ||
+                             cleanLower.contains("change to previous") ||
+                             cleanLower.contains("change it to previous") ||
+                             cleanLower.contains("change track to previous") ||
+                             cleanLower.contains("song to previous") ||
+                             cleanLower.contains("track to previous") ||
+                             cleanLower.contains("previous song") ||
+                             cleanLower.contains("previous track") ||
+                             cleanLower.contains("previous video") ||
+                             cleanLower.contains("play previous song") ||
+                             cleanLower.contains("play previous track") ||
+                             cleanLower.contains("play previous") ||
+                             cleanLower.contains("prev song") ||
+                             cleanLower.contains("prev track") ||
+                             cleanLower.contains("prev video") ||
+                             cleanLower.contains("skip to previous") ||
+                             cleanLower.contains("pichla gana") ||
+                             cleanLower.contains("pichla gaana") ||
+                             cleanLower.contains("pichla video") ||
+                             cleanLower.contains("peeche karo") ||
+                             cleanLower == "previous" || cleanLower == "previus" || cleanLower == "prev" ||
+                             cleanLower == "last song" || cleanLower == "pichla" || cleanLower == "peeche" ||
+                             cleanLower == "spotify previous" || cleanLower == "spotify prev" ||
+                             cleanLower == "youtube previous" || cleanLower == "music previous"
         if isPreviousSong {
             return .mediaPlay(app: targetMediaApp, query: nil, action: "previous")
         }
@@ -705,7 +752,8 @@ public enum AgentToolParser {
             return nil
         }
         if lower.contains("gana") || lower.contains("gaane") || lower.contains("song") || lower.contains("playlist") ||
-           lower.contains("top hits") || lower.contains("music chalao") || lower.contains("arijit") || lower.contains("diljit") || lower.contains("shreya") {
+           lower.contains("top hits") || lower.contains("music chalao") || lower.contains("arijit") || lower.contains("diljit") || lower.contains("shreya") ||
+           lower.contains("next") || lower.contains("previous") || lower.contains("prev") || lower.contains("skip") {
             return nil
         }
         

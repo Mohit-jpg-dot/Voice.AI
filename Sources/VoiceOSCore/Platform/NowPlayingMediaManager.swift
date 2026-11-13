@@ -33,6 +33,7 @@ public struct NowPlayingItem: Sendable, Equatable, Identifiable {
     public var progress: Double // 0.0 ... 1.0
     public var positionSeconds: Int
     public var durationSeconds: Int
+    public var artworkUrl: String
     
     public init(
         title: String,
@@ -42,7 +43,8 @@ public struct NowPlayingItem: Sendable, Equatable, Identifiable {
         isPlaying: Bool = true,
         progress: Double = 0.0,
         positionSeconds: Int = 0,
-        durationSeconds: Int = 0
+        durationSeconds: Int = 0,
+        artworkUrl: String = ""
     ) {
         self.title = title
         self.artistOrChannel = artistOrChannel
@@ -52,6 +54,7 @@ public struct NowPlayingItem: Sendable, Equatable, Identifiable {
         self.progress = progress
         self.positionSeconds = positionSeconds
         self.durationSeconds = durationSeconds
+        self.artworkUrl = artworkUrl
     }
     
     public var formattedPlaybackTime: String {
@@ -189,7 +192,11 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
                     set albumName to album of current track
                     set trackPos to (player position as integer)
                     set trackDur to ((duration of current track) / 1000 as integer)
-                    return trackName & "|||" & artistName & "|||" & albumName & "|||" & trackPos & "|||" & trackDur
+                    set artUrl to ""
+                    try
+                        set artUrl to artwork url of current track
+                    end try
+                    return trackName & "|||" & artistName & "|||" & albumName & "|||" & trackPos & "|||" & trackDur & "|||" & artUrl
                 else
                     return "paused"
                 end if
@@ -212,6 +219,7 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         let album = parts.count > 2 ? parts[2] : ""
         let pos = parts.count > 3 ? (Int(parts[3]) ?? 0) : 0
         let dur = parts.count > 4 ? (Int(parts[4]) ?? 0) : 0
+        let art = parts.count > 5 ? parts[5] : ""
         let progress = dur > 0 ? min(1.0, max(0.0, Double(pos) / Double(dur))) : 0.0
         
         return NowPlayingItem(
@@ -222,7 +230,8 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
             isPlaying: true,
             progress: progress,
             positionSeconds: pos,
-            durationSeconds: dur
+            durationSeconds: dur,
+            artworkUrl: art
         )
     }
     
@@ -237,7 +246,7 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
                         set tTitle to title of t
                         if (tTitle contains " - YouTube") or (tTitle contains "YouTube" and tTitle is not "YouTube") then
                             try
-                                set jsCheck to (execute t javascript "var v = document.querySelector('video'); (v && !v.paused && !v.ended && v.currentTime > 0 && v.readyState >= 2) ? (Math.floor(v.currentTime || 0) + '|||' + Math.floor(v.duration || 0)) : 'NOT_PLAYING';")
+                                set jsCheck to (execute t javascript "var v = document.querySelector('video'); (v && !v.paused && !v.ended && v.currentTime > 0 && v.readyState >= 2) ? (Math.floor(v.currentTime || 0) + '|||' + Math.floor(v.duration || 0) + '|||' + (new URLSearchParams(window.location.search).get('v') || '')) : 'NOT_PLAYING';")
                                 if jsCheck is not "NOT_PLAYING" and jsCheck contains "|||" then
                                     return tTitle & "|||" & jsCheck
                                 end if
@@ -270,6 +279,8 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         }
         let pos = metaParts.count > 1 ? (Int(metaParts[1]) ?? 0) : 0
         let dur = metaParts.count > 2 ? (Int(metaParts[2]) ?? 0) : 0
+        let ytId = metaParts.count > 3 ? metaParts[3] : ""
+        let artUrl = ytId.isEmpty ? "" : "https://img.youtube.com/vi/\(ytId)/mqdefault.jpg"
         let progress = dur > 0 ? min(1.0, max(0.0, Double(pos) / Double(dur))) : 0.0
         
         // Clean YouTube title: "Song Name - Artist - YouTube" -> "Song Name", "Artist"
@@ -296,7 +307,8 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
             isPlaying: true,
             progress: progress,
             positionSeconds: pos,
-            durationSeconds: dur
+            durationSeconds: dur,
+            artworkUrl: artUrl
         )
     }
     
@@ -311,7 +323,7 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
                         set tName to name of t
                         if (tName contains " - YouTube") or (tName contains "YouTube" and tName is not "YouTube") then
                             try
-                                set jsOut to do JavaScript "var v = document.querySelector('video'); (v && !v.paused && !v.ended && v.currentTime > 0 && v.readyState >= 2) ? (Math.floor(v.currentTime || 0) + '|||' + Math.floor(v.duration || 0)) : 'NOT_PLAYING';" in t
+                                set jsOut to do JavaScript "var v = document.querySelector('video'); (v && !v.paused && !v.ended && v.currentTime > 0 && v.readyState >= 2) ? (Math.floor(v.currentTime || 0) + '|||' + Math.floor(v.duration || 0) + '|||' + (new URLSearchParams(window.location.search).get('v') || '')) : 'NOT_PLAYING';" in t
                                 if jsOut is not "NOT_PLAYING" and jsOut contains "|||" then
                                     return tName & "|||" & jsOut
                                 end if
@@ -339,6 +351,8 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         }
         let pos = metaParts.count > 1 ? (Int(metaParts[1]) ?? 0) : 0
         let dur = metaParts.count > 2 ? (Int(metaParts[2]) ?? 0) : 0
+        let ytId = metaParts.count > 3 ? metaParts[3] : ""
+        let artUrl = ytId.isEmpty ? "" : "https://img.youtube.com/vi/\(ytId)/mqdefault.jpg"
         let progress = dur > 0 ? min(1.0, max(0.0, Double(pos) / Double(dur))) : 0.0
         
         let clean = rawTitle
@@ -356,7 +370,8 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
             isPlaying: true,
             progress: progress,
             positionSeconds: pos,
-            durationSeconds: dur
+            durationSeconds: dur,
+            artworkUrl: artUrl
         )
     }
     
@@ -436,8 +451,12 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
     }
     
     public func nextTrack() {
-        guard let source = currentMedia?.source else { return }
-        switch source {
+        let isSpotifyRunning = NSWorkspace.shared.runningApplications.contains(where: {
+            $0.bundleIdentifier == "com.spotify.client" || $0.localizedName?.lowercased() == "spotify"
+        })
+        let source = currentMedia?.source ?? (isSpotifyRunning ? .spotify : nil)
+        guard let s = source else { return }
+        switch s {
         case .spotify:
             _ = runAppleScript("tell application \"Spotify\" to next track")
         case .appleMusic:
@@ -462,8 +481,12 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
     }
     
     public func previousTrack() {
-        guard let source = currentMedia?.source else { return }
-        switch source {
+        let isSpotifyRunning = NSWorkspace.shared.runningApplications.contains(where: {
+            $0.bundleIdentifier == "com.spotify.client" || $0.localizedName?.lowercased() == "spotify"
+        })
+        let source = currentMedia?.source ?? (isSpotifyRunning ? .spotify : nil)
+        guard let s = source else { return }
+        switch s {
         case .spotify:
             _ = runAppleScript("tell application \"Spotify\" to previous track")
         case .appleMusic:

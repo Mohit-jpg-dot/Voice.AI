@@ -338,6 +338,11 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                 self?.shutUpAndCollapse()
             }
         }
+        EventBus.shared.subscribe(matching: .custom("email_draft_dismiss_requested")) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.dismissEmailDraft()
+            }
+        }
         EventBus.shared.subscribe(matching: .custom("listening_mode_changed")) { [weak self] evt in
             let alwaysOn = evt.payload["always_on"] == "true"
             DispatchQueue.main.async {
@@ -1304,6 +1309,18 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         if self.isAwaitingRedirectConfirmation {
             BoringSoundEngine.shared.playAlert()
         }
+
+        if self.activeEmailDraft != nil || self.activeEventDraft != nil || VoiceEmailManager.shared.focusedDraft() != nil {
+            if self.activeEmailDraft == nil, let focused = VoiceEmailManager.shared.focusedDraft() {
+                self.presentEmailDraft(focused)
+            }
+            SpeechPipelineEngine.shared.speakResponse(result.summary)
+            if result.success {
+                self.refreshBrainSuggestions(query: prompt, reply: result.summary)
+            }
+            return
+        }
+
         self.islandState = .hoverExpanded
 
         _ = LocalChatMemoryManager.shared.addMessage(
@@ -1758,8 +1775,10 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
 
     // MARK: - Email Draft Presentation & Real-Time Send
     public func presentEmailDraft(_ draft: EmailDraft) {
+        cancelPendingAutoCollapse()
         self.activeEmailDraft = draft
         self.islandState = .emailDraftExpanded(draft)
+        self.isCompactResponseMode = false
         self.activeNotchTab = .ask
         BoringSoundEngine.shared.playNotchOpen()
     }
@@ -1774,7 +1793,9 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     }
 
     public func dismissEmailDraft() {
+        cancelPendingAutoCollapse()
         self.activeEmailDraft = nil
+        _ = VoiceEmailManager.shared.discardFocusedDraft()
         if let action = currentAction, action.appName.lowercased().contains("mail") || (action.payload["tool_name"] ?? "").contains("email") {
             dismissAction()
         } else {
@@ -1810,8 +1831,10 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     }
 
     public func presentCalendarEventDraft(_ draft: CalendarEventDraft) {
+        cancelPendingAutoCollapse()
         self.activeEventDraft = draft
         self.islandState = .calendarEventExpanded(draft)
+        self.isCompactResponseMode = false
         self.activeNotchTab = .ask
         BoringSoundEngine.shared.playNotchOpen()
     }

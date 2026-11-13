@@ -37,6 +37,7 @@ public enum ComposerStatus: Equatable, Sendable {
 
 public final class EmailComposerViewModel: ObservableObject, @unchecked Sendable {
     @Published public var draft: EmailDraft
+    @Published public var fromAddress: String = ""
     @Published public var toChips: [String] = []
     @Published public var ccChips: [String] = []
     @Published public var bccChips: [String] = []
@@ -60,6 +61,7 @@ public final class EmailComposerViewModel: ObservableObject, @unchecked Sendable
 
     public init(draft: EmailDraft, providerName: String = "Gmail") {
         self.draft = draft
+        self.fromAddress = draft.from ?? ""
         self.toChips = draft.to.isEmpty ? ["david@company.com"] : draft.to
         self.ccChips = draft.cc
         self.bccChips = draft.bcc
@@ -225,6 +227,7 @@ public final class EmailComposerViewModel: ObservableObject, @unchecked Sendable
     }
 
     public func updateDraftModel() {
+        draft.from = fromAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : fromAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         draft.to = toChips
         draft.cc = ccChips
         draft.bcc = bccChips
@@ -234,8 +237,8 @@ public final class EmailComposerViewModel: ObservableObject, @unchecked Sendable
         draft.updatedAt = Date()
     }
 
-    // MARK: - Send Pipeline with 10s Undo Window
-    public func startSendPipeline(completion: @escaping (Bool, String) -> Void) {
+    // MARK: - Send Pipeline with Optional Undo Window or Immediate Dispatch
+    public func startSendPipeline(immediate: Bool = false, completion: @escaping (Bool, String) -> Void) {
         let validation = validateBeforeSend()
         guard validation.valid else {
             self.status = .failed(reason: validation.reason ?? "Validation error")
@@ -246,6 +249,13 @@ public final class EmailComposerViewModel: ObservableObject, @unchecked Sendable
         updateDraftModel()
         self.onSendComplete = completion
         self.isUndoCancelled = false
+
+        if immediate {
+            self.status = .sending
+            self.performFinalSend()
+            return
+        }
+
         self.undoSecondsRemaining = 10
         self.status = .undoWindow(remainingSeconds: undoSecondsRemaining)
 

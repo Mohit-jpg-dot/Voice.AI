@@ -118,24 +118,47 @@ public actor ModelLifecycleManager {
         }
     }
 
-    /// Unloads loaded models and terminates both Ollama.app and any running headless `ollama` daemon.
+    /// Terminates both Ollama.app and all running headless `ollama` daemons and runner processes.
     public nonisolated func shutdownOllamaAndUnloadModels() {
         guard ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] != "1" else { return }
-        offloadAllModelsImmediately()
 
+        // 1. Terminate running Ollama GUI app(s) via NSWorkspace
         for app in NSWorkspace.shared.runningApplications {
             let bid = (app.bundleIdentifier ?? "").lowercased()
             let name = (app.localizedName ?? "").lowercased()
-            if bid.contains("ollama") || name == "ollama" {
+            let path = (app.executableURL?.path ?? "").lowercased()
+            if bid.contains("ollama") || name.contains("ollama") || path.contains("ollama.app") {
                 app.terminate()
+                if !app.isTerminated {
+                    app.forceTerminate()
+                }
             }
         }
 
-        let killProc = Process()
-        killProc.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-        killProc.arguments = ["-x", "ollama"]
-        try? killProc.run()
-        killProc.waitUntilExit()
-        NSLog("[ModelLifecycle] Unloaded models and shut down Ollama.")
+        // 2. Kill all Ollama backend daemons and runner processes (ollama, Ollama, ollama_llama_server)
+        let pkillArgs: [[String]] = [
+            ["-9", "-i", "ollama"],              // case-insensitive process name
+            ["-9", "-f", "-i", "ollama"],         // match full command line
+            ["-9", "-f", "ollama_llama_server"], // llama runner subprocess
+            ["-9", "-f", "ollama runner"]        // runner subprocess
+        ]
+        for args in pkillArgs {
+            let killProc = Process()
+            killProc.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+            killProc.arguments = args
+            try? killProc.run()
+            killProc.waitUntilExit()
+        }
+
+        // 3. Fallback killall for known Ollama binary names
+        for procName in ["Ollama", "ollama", "ollama_llama_server"] {
+            let killAll = Process()
+            killAll.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+            killAll.arguments = ["-9", procName]
+            try? killAll.run()
+            killAll.waitUntilExit()
+        }
+
+        NSLog("[ModelLifecycle] Terminated Ollama.app and killed all running Ollama processes.")
     }
 }

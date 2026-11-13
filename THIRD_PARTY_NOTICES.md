@@ -78,3 +78,18 @@ Voice.AI incorporates, interfaces with, or provides automated installers for the
 - **Terms:** Governed by Google APIs Terms of Service and Custom Search JSON API quotas.
 - **Usage:** Optional user-provided API key mode for direct web search snippets.
 
+### Slack Web API
+- **Homepage:** [https://api.slack.com](https://api.slack.com)
+- **Terms:** Governed by Slack API Terms of Service.
+- **Usage:** Official Web API for workspace channels, direct messages, and reactions.
+
+### Discord Developer Platform & REST API
+- **Homepage:** [https://discord.com/developers/docs](https://discord.com/developers/docs)
+- **Terms:** Governed by Discord Developer Terms of Service and Policy.
+- **Usage:** Official Bot REST API for server channels and replies. No user tokens or self-bots.
+
+### Meta WhatsApp Business Cloud API
+- **Homepage:** [https://developers.facebook.com/docs/whatsapp](https://developers.facebook.com/docs/whatsapp)
+- **Terms:** Governed by WhatsApp Business Terms of Service and Meta Developer Policies.
+- **Usage:** Official Graph API for outbound WhatsApp Business messaging and templates.
+

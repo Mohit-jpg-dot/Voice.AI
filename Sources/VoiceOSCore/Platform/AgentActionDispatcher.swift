@@ -611,6 +611,19 @@ public final class AgentActionDispatcher: @unchecked Sendable {
         let isClose = lower.contains("close") || lower.contains("quit") || lower.contains("terminate") || lower.contains("kill ") ||
                       (lower.contains("band") && !lower.contains("gana") && !lower.contains("music") && !lower.contains("song"))
         if isClose && !lower.contains("window") && !lower.contains("tab") {
+            if AutonomousAgentExecutor.isSelfQuitCommand(text) {
+                EventBus.shared.publish(VoiceEvent(
+                    kind: .custom("app_self_quit_requested"),
+                    source: "AgentActionDispatcher",
+                    severity: .info,
+                    payload: ["quit_ollama": "true"]
+                ))
+                return DispatchedActionResult(
+                    success: true,
+                    summary: "Quitting Voice.AI and shutting down Ollama now. Goodbye.",
+                    appName: AppBrand.name
+                )
+            }
             let appToClose = extractAppCloseIntent(from: text)
             BoringSoundEngine.shared.playDispatch()
             let res = AccessibilityControlEngine.shared.closeApplication(named: appToClose)

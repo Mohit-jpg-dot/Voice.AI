@@ -40,6 +40,7 @@ public struct AppIntegrationsGridView: View {
     @ObservedObject var appState: AppState
     @State private var hoveredAppId: String? = nil
     @State private var feedbackText: String? = nil
+    @State private var selectedDescriptor: IntegrationSetupDescriptor? = nil
     
     private let columns = [
         GridItem(.flexible(), spacing: 10),
@@ -290,38 +291,10 @@ public struct AppIntegrationsGridView: View {
                             triggerAppLaunch(app)
                         }) {
                             VStack(spacing: 5) {
-                                // App Icon
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: app.gradientColors,
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-                                        .frame(width: 38, height: 38)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                                .stroke(
-                                                    app.isDashedBorder ? Color.white.opacity(0.35) : Color.white.opacity(0.18),
-                                                    style: StrokeStyle(lineWidth: 0.75, dash: app.isDashedBorder ? [3, 2] : [])
-                                                )
-                                        )
-                                        .shadow(color: Color.black.opacity(0.35), radius: 3, x: 0, y: 1.5)
-                                    
-                                    if app.isCustomIcon, let letter = app.customLetter {
-                                        Text(letter)
-                                            .font(.system(size: letter.count > 1 ? 14 : 16, weight: .bold, design: .rounded))
-                                            .foregroundColor(app.iconColor)
-                                    } else {
-                                        Image(systemName: app.iconSystemName)
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .foregroundColor(app.iconColor)
-                                    }
-                                }
-                                .scaleEffect(hoveredAppId == app.id ? 1.08 : 1.0)
-                                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: hoveredAppId)
+                                // Real macOS App Icon or Authentic Brand Artwork
+                                AppTileIconView(appKey: app.id, appName: app.appBundleOrName, size: 38)
+                                    .scaleEffect(hoveredAppId == app.id ? 1.08 : 1.0)
+                                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: hoveredAppId)
                                 
                                 // App Name
                                 Text(app.name)
@@ -348,6 +321,13 @@ public struct AppIntegrationsGridView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .sheet(item: $selectedDescriptor) { desc in
+            IntegrationSetupView(
+                appState: appState,
+                descriptor: desc,
+                onDismiss: { selectedDescriptor = nil }
+            )
+        }
     }
     
     private func triggerAppLaunch(_ app: AppIntegrationItem) {
@@ -355,11 +335,16 @@ public struct AppIntegrationsGridView: View {
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         
         if app.id == "your_own" {
-            // Open App Builder or integrations modal
             appState.toggleMainWindow()
             return
         }
         
+        // Open in-app guided setup directly when clicked
+        if let descriptor = IntegrationRegistry.shared.descriptor(for: app.id) {
+            selectedDescriptor = descriptor
+            return
+        }
+
         withAnimation {
             feedbackText = "Opening \(app.name)..."
         }

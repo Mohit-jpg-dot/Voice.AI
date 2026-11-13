@@ -190,6 +190,19 @@ public final class ProactiveRulesEngine: ProactiveRuleManaging, @unchecked Senda
         ))
     }
 
+    public func recordExternalAlert(_ alert: ProactiveAlert) {
+        lock.withLock {
+            alerts.insert(alert, at: 0)
+            if alerts.count > 50 { alerts = Array(alerts.prefix(50)) }
+        }
+        eventBus.publish(VoiceEvent(
+            kind: .custom("proactive_alerts_changed"),
+            source: "ProactiveRulesEngine",
+            severity: alert.severity,
+            payload: ["alert_id": alert.id, "title": alert.title]
+        ))
+    }
+
     private func handleIncomingBusEvent(_ event: VoiceEvent) {
         // Avoid re-evaluating our own raised-alert notifications
         if case .custom(let name) = event.kind,

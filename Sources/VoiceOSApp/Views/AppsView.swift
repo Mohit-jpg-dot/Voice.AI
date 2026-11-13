@@ -9,7 +9,7 @@ public struct AppsView: View {
     @State private var actionMessage: String? = nil
     @State private var configuringApp: ConnectedApp? = nil
     
-    let subtabs = ["All Apps", "Connected Apps", "System Integrations", "Developer Tools"]
+    let subtabs = ["All Apps", "Connected", "System", "Dev Tools"]
     
     public init(appState: AppState) {
         self.appState = appState
@@ -19,10 +19,45 @@ public struct AppsView: View {
         appState.connectedApps.indices.filter { idx in
             let app = appState.connectedApps[idx]
             if selectedSubtab == "All Apps" { return true }
+            if selectedSubtab == "Connected" { return app.category.contains("Connected") }
+            if selectedSubtab == "System" { return app.category.contains("System") }
+            if selectedSubtab == "Dev Tools" { return app.category.contains("Dev") }
             return app.category == selectedSubtab
         }
     }
     
+    private func isActuallyIntegrated(_ app: ConnectedApp) -> Bool {
+        let settings = AppIntegrationEngine.shared.currentSettings()
+        switch app.id {
+        case "mail":
+            let hasGmail = !(KeychainService.shared.get(GmailAPIEmailBackend.tokenKeychainKey) ?? "").isEmpty
+            let hasAppleMail = MacOSAppIconResolver.isInstalled(nameOrKey: "Mail")
+            return hasGmail || hasAppleMail
+        case "whatsapp":
+            let hasCloudApi = !(KeychainService.shared.get(.whatsappCloudToken) ?? "").isEmpty
+            let hasDesktopApp = MacOSAppIconResolver.isInstalled(nameOrKey: "WhatsApp")
+            return hasCloudApi || hasDesktopApp
+        case "slack":
+            let hasToken = !(KeychainService.shared.get(.slackUserToken) ?? "").isEmpty
+            let hasWebhook = !settings.slackWebhookURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            return hasToken || hasWebhook
+        case "discord":
+            let hasToken = !(KeychainService.shared.get(.discordBotToken) ?? "").isEmpty
+            let hasWebhook = !settings.discordWebhookURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            return hasToken || hasWebhook
+        case "notion":
+            return !(KeychainService.shared.get(.notionToken) ?? "").isEmpty || !settings.notionToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case "youtube":
+            return MacOSAppIconResolver.isInstalled(nameOrKey: "Safari") || MacOSAppIconResolver.isInstalled(nameOrKey: "Google Chrome")
+        case "spotify":
+            return MacOSAppIconResolver.isInstalled(nameOrKey: "Spotify")
+        case "notes", "calendar", "reminders", "terminal", "safari", "chrome", "vscode":
+            return MacOSAppIconResolver.isInstalled(nameOrKey: app.id)
+        default:
+            return MacOSAppIconResolver.isInstalled(nameOrKey: app.id) || MacOSAppIconResolver.isInstalled(nameOrKey: app.name)
+        }
+    }
+
     private func launchApp(named name: String) {
         Task {
             let res = await AgentActionDispatcher.shared.dispatch(transcript: "open \(name)")
@@ -73,6 +108,8 @@ public struct AppsView: View {
                             }) {
                                 Text(tab)
                                     .font(.system(size: 11, weight: isTabSelected ? .semibold : .medium))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
                                     .foregroundColor(isTabSelected ? DesignTokens.Colors.textPrimary : DesignTokens.Colors.textMuted)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
@@ -273,17 +310,8 @@ public struct AppsView: View {
                         let app = appState.connectedApps[idx]
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(alignment: .center, spacing: 12) {
-                                // App Squircle Icon
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                        .fill(Color(hex: app.iconColor))
-                                        .frame(width: 38, height: 38)
-                                        .shadow(color: Color(hex: app.iconColor).opacity(0.35), radius: 4, x: 0, y: 2)
-                                    
-                                    Image(systemName: app.iconName)
-                                        .font(.system(size: 17, weight: .semibold))
-                                        .foregroundColor(.white)
-                                }
+                                // Real macOS App Icon or Authentic Brand Artwork
+                                AppTileIconView(appKey: app.id, appName: app.name, size: 40)
                                 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(app.name)
@@ -352,14 +380,15 @@ public struct AppsView: View {
                                 
                                 Spacer()
                                 
-                                HStack(spacing: 4) {
+                                let installedOrConfigured = isActuallyIntegrated(app)
+                                HStack(spacing: 5) {
                                     Circle()
-                                        .fill(app.isConnected ? DesignTokens.Colors.accentGreen : DesignTokens.Colors.textMuted)
-                                        .frame(width: 5, height: 5)
+                                        .fill(!app.isConnected ? DesignTokens.Colors.textMuted : (installedOrConfigured ? DesignTokens.Colors.accentGreen : Color.orange))
+                                        .frame(width: 6, height: 6)
                                     
-                                    Text(app.isConnected ? "Integrated" : "Paused")
-                                        .font(.system(size: 10, weight: .medium))
-                                        .foregroundColor(app.isConnected ? DesignTokens.Colors.accentGreen : DesignTokens.Colors.textMuted)
+                                    Text(!app.isConnected ? "Disabled" : (installedOrConfigured ? "Integrated" : "Not Configured"))
+                                        .font(.system(size: 10.5, weight: .medium))
+                                        .foregroundColor(!app.isConnected ? DesignTokens.Colors.textMuted : (installedOrConfigured ? DesignTokens.Colors.accentGreen : Color.orange))
                                 }
                             }
                         }

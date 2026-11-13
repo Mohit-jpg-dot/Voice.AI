@@ -309,6 +309,61 @@ namespace VoiceAI.Core.Memory
             }
         }
 
+        public static bool IsInstructionLikeMemory(string text)
+        {
+            string lower = (text ?? string.Empty).ToLowerInvariant();
+            string[] patterns =
+            {
+                "without asking", "without approval", "without confirmation", "no approval",
+                "skip approval", "skip confirmation", "bypass approval", "bypass policy",
+                "disable command policy", "disable safety", "ignore safety",
+                "always approve", "auto approve", "auto-approve", "never ask for permission",
+                "allow sudo", "ignore previous instructions"
+            };
+            return patterns.Any(lower.Contains);
+        }
+
+        public (bool Accepted, StructuredMemoryItem? Item, string Reason) RememberExplicit(
+            string content,
+            MemoryFactKind kind = MemoryFactKind.Fact,
+            IReadOnlyList<string>? tags = null)
+        {
+            string redacted = SecretRedactor.Redact(content ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(redacted))
+                return (false, null, "Empty memory.");
+            if (IsInstructionLikeMemory(redacted))
+                return (false, null, "Rejected instruction-like memory attempting to weaken safety rules.");
+            var item = Remember(redacted, MemoryScope.LongTerm, kind, tags);
+            return (true, item, "Saved.");
+        }
+
+        public string BuildBudgetedPromptContext(string query, int maxTokenBudget = 400, string? rollingSummary = null)
+        {
+            int maxChars = System.Math.Max(200, maxTokenBudget * 4);
+            var sb = new StringBuilder();
+            if (!string.IsNullOrWhiteSpace(rollingSummary))
+            {
+                sb.AppendLine($"Session summary: {rollingSummary[..System.Math.Min(rollingSummary.Length, maxChars / 3)]}");
+            }
+            var hits = SearchSemantic(query, MemoryScope.LongTerm, 5);
+            foreach (var (item, _) in hits)
+            {
+                string line = $"- [{item.Kind}] {item.Content}";
+                if (sb.Length + line.Length + 1 > maxChars) break;
+                sb.AppendLine(line);
+            }
+            if (sb.Length == 0) return string.Empty;
+            return $"<UNTRUSTED_MEMORY_CONTEXT>\n{sb}</UNTRUSTED_MEMORY_CONTEXT>";
+        }
+
+        public static string BuildRollingSummary(IReadOnlyList<string> turns, int keepRecent = 6)
+        {
+            if (turns.Count <= keepRecent) return string.Empty;
+            var older = turns.Take(turns.Count - keepRecent).TakeLast(8)
+                .Select(t => t.Length > 120 ? t[..120] : t);
+            return $"Earlier turns ({turns.Count - keepRecent}): " + string.Join(" | ", older);
+        }
+
         private string StorageFileFor(string accountId)
         {
             byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(accountId));

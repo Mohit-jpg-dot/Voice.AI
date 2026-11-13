@@ -51,8 +51,10 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
     private var ttsChunkQueue: [(text: String, isHinglish: Bool)] = []
     private var isProcessingTTSQueue: Bool = false
     private var ttsCompletionCallback: (@Sendable () -> Void)?
-    private var activeSystemUtteranceId: ObjectIdentifier?
+    private var activeSystemUtteranceIds: Set<ObjectIdentifier> = []
     private var activeSystemUtteranceGeneration: UInt64 = 0
+    private static var cachedVoices: [String: AVSpeechSynthesisVoice] = [:]
+    private static let voiceCacheLock = NSLock()
     private var lastSpokenNormalizedLock = NSLock()
     private var _lastSpokenTextNormalized: String = ""
     private var _recentSpokenPhrases: [String] = []
@@ -514,7 +516,7 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             ttsChunkQueue.removeAll()
             isProcessingTTSQueue = false
             ttsCompletionCallback = nil
-            activeSystemUtteranceId = nil
+            activeSystemUtteranceIds.removeAll()
             activeSystemUtteranceGeneration = 0
         }
 
@@ -544,20 +546,61 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
         recordSpokenTTSPhrase(clean)
         let isHinglish = HinglishParser.isHinglishQuery(clean)
 
-        let shouldKickoff = ttsLock.withLock { () -> (Bool, UInt64) in
-            ttsChunkQueue.append((text: clean, isHinglish: isHinglish))
-            if !isProcessingTTSQueue {
-                isProcessingTTSQueue = true
-                return (true, ttsGeneration)
-            }
-            return (false, ttsGeneration)
+        let gen = currentTTSGeneration()
+        let hasDevanagari = clean.unicodeScalars.contains { scalar in
+            scalar.value >= 0x0900 && scalar.value <= 0x097F
         }
 
-        if shouldKickoff.0 {
+        if KokoroTTSEngine.shared.isPreferredForTTS && KokoroTTSEngine.shared.diagnostics().isFullyReady && !hasDevanagari {
+            let shouldKickoff = ttsLock.withLock { () -> (Bool, UInt64) in
+                ttsChunkQueue.append((text: clean, isHinglish: isHinglish))
+                if !isProcessingTTSQueue {
+                    isProcessingTTSQueue = true
+                    return (true, ttsGeneration)
+                }
+                return (false, ttsGeneration)
+            }
+
+            if shouldKickoff.0 {
+                self.currentState = .speaking
+                onStateChanged?(.speaking)
+                playNextTTSChunk(generation: shouldKickoff.1)
+            }
+            return
+        }
+
+        // System Synthesizer Queue: pre-enqueue chunk directly into AVSpeechSynthesizer
+        // so it seamlessly transitions into the next chunk without audio output re-initialization pause.
+        let utterance = AVSpeechUtterance(string: clean)
+        utterance.rate = 0.54
+        utterance.pitchMultiplier = 1.0
+        utterance.preUtteranceDelay = 0.0
+        utterance.postUtteranceDelay = 0.02
+
+        if hasDevanagari {
+            utterance.voice = selectBestVoice(for: "hi")
+        } else if isHinglish {
+            utterance.voice = selectBestVoice(for: "en-IN") ?? selectBestVoice(for: "hi")
+        } else if let savedId = UserDefaults.standard.string(forKey: "voiceos.selected_voice_id"),
+                  !savedId.isEmpty,
+                  let savedVoice = AVSpeechSynthesisVoice(identifier: savedId) {
+            utterance.voice = savedVoice
+        } else {
+            utterance.voice = selectBestVoice(for: "en")
+        }
+
+        ttsLock.withLock {
+            guard gen == ttsGeneration else { return }
+            activeSystemUtteranceIds.insert(ObjectIdentifier(utterance))
+            activeSystemUtteranceGeneration = gen
+        }
+
+        if currentState != .speaking {
             self.currentState = .speaking
             onStateChanged?(.speaking)
-            playNextTTSChunk(generation: shouldKickoff.1)
         }
+
+        speechSynthesizer.speak(utterance)
     }
 
     public func speakResponse(_ text: String, completion: (@Sendable () -> Void)? = nil) {
@@ -572,7 +615,7 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             ttsChunkQueue.removeAll()
             isProcessingTTSQueue = false
             ttsCompletionCallback = nil
-            activeSystemUtteranceId = nil
+            activeSystemUtteranceIds.removeAll()
             activeSystemUtteranceGeneration = 0
         }
 
@@ -603,7 +646,64 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
 
         self.currentState = .speaking
         onStateChanged?(.speaking)
-        playNextTTSChunk(generation: gen)
+
+        let hasDevanagari = spokenText.unicodeScalars.contains { scalar in
+            scalar.value >= 0x0900 && scalar.value <= 0x097F
+        }
+
+        if KokoroTTSEngine.shared.isPreferredForTTS && KokoroTTSEngine.shared.diagnostics().isFullyReady && !hasDevanagari {
+            playNextTTSChunk(generation: gen)
+            return
+        }
+
+        // Pre-enqueue all chunks into AVSpeechSynthesizer simultaneously.
+        // AVFoundation's internal buffer chains them back-to-back with zero audio device teardown/startup latency.
+        enqueueAllSystemUtterances(chunks: chunks.map { (text: $0, isHinglish: isHinglish) }, generation: gen)
+    }
+
+    private func enqueueAllSystemUtterances(chunks: [(text: String, isHinglish: Bool)], generation: UInt64) {
+        guard generation == currentTTSGeneration() else { return }
+
+        var utterancesToSpeak: [AVSpeechUtterance] = []
+
+        for item in chunks {
+            let utterance = AVSpeechUtterance(string: item.text)
+            utterance.rate = 0.54 // Smooth, responsive natural conversational pace
+            utterance.pitchMultiplier = 1.0
+            utterance.preUtteranceDelay = 0.0
+            utterance.postUtteranceDelay = 0.02 // Seamless 20ms transition between lines/sentences
+
+            let hasDevanagari = item.text.unicodeScalars.contains { scalar in
+                scalar.value >= 0x0900 && scalar.value <= 0x097F
+            }
+
+            if hasDevanagari {
+                utterance.voice = selectBestVoice(for: "hi")
+            } else if item.isHinglish {
+                utterance.voice = selectBestVoice(for: "en-IN") ?? selectBestVoice(for: "hi")
+            } else if let savedId = UserDefaults.standard.string(forKey: "voiceos.selected_voice_id"),
+                      !savedId.isEmpty,
+                      let savedVoice = AVSpeechSynthesisVoice(identifier: savedId) {
+                utterance.voice = savedVoice
+            } else {
+                utterance.voice = selectBestVoice(for: "en")
+            }
+            utterancesToSpeak.append(utterance)
+        }
+
+        ttsLock.withLock {
+            guard generation == ttsGeneration else { return }
+            for u in utterancesToSpeak {
+                activeSystemUtteranceIds.insert(ObjectIdentifier(u))
+            }
+            activeSystemUtteranceGeneration = generation
+            ttsChunkQueue.removeAll()
+            isProcessingTTSQueue = false
+        }
+
+        for u in utterancesToSpeak {
+            speechSynthesizer.speak(u)
+        }
     }
 
     private func playNextTTSChunk(generation: UInt64) {
@@ -635,8 +735,7 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
             scalar.value >= 0x0900 && scalar.value <= 0x097F
         }
 
-        if KokoroTTSEngine.shared.isPreferredForTTS && !hasDevanagari &&
-            FileManager.default.fileExists(atPath: KokoroTTSEngine.weightsURL.path) {
+        if KokoroTTSEngine.shared.isPreferredForTTS && KokoroTTSEngine.shared.diagnostics().isFullyReady && !hasDevanagari {
             KokoroTTSEngine.shared.speak(text: item.text, voice: KokoroTTSEngine.shared.selectedVoiceId) { [weak self] played in
                 DispatchQueue.main.async {
                     guard let self = self, generation == self.currentTTSGeneration() else { return }
@@ -657,8 +756,9 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
         guard generation == currentTTSGeneration() else { return }
         let utterance = AVSpeechUtterance(string: spokenText)
         utterance.rate = 0.54 // Smooth, responsive natural conversational pace
-        utterance.pitchMultiplier = 1.02
+        utterance.pitchMultiplier = 1.0
         utterance.preUtteranceDelay = 0.0
+        utterance.postUtteranceDelay = 0.02
 
         let hasDevanagari = spokenText.unicodeScalars.contains { scalar in
             scalar.value >= 0x0900 && scalar.value <= 0x097F
@@ -678,21 +778,26 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
 
         ttsLock.withLock {
             guard generation == ttsGeneration else { return }
-            activeSystemUtteranceId = ObjectIdentifier(utterance)
+            activeSystemUtteranceIds.insert(ObjectIdentifier(utterance))
             activeSystemUtteranceGeneration = generation
         }
         speechSynthesizer.speak(utterance)
     }
 
     private func selectBestVoice(for languagePrefix: String) -> AVSpeechSynthesisVoice? {
-        let allVoices = AVSpeechSynthesisVoice.speechVoices()
         let prefix = languagePrefix.lowercased()
+        if let cached = Self.voiceCacheLock.withLock({ Self.cachedVoices[prefix] }) {
+            return cached
+        }
+
+        let allVoices = AVSpeechSynthesisVoice.speechVoices()
 
         // 1. High quality enhanced / premium voices if available
         if let enhanced = allVoices.first(where: {
             $0.language.lowercased().hasPrefix(prefix) &&
             ($0.quality == .enhanced || $0.quality == .premium)
         }) {
+            Self.voiceCacheLock.withLock { Self.cachedVoices[prefix] = enhanced }
             return enhanced
         }
 
@@ -701,16 +806,22 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
         if let natural = allVoices.first(where: { v in
             v.language.lowercased().hasPrefix(prefix) && naturalVoiceNames.contains(where: { v.name.contains($0) })
         }) {
+            Self.voiceCacheLock.withLock { Self.cachedVoices[prefix] = natural }
             return natural
         }
 
         // 3. Standard voice for this language
         if let match = allVoices.first(where: { $0.language.lowercased().hasPrefix(prefix) }) {
+            Self.voiceCacheLock.withLock { Self.cachedVoices[prefix] = match }
             return match
         }
 
         // 4. Default fallback
-        return AVSpeechSynthesisVoice(language: "en-US")
+        let fallback = AVSpeechSynthesisVoice(language: "en-US")
+        if let fallback = fallback {
+            Self.voiceCacheLock.withLock { Self.cachedVoices[prefix] = fallback }
+        }
+        return fallback
     }
 
     /// Generates minimalistic, polite spoken replies for automation tasks rather than reading long robotic URLs.
@@ -935,33 +1046,35 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
 
     public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         let uid = ObjectIdentifier(utterance)
-        let match: (valid: Bool, gen: UInt64, stillQueueing: Bool) = ttsLock.withLock {
-            guard activeSystemUtteranceId == uid, activeSystemUtteranceGeneration == ttsGeneration else {
-                return (false, 0, false)
+        let finishInfo: (isFinished: Bool, gen: UInt64, cb: (@Sendable () -> Void)?) = ttsLock.withLock {
+            guard activeSystemUtteranceGeneration == ttsGeneration else {
+                return (false, 0, nil)
             }
-            activeSystemUtteranceId = nil
-            return (true, ttsGeneration, isProcessingTTSQueue)
+            activeSystemUtteranceIds.remove(uid)
+            if activeSystemUtteranceIds.isEmpty && ttsChunkQueue.isEmpty {
+                isProcessingTTSQueue = false
+                let callback = ttsCompletionCallback
+                ttsCompletionCallback = nil
+                return (true, ttsGeneration, callback)
+            }
+            return (false, ttsGeneration, nil)
         }
-        guard match.valid else { return }
 
-        if match.stillQueueing {
-            playNextTTSChunk(generation: match.gen)
-            return
-        }
-        markTTSEnded(flushAmbientAfter: 0.25)
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self, match.gen == self.currentTTSGeneration() else { return }
-            self.currentState = .idle
-            self.onStateChanged?(.idle)
+        if finishInfo.isFinished {
+            markTTSEnded(flushAmbientAfter: 0.25)
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, finishInfo.gen == self.currentTTSGeneration() else { return }
+                self.currentState = .idle
+                self.onStateChanged?(.idle)
+                finishInfo.cb?()
+            }
         }
     }
 
     public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         let uid = ObjectIdentifier(utterance)
         ttsLock.withLock {
-            if activeSystemUtteranceId == uid {
-                activeSystemUtteranceId = nil
-            }
+            activeSystemUtteranceIds.remove(uid)
         }
     }
 }

@@ -4,13 +4,10 @@ import AppKit
 
 public enum SettingsTab: String, CaseIterable, Identifiable {
     case general = "General"
-    case voice = "Voice & Wake-Word"
-    case jarvis = "JARVIS & Routines"
-    case proactive = "Proactive & Home"
-    case advanced = "Lab & Security"
-    case brain = "AI Brain & Models"
-    case permissions = "System Access"
-    case account = "Account & Privacy"
+    case voice = "Voice & Speech"
+    case brain = "AI Models"
+    case security = "Apps & Security"
+    case account = "Account & Memory"
     
     public var id: String { rawValue }
     
@@ -18,11 +15,8 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general: return "gearshape.fill"
         case .voice: return "waveform.badge.mic"
-        case .jarvis: return "sparkles"
-        case .proactive: return "bolt.shield.fill"
-        case .advanced: return "cube.transparent"
-        case .brain: return "brain.head.profile"
-        case .permissions: return "hand.raised.fill"
+        case .brain: return "cpu.fill"
+        case .security: return "lock.shield.fill"
         case .account: return "person.crop.circle.badge.checkmark"
         }
     }
@@ -49,44 +43,26 @@ public struct SettingsView: View {
     @State private var wakePhraseInput: String = TheVoiceAmbientListener.shared.wakePhrase
     @State private var selectedKokoroVoice: String = KokoroTTSEngine.shared.selectedVoiceId
 
-    // Phase 1: Persona, Routines & Memory State
-    @State private var personaConfig: PersonaConfiguration = PersonaManager.shared.currentConfiguration()
-    @State private var newRoutineName: String = ""
-    @State private var newRoutineTrigger: String = ""
-    @State private var newRoutineStepsText: String = ""
-    @State private var routineStatusBanner: String = ""
-    @State private var newMemoryNote: String = ""
-    @State private var newMemoryKind: MemoryFactKind = .fact
-
-    // Phase 2: Proactive, Local RAG, Smart Home & Health State
-    @State private var proactiveRules: [ProactiveRuleConfig] = ProactiveRulesEngine.shared.allRules()
-    @State private var ragFolderInput: String = ""
-    @State private var ragChunkCount: Int = LocalKnowledgeStore.shared.totalIndexedChunks()
-    @State private var haURLInput: String = SmartHomeManager.shared.configuration().homeAssistantURL
-    @State private var haTokenInput: String = KeychainService.shared.get(.homeAssistantToken) ?? ""
-    @State private var mqttHostInput: String = SmartHomeManager.shared.configuration().mqttHost
-    @State private var mqttPasswordInput: String = KeychainService.shared.get(.mqttPassword) ?? ""
-    @State private var smartHomeSavedBanner: String = ""
-    @State private var healthOptInToggle: Bool = HealthInsightsManager.shared.isOptedIn()
-    @State private var healthSummaryText: String = HealthInsightsManager.shared.computeDigest().summaryText
-    @State private var healthReminderTitle: String = ""
-    @State private var healthReminderSchedule: String = "Daily 09:00"
-
-    // Phase 3: Iron Legion, CAD/3D Hologram, Cyber Defense, Camera Vision, Companion & Plugins
-    @State private var legionMissionInput: String = "Audit module architecture"
-    @State private var cadShapeChoice: CADShapeKind = .bracket
-    @State private var cadBackendChoice: CADBackend = .openscad
-    @State private var generatedCADResult: CADGenerationResult = EngineeringStudioEngine.shared.generateCAD(shape: .bracket, backend: .openscad)
-    @State private var physicsSummary: String = ""
-    @State private var securityReportSummary: String = "Not scanned yet."
-    @State private var cameraOptIn: Bool = LocalCameraVisionService.shared.isCameraOptedIn()
-    @State private var faceRecOptIn: Bool = LocalCameraVisionService.shared.isFaceRecognitionEnabled()
-    @State private var activePairingPIN: String = ""
-    @State private var pairingDeviceNameInput: String = "iPhone"
-    @State private var companionPinInput: String = ""
-    @State private var companionStatusBanner: String = ""
-    @State private var newPluginName: String = ""
-    @State private var newPluginReplyTemplate: String = ""
+    // Safe Voice Terminal Settings
+    @State private var autoRunReadOnlyTerminal: Bool = TerminalSecuritySettings.autoRunReadOnlyCommands
+    @State private var terminalTimeoutSec: Double = TerminalSecuritySettings.timeoutSeconds
+    @State private var customAllowedRoots: [String] = UserDefaults.standard.stringArray(forKey: PathPolicy.allowedRootsDefaultsKey) ?? []
+    @State private var customAllowedPrograms: [String] = UserDefaults.standard.stringArray(forKey: CommandPolicy.extraProgramsDefaultsKey) ?? []
+    @State private var newAllowedProgramInput: String = ""
+    @State private var isLocalMemoryEnabled: Bool = MemoryStore.isMemoryEnabled
+    @State private var emailUndoWindowSec: Double = EmailSecuritySettings.undoWindowSeconds
+    @State private var emailWatchPollSec: Double = EmailSecuritySettings.watchPollIntervalSeconds
+    @State private var emailQuietHoursEnabled: Bool = EmailSecuritySettings.isQuietHoursEnabled
+    @State private var emailCapabilitySummary: String = "Tap Check Capability to test Mail.app / Gmail."
+    
+    // Messaging Connectors State
+    @State private var slackTokenInput: String = KeychainService.shared.get(.slackUserToken) ?? ""
+    @State private var slackConnected: Bool = (KeychainService.shared.get(.slackUserToken) != nil)
+    @State private var discordTokenInput: String = KeychainService.shared.get(.discordBotToken) ?? ""
+    @State private var discordConnected: Bool = (KeychainService.shared.get(.discordBotToken) != nil)
+    @State private var whatsappTokenInput: String = KeychainService.shared.get(.whatsappCloudToken) ?? ""
+    @State private var whatsappPhoneIdInput: String = KeychainService.shared.get(.whatsappPhoneNumberId) ?? ""
+    @State private var messagingNotice: String = ""
     
     // Account Authentication State
     @State private var authIsLoginMode: Bool = true
@@ -193,16 +169,10 @@ public struct SettingsView: View {
                         generalSettingsTab
                     case .voice:
                         voiceSettingsTab
-                    case .jarvis:
-                        jarvisSettingsTab
-                    case .proactive:
-                        proactiveSettingsTab
-                    case .advanced:
-                        advancedLabSettingsTab
                     case .brain:
                         aiBrainSettingsTab
-                    case .permissions:
-                        systemPermissionsTab
+                    case .security:
+                        securityAndEmailTab
                     case .account:
                         accountAndPrivacyTab
                     }
@@ -217,16 +187,7 @@ public struct SettingsView: View {
             }
             wakePhraseInput = TheVoiceAmbientListener.shared.wakePhrase
             selectedKokoroVoice = KokoroTTSEngine.shared.selectedVoiceId
-            personaConfig = PersonaManager.shared.currentConfiguration()
-            appState.refreshPhase1State()
-            appState.refreshPhase2State()
-            proactiveRules = ProactiveRulesEngine.shared.allRules()
-            ragChunkCount = LocalKnowledgeStore.shared.totalIndexedChunks()
-            healthOptInToggle = HealthInsightsManager.shared.isOptedIn()
-            healthSummaryText = HealthInsightsManager.shared.computeDigest().summaryText
-            appState.refreshPhase3State()
-            cameraOptIn = LocalCameraVisionService.shared.isCameraOptedIn()
-            faceRecOptIn = LocalCameraVisionService.shared.isFaceRecognitionEnabled()
+            listenerStatusText = TheVoiceAmbientListener.shared.diagnosticSummary
         }
         .background(DesignTokens.Monochrome.windowBg)
         .sheet(isPresented: $showingModelSetupSheet) {
@@ -1011,6 +972,322 @@ public struct SettingsView: View {
     
     // MARK: - Tab 4: Account & Privacy
     
+    private var securityAndEmailTab: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Safe Voice Terminal & Sandbox Policy
+            settingsCard(title: "Safe Voice Terminal & Sandbox", icon: "terminal.fill") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle(isOn: $autoRunReadOnlyTerminal) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Auto-run read-only commands")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text("OFF by default. When ON, READ_ONLY commands (ls, cat, find, grep, du, df) skip voice approval; mutating commands always prompt.")
+                                .font(.system(size: 10.5))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                    }
+                    .onChange(of: autoRunReadOnlyTerminal) { _, val in
+                        TerminalSecuritySettings.autoRunReadOnlyCommands = val
+                    }
+
+                    Divider().overlay(DesignTokens.Monochrome.border)
+
+                    HStack {
+                        Text("Command Timeout: \(Int(terminalTimeoutSec))s")
+                            .font(.system(size: 11.5))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        Slider(value: $terminalTimeoutSec, in: 5...60, step: 5)
+                            .onChange(of: terminalTimeoutSec) { _, val in
+                                TerminalSecuritySettings.timeoutSeconds = val
+                            }
+                    }
+
+                    Divider().overlay(DesignTokens.Monochrome.border)
+
+                    HStack {
+                        Text("Extra Allowed Folders (manual UI only)")
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                        Spacer()
+                        Button("Add Folder…") {
+                            let panel = NSOpenPanel()
+                            panel.canChooseFiles = false
+                            panel.canChooseDirectories = true
+                            panel.allowsMultipleSelection = false
+                            if panel.runModal() == .OK, let url = panel.url {
+                                if !customAllowedRoots.contains(url.path) {
+                                    customAllowedRoots.append(url.path)
+                                    UserDefaults.standard.set(customAllowedRoots, forKey: PathPolicy.allowedRootsDefaultsKey)
+                                    showNotice("Added allowed folder: \(url.lastPathComponent)")
+                                }
+                            }
+                        }
+                        .font(.system(size: 11))
+                    }
+                    if customAllowedRoots.isEmpty {
+                        Text("Default roots: ~/Desktop, ~/Documents, ~/Downloads, ~/VoiceAI-Workspace")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                    } else {
+                        ForEach(customAllowedRoots, id: \.self) { root in
+                            HStack {
+                                Text(root)
+                                    .font(.system(size: 10.5, design: .monospaced))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                                    .lineLimit(1)
+                                Spacer()
+                                Button("Remove") {
+                                    customAllowedRoots.removeAll { $0 == root }
+                                    UserDefaults.standard.set(customAllowedRoots, forKey: PathPolicy.allowedRootsDefaultsKey)
+                                }
+                                .font(.system(size: 10))
+                                .foregroundColor(.red)
+                            }
+                        }
+                    }
+
+                    Divider().overlay(DesignTokens.Monochrome.border)
+
+                    HStack(spacing: 8) {
+                        TextField("Add allowed CLI program (e.g. rg, jq)", text: $newAllowedProgramInput)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11))
+                        Button("Allow") {
+                            let clean = newAllowedProgramInput.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                            guard !clean.isEmpty, !CommandPolicy.alwaysBlockedPrograms.contains(clean) else {
+                                showNotice("That program is permanently blocked by policy.")
+                                return
+                            }
+                            if !customAllowedPrograms.contains(clean) {
+                                customAllowedPrograms.append(clean)
+                                UserDefaults.standard.set(customAllowedPrograms, forKey: CommandPolicy.extraProgramsDefaultsKey)
+                            }
+                            newAllowedProgramInput = ""
+                        }
+                        .font(.system(size: 11))
+                    }
+                    if !customAllowedPrograms.isEmpty {
+                        Text("Custom programs (always NEEDS_APPROVAL): \(customAllowedPrograms.joined(separator: ", "))")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                    }
+                }
+            }
+
+            // Voice Email & Reply Watch
+            settingsCard(title: "Voice Email & Reply Watch", icon: "envelope.badge.fill") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text(emailCapabilitySummary)
+                            .font(.system(size: 11))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button("Check Capability") {
+                            Task {
+                                let rep = await VoiceEmailManager.shared.capabilitiesReport()
+                                await MainActor.run {
+                                    emailCapabilitySummary = rep.spokenSummary
+                                }
+                            }
+                        }
+                        .font(.system(size: 11))
+                    }
+
+                    HStack {
+                        Text("Undo Send Window: \(Int(emailUndoWindowSec))s")
+                            .font(.system(size: 11))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        Slider(value: $emailUndoWindowSec, in: 0...30, step: 5)
+                            .onChange(of: emailUndoWindowSec) { _, val in
+                                EmailSecuritySettings.undoWindowSeconds = val
+                            }
+                    }
+
+                    HStack {
+                        Text("Watch Poll Interval: \(Int(emailWatchPollSec))s")
+                            .font(.system(size: 11))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        Slider(value: $emailWatchPollSec, in: 30...300, step: 15)
+                            .onChange(of: emailWatchPollSec) { _, val in
+                                EmailSecuritySettings.watchPollIntervalSeconds = val
+                            }
+                    }
+
+                    Toggle(isOn: $emailQuietHoursEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Quiet Hours / Silent Watch Alerts")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text("Show silent notch card without speaking TTS when a watched reply arrives.")
+                                .font(.system(size: 10.5))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                    }
+                    .toggleStyle(SwitchToggleStyle(tint: Color.blue))
+                    .onChange(of: emailQuietHoursEnabled) { _, val in
+                        EmailSecuritySettings.isQuietHoursEnabled = val
+                    }
+                }
+            }
+
+            // Messaging Connectors (Slack, Discord, WhatsApp)
+            settingsCard(title: "Messaging Connectors (Slack, Discord, WhatsApp)", icon: "bubble.left.and.bubble.right.fill") {
+                VStack(alignment: .leading, spacing: 14) {
+                    if !messagingNotice.isEmpty {
+                        Text(messagingNotice)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color.green)
+                            .padding(.bottom, 4)
+                    }
+
+                    // Slack Connector
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Slack (Web API)")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Spacer()
+                            Text(slackConnected ? "Connected" : "Disconnected")
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .foregroundColor(slackConnected ? Color.green : DesignTokens.Monochrome.textMuted)
+                        }
+                        Text("Scopes: chat:write, channels:read, groups:read, im:read, users:read, search:read, reactions:write.")
+                            .font(.system(size: 10))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        HStack(spacing: 8) {
+                            SecureField("OAuth User Token (xoxp-...)", text: $slackTokenInput)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 11))
+                            Button(slackConnected ? "Disconnect" : "Connect") {
+                                if slackConnected {
+                                    KeychainService.shared.delete(.slackUserToken)
+                                    slackTokenInput = ""
+                                    slackConnected = false
+                                    messagingNotice = "Slack disconnected."
+                                } else if !slackTokenInput.isEmpty {
+                                    KeychainService.shared.set(slackTokenInput, for: .slackUserToken)
+                                    slackConnected = true
+                                    messagingNotice = "Slack connected successfully."
+                                }
+                            }
+                            .font(.system(size: 11))
+
+                            Button("Test") {
+                                Task {
+                                    let connector = SlackConnector(token: slackTokenInput)
+                                    do {
+                                        _ = try await connector.authenticate(credentials: ["token": slackTokenInput])
+                                        await MainActor.run {
+                                            messagingNotice = "✓ Slack token is valid and authenticated."
+                                        }
+                                    } catch {
+                                        await MainActor.run {
+                                            messagingNotice = "Slack connection test: token saved in Keychain."
+                                        }
+                                    }
+                                }
+                            }
+                            .font(.system(size: 11))
+                        }
+                    }
+
+                    Divider().overlay(DesignTokens.Monochrome.border)
+
+                    // Discord Connector
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Discord (Official Bot REST)")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Spacer()
+                            Text(discordConnected ? "Connected" : "Disconnected")
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .foregroundColor(discordConnected ? Color.green : DesignTokens.Monochrome.textMuted)
+                        }
+                        Text("Supports bot servers/channels. No self-bots (respects Discord ToS). Personal DMs fall back to desktop app with approval.")
+                            .font(.system(size: 10))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        HStack(spacing: 8) {
+                            SecureField("Bot Token", text: $discordTokenInput)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 11))
+                            Button(discordConnected ? "Disconnect" : "Connect") {
+                                if discordConnected {
+                                    KeychainService.shared.delete(.discordBotToken)
+                                    discordTokenInput = ""
+                                    discordConnected = false
+                                    messagingNotice = "Discord disconnected."
+                                } else if !discordTokenInput.isEmpty {
+                                    KeychainService.shared.set(discordTokenInput, for: .discordBotToken)
+                                    discordConnected = true
+                                    messagingNotice = "Discord connected successfully."
+                                }
+                            }
+                            .font(.system(size: 11))
+
+                            Button("Test") {
+                                Task {
+                                    let connector = DiscordConnector(botToken: discordTokenInput)
+                                    do {
+                                        _ = try await connector.authenticate(credentials: ["token": discordTokenInput])
+                                        await MainActor.run {
+                                            messagingNotice = "✓ Discord bot token is valid."
+                                        }
+                                    } catch {
+                                        await MainActor.run {
+                                            messagingNotice = "Discord token saved in Keychain."
+                                        }
+                                    }
+                                }
+                            }
+                            .font(.system(size: 11))
+                        }
+                    }
+
+                    Divider().overlay(DesignTokens.Monochrome.border)
+
+                    // WhatsApp Connector
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("WhatsApp (Cloud API & Desktop)")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Spacer()
+                            Text("Active")
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .foregroundColor(Color.green)
+                        }
+                        Text("Cloud API handles 24h window + templates. Desktop app handles personal contacts via Accessibility & deep links (no unofficial reverse-engineered libraries).")
+                            .font(.system(size: 10))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        HStack(spacing: 8) {
+                            SecureField("Optional Cloud Token", text: $whatsappTokenInput)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 11))
+                            TextField("Phone Number ID", text: $whatsappPhoneIdInput)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 11))
+                            Button("Save") {
+                                if !whatsappTokenInput.isEmpty {
+                                    KeychainService.shared.set(whatsappTokenInput, for: .whatsappCloudToken)
+                                }
+                                if !whatsappPhoneIdInput.isEmpty {
+                                    KeychainService.shared.set(whatsappPhoneIdInput, for: .whatsappPhoneNumberId)
+                                }
+                                messagingNotice = "WhatsApp configuration saved in Keychain."
+                            }
+                            .font(.system(size: 11))
+                        }
+                    }
+                }
+            }
+
+            systemPermissionsTab
+        }
+    }
+
     private var accountAndPrivacyTab: some View {
         VStack(alignment: .leading, spacing: 20) {
             // Account Session
@@ -1167,32 +1444,20 @@ public struct SettingsView: View {
                 }
             }
             
-            // Performance & Cache Metrics
-            settingsCard(title: "Semantic Action Cache", icon: "bolt.fill") {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Cached UI Layout Coordinates")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                        Text("\(SemanticActionCache.shared.cachedEntriesCount) verified button coordinates cached for sub-5ms instant execution.")
-                            .font(.system(size: 11))
-                            .foregroundColor(DesignTokens.Monochrome.textMuted)
-                    }
-                    Spacer()
-                    Button("Clear Cache") {
-                        SemanticActionCache.shared.clear()
-                        showNotice("Cache reset.")
-                    }
-                    .font(.system(size: 11))
-                }
-            }
-            
             // Local Memory & Conversation Retention
             settingsCard(title: "Local Memory & Conversation History", icon: "brain.head.profile") {
                 let longTermCount = appState.structuredMemories.filter { $0.scope == .longTerm }.count
                 let turnCount = appState.structuredMemories.filter { $0.scope == .shortTerm }.count
                 let convCount = appState.conversationSessions.count
                 VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Enable Persistent Local Memory", isOn: $isLocalMemoryEnabled)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                        .onChange(of: isLocalMemoryEnabled) { _, val in
+                            MemoryStore.isMemoryEnabled = val
+                            showNotice(val ? "Local memory enabled." : "Local memory paused.")
+                        }
+
                     Text("All questions, answers, and personal preferences are stored locally on your Mac to preserve cross-day context (e.g. asking \"What did we do yesterday?\").")
                         .font(.system(size: 11))
                         .foregroundColor(DesignTokens.Monochrome.textMuted)
@@ -1224,7 +1489,6 @@ public struct SettingsView: View {
                                 message: Text("This permanently deletes all remembered personal facts, preferences, and locally recorded conversation history."),
                                 primaryButton: .destructive(Text("Clear Memory")) {
                                     appState.clearAllMemoryAndHistory()
-                                    routineStatusBanner = "All local memory and conversation history cleared."
                                     showNotice("All local memory and conversation history cleared.")
                                 },
                                 secondaryButton: .cancel()
@@ -1330,10 +1594,8 @@ public struct SettingsView: View {
         if panel.runModal() == .OK, let destURL = panel.url {
             do {
                 try json.write(to: destURL, atomically: true, encoding: .utf8)
-                routineStatusBanner = "Memory saved to \(destURL.lastPathComponent)."
                 showNotice("Memory downloaded to \(destURL.lastPathComponent).")
             } catch {
-                routineStatusBanner = "Failed to save memory: \(error.localizedDescription)"
                 showNotice("Failed to save memory file.")
             }
         }
@@ -1528,836 +1790,6 @@ public struct SettingsView: View {
         )
     }
     
-    private var jarvisSettingsTab: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            settingsCard(title: "JARVIS Persona & Wit Layer", icon: "sparkles") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Configure assistant voice personality, dry wit, polite warnings, and candid probability estimates (works across English, Hindi, and Hinglish).")
-                        .font(.system(size: 11))
-                        .foregroundColor(DesignTokens.Monochrome.textMuted)
-
-                    Picker("Active Persona", selection: Binding(
-                        get: { personaConfig.activePersona },
-                        set: { newPersona in
-                            personaConfig.activePersona = newPersona
-                            PersonaManager.shared.updateConfiguration { $0.activePersona = newPersona }
-                        }
-                    )) {
-                        ForEach(PersonaType.allCases) { persona in
-                            Text(persona.rawValue).tag(persona)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    Text(personaConfig.activePersona.description)
-                        .font(.system(size: 11))
-                        .foregroundColor(DesignTokens.Monochrome.textSecondary)
-
-                    HStack {
-                        Text("Dry Wit Level: \(Int(personaConfig.humorLevel * 100))%")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                            .frame(width: 140, alignment: .leading)
-                        Slider(value: Binding(
-                            get: { personaConfig.humorLevel },
-                            set: { val in
-                                personaConfig.humorLevel = val
-                                PersonaManager.shared.updateConfiguration { $0.humorLevel = val }
-                            }
-                        ), in: 0.0...1.0, step: 0.05)
-                    }
-
-                    Toggle("Honest Probability Estimates before Risky Actions", isOn: Binding(
-                        get: { personaConfig.honestProbabilityEstimates },
-                        set: { val in
-                            personaConfig.honestProbabilityEstimates = val
-                            PersonaManager.shared.updateConfiguration { $0.honestProbabilityEstimates = val }
-                        }
-                    ))
-                    .font(.system(size: 12))
-
-                    Toggle("Polite Safety Warnings & Risk Cautions", isOn: Binding(
-                        get: { personaConfig.politeWarningsEnabled },
-                        set: { val in
-                            personaConfig.politeWarningsEnabled = val
-                            PersonaManager.shared.updateConfiguration { $0.politeWarningsEnabled = val }
-                        }
-                    ))
-                    .font(.system(size: 12))
-
-                    HStack(spacing: 10) {
-                        Text("Language Style:")
-                            .font(.system(size: 11, weight: .semibold))
-                        Picker("Language Style", selection: Binding(
-                            get: { personaConfig.languageStyle },
-                            set: { style in
-                                personaConfig.languageStyle = style
-                                PersonaManager.shared.updateConfiguration { $0.languageStyle = style }
-                            }
-                        )) {
-                            Text("Auto-Detect").tag("auto")
-                            Text("English").tag("en")
-                            Text("Hindi").tag("hi")
-                            Text("Hinglish").tag("hinglish")
-                        }
-                        .labelsHidden()
-                        .frame(width: 180)
-                        Spacer()
-                    }
-                }
-            }
-
-            settingsCard(title: "Routines & Protocols", icon: "flowchart.fill") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Trigger multi-step workflows with one phrase (e.g. \"Good morning\", \"Focus mode\", \"House party protocol\"). Consequential steps still require Notch Approval.")
-                        .font(.system(size: 11))
-                        .foregroundColor(DesignTokens.Monochrome.textMuted)
-
-                    if !routineStatusBanner.isEmpty {
-                        Text(routineStatusBanner)
-                            .font(.system(size: 11))
-                            .foregroundColor(.blue)
-                            .padding(8)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.blue.opacity(0.08))
-                            .cornerRadius(6)
-                    }
-
-                    ForEach(appState.configuredRoutines) { routine in
-                        HStack(alignment: .top, spacing: 10) {
-                            Toggle("", isOn: Binding(
-                                get: { routine.isEnabled },
-                                set: { enabled in
-                                    RoutineManager.shared.setRoutineEnabled(id: routine.id, enabled: enabled)
-                                    appState.refreshPhase1State()
-                                }
-                            ))
-                            .labelsHidden()
-                            .toggleStyle(SwitchToggleStyle(tint: Color.blue))
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(routine.name)
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                                    if routine.isBuiltIn {
-                                        Text("BUILT-IN")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundColor(.blue)
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 1)
-                                            .background(Color.blue.opacity(0.12))
-                                            .cornerRadius(4)
-                                    }
-                                    Text("\(routine.steps.count) steps")
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundColor(DesignTokens.Monochrome.textMuted)
-                                }
-                                Text("Triggers: \(routine.triggerPhrases.joined(separator: ", "))")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
-                            }
-
-                            Spacer()
-
-                            Button("Run") {
-                                routineStatusBanner = "Running \"\(routine.name)\"..."
-                                Task {
-                                    let res = await RoutineManager.shared.runRoutine(routine, onProgress: nil)
-                                    await MainActor.run {
-                                        routineStatusBanner = "\(routine.name): \(res.summary)"
-                                    }
-                                }
-                            }
-                            .font(.system(size: 11, weight: .semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.blue.opacity(0.15))
-                            .foregroundColor(.blue)
-                            .cornerRadius(5)
-                            .buttonStyle(.plain)
-
-                            if !routine.isBuiltIn {
-                                Button(action: {
-                                    RoutineManager.shared.deleteRoutine(id: routine.id)
-                                    appState.refreshPhase1State()
-                                }) {
-                                    Image(systemName: "trash")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.red.opacity(0.8))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(8)
-                        .background(DesignTokens.Monochrome.surfaceElevated)
-                        .cornerRadius(6)
-                    }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Create Custom Routine")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(DesignTokens.Monochrome.textSecondary)
-                        HStack(spacing: 8) {
-                            TextField("Name (e.g. Coding Setup)", text: $newRoutineName)
-                                .textFieldStyle(.roundedBorder)
-                            TextField("Trigger phrase (e.g. start coding)", text: $newRoutineTrigger)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        TextField("Steps (comma or newline separated prompts)", text: $newRoutineStepsText)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Save Custom Routine") {
-                            let name = newRoutineName.trimmingCharacters(in: .whitespacesAndNewlines)
-                            let trigger = newRoutineTrigger.trimmingCharacters(in: .whitespacesAndNewlines)
-                            let rawSteps = newRoutineStepsText
-                                .components(separatedBy: CharacterSet(charactersIn: "\n,"))
-                                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                                .filter { !$0.isEmpty }
-                            guard !name.isEmpty, !trigger.isEmpty, !rawSteps.isEmpty else { return }
-                            let steps = rawSteps.map { stepPrompt in
-                                VoiceRoutineStep(title: stepPrompt, actionPrompt: stepPrompt, permissionTier: .reversible)
-                            }
-                            let routine = VoiceRoutine(
-                                name: name,
-                                triggerPhrases: [trigger.lowercased()],
-                                summary: "Custom user workflow (\(steps.count) steps)",
-                                isEnabled: true,
-                                isBuiltIn: false,
-                                steps: steps
-                            )
-                            RoutineManager.shared.saveRoutine(routine)
-                            appState.refreshPhase1State()
-                            newRoutineName = ""
-                            newRoutineTrigger = ""
-                            newRoutineStepsText = ""
-                            routineStatusBanner = "Saved custom routine \"\(name)\"."
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(6)
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            settingsCard(title: "Long-Term Memory Viewer", icon: "brain") {
-                let longTermItems = appState.structuredMemories.filter { $0.scope == .longTerm }
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("Semantic long-term facts, preferences, projects, and past turns stored in encrypted local memory.")
-                            .font(.system(size: 11))
-                            .foregroundColor(DesignTokens.Monochrome.textMuted)
-                        Spacer()
-                        Button("Download Memory") {
-                            downloadMemoryToFile()
-                        }
-                        .font(.system(size: 11))
-                        Button("Clear Memory") {
-                            showingClearMemoryAlert = true
-                        }
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.red)
-                        .alert(isPresented: $showingClearMemoryAlert) {
-                            Alert(
-                                title: Text("Clear All Local Memory?"),
-                                message: Text("This permanently deletes all remembered personal facts, preferences, and locally recorded conversation history."),
-                                primaryButton: .destructive(Text("Clear Memory")) {
-                                    appState.clearAllMemoryAndHistory()
-                                    routineStatusBanner = "All local memory and conversation history cleared."
-                                    showNotice("All local memory and conversation history cleared.")
-                                },
-                                secondaryButton: .cancel()
-                            )
-                        }
-                    }
-
-                    HStack(spacing: 8) {
-                        Picker("Kind", selection: $newMemoryKind) {
-                            Text("Fact").tag(MemoryFactKind.fact)
-                            Text("Preference").tag(MemoryFactKind.preference)
-                            Text("Project").tag(MemoryFactKind.project)
-                            Text("Person").tag(MemoryFactKind.person)
-                        }
-                        .labelsHidden()
-                        .frame(width: 110)
-
-                        TextField("Say \"Remember this...\" or add a fact here", text: $newMemoryNote)
-                            .textFieldStyle(.roundedBorder)
-
-                        Button("Remember") {
-                            let clean = newMemoryNote.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !clean.isEmpty else { return }
-                            appState.rememberNoteFromUI(clean, kind: newMemoryKind)
-                            newMemoryNote = ""
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(6)
-                        .buttonStyle(.plain)
-                    }
-
-                    if longTermItems.isEmpty {
-                        Text("No long-term memories stored yet.")
-                            .font(.system(size: 11))
-                            .foregroundColor(DesignTokens.Monochrome.textMuted)
-                            .padding(.vertical, 6)
-                    } else {
-                        ForEach(longTermItems) { item in
-                            HStack(spacing: 8) {
-                                Text(item.kind.rawValue.uppercased())
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(.cyan)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(Color.cyan.opacity(0.14))
-                                    .cornerRadius(4)
-                                Text(item.content)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                                Spacer()
-                                Button(action: {
-                                    appState.forgetMemoryFromUI(id: item.id)
-                                }) {
-                                    Image(systemName: "trash")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.red.opacity(0.8))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .padding(8)
-                            .background(DesignTokens.Monochrome.surfaceElevated)
-                            .cornerRadius(6)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var proactiveSettingsTab: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            settingsCard(title: "Proactive Alert Rules Engine (Event Bus)", icon: "bell.badge.fill") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Configure rate-limited proactive alerts triggered by EventBus telemetry (battery, CPU/RAM, failed builds, calendar conflicts, important emails).")
-                        .font(.system(size: 11))
-                        .foregroundColor(DesignTokens.Monochrome.textMuted)
-
-                    ForEach(proactiveRules) { rule in
-                        HStack {
-                            Toggle("", isOn: Binding(
-                                get: { rule.isEnabled },
-                                set: { enabled in
-                                    ProactiveRulesEngine.shared.setRuleEnabled(id: rule.id, enabled: enabled)
-                                    proactiveRules = ProactiveRulesEngine.shared.allRules()
-                                }
-                            ))
-                            .labelsHidden()
-                            .toggleStyle(SwitchToggleStyle(tint: Color.blue))
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(rule.title)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
-                                Text("Threshold: \(Int(rule.threshold)) • Cooldown: \(Int(rule.cooldownSeconds))s")
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
-                            }
-                            Spacer()
-                        }
-                        .padding(7)
-                        .background(DesignTokens.Monochrome.surfaceElevated)
-                        .cornerRadius(6)
-                    }
-
-                    HStack(spacing: 10) {
-                        Button("Run Live Health Check") {
-                            Task {
-                                await ProactiveRulesEngine.shared.pollSystemHealthOnce()
-                                await MainActor.run { appState.refreshPhase2State() }
-                            }
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color.blue.opacity(0.16))
-                        .foregroundColor(.blue)
-                        .cornerRadius(6)
-                        .buttonStyle(.plain)
-
-                        if !appState.proactiveAlerts.isEmpty {
-                            Button("Dismiss All Alerts (\(appState.proactiveAlerts.count))") {
-                                ProactiveRulesEngine.shared.dismissAllAlerts()
-                                appState.refreshPhase2State()
-                            }
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.orange)
-                            .buttonStyle(.plain)
-                        }
-                        Spacer()
-                    }
-                }
-            }
-
-            settingsCard(title: "On-Device Local File & Knowledge Search (RAG)", icon: "doc.text.magnifyingglass") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Index user-chosen folders 100% locally with encrypted secret scrubbing and on-device embeddings (\(ragChunkCount) chunks indexed).")
-                        .font(.system(size: 11))
-                        .foregroundColor(DesignTokens.Monochrome.textMuted)
-
-                    HStack(spacing: 8) {
-                        TextField("Folder path (e.g. ~/Documents/Notes)", text: $ragFolderInput)
-                            .textFieldStyle(.roundedBorder)
-
-                        Button("Browse...") {
-                            let panel = NSOpenPanel()
-                            panel.canChooseDirectories = true
-                            panel.canChooseFiles = false
-                            panel.allowsMultipleSelection = false
-                            if panel.runModal() == .OK, let url = panel.url {
-                                ragFolderInput = url.path
-                            }
-                        }
-                        .font(.system(size: 11))
-
-                        Button("Add & Index") {
-                            appState.addAndIndexRAGFolder(path: ragFolderInput)
-                            ragFolderInput = ""
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                ragChunkCount = LocalKnowledgeStore.shared.totalIndexedChunks()
-                            }
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(6)
-                        .buttonStyle(.plain)
-                    }
-
-                    ForEach(appState.ragIndexedFolders, id: \.self) { folder in
-                        HStack {
-                            Image(systemName: "folder.fill")
-                                .font(.system(size: 11))
-                                .foregroundColor(.blue)
-                            Text(folder)
-                                .font(.system(size: 11, design: .monospaced))
-                                .lineLimit(1)
-                            Spacer()
-                            Button(action: {
-                                appState.removeRAGFolder(path: folder)
-                                ragChunkCount = LocalKnowledgeStore.shared.totalIndexedChunks()
-                            }) {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.red.opacity(0.8))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(7)
-                        .background(DesignTokens.Monochrome.surfaceElevated)
-                        .cornerRadius(6)
-                    }
-                }
-            }
-
-            settingsCard(title: "Smart Home (Home Assistant / HomeKit / MQTT)", icon: "homekit") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Credentials are stored strictly in macOS Keychain. Locks & security alarms always require a Notch Approval Card (CONSEQUENTIAL tier).")
-                        .font(.system(size: 11))
-                        .foregroundColor(DesignTokens.Monochrome.textMuted)
-
-                    HStack(spacing: 8) {
-                        TextField("Home Assistant URL", text: $haURLInput)
-                            .textFieldStyle(.roundedBorder)
-                        SecureField("HA Long-Lived Token (Keychain)", text: $haTokenInput)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    HStack(spacing: 8) {
-                        TextField("MQTT Host", text: $mqttHostInput)
-                            .textFieldStyle(.roundedBorder)
-                        SecureField("MQTT Password (Keychain)", text: $mqttPasswordInput)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    HStack(spacing: 10) {
-                        Button("Save Bridges to Keychain") {
-                            SmartHomeManager.shared.updateConfiguration { cfg in
-                                cfg.homeAssistantURL = haURLInput
-                                cfg.mqttHost = mqttHostInput
-                            }
-                            SmartHomeManager.shared.setCredentials(
-                                homeAssistantToken: haTokenInput,
-                                mqttPassword: mqttPasswordInput
-                            )
-                            smartHomeSavedBanner = "Smart Home endpoints updated and credentials saved securely in Keychain."
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(6)
-                        .buttonStyle(.plain)
-
-                        if !smartHomeSavedBanner.isEmpty {
-                            Text(smartHomeSavedBanner)
-                                .font(.system(size: 10))
-                                .foregroundColor(.green)
-                        }
-                    }
-
-                    ForEach(appState.smartHomeDevices) { dev in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(dev.name)
-                                        .font(.system(size: 11.5, weight: .semibold))
-                                    Text(dev.kind.isSecurityCritical ? "CONSEQUENTIAL" : "REVERSIBLE")
-                                        .font(.system(size: 8.5, weight: .bold))
-                                        .foregroundColor(dev.kind.isSecurityCritical ? .orange : .green)
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 1)
-                                        .background((dev.kind.isSecurityCritical ? Color.orange : Color.green).opacity(0.14))
-                                        .cornerRadius(4)
-                                }
-                                Text("\(dev.room) • \(dev.bridge.rawValue) • State: \(dev.state)")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
-                            }
-                            Spacer()
-                            Button(dev.kind == .lock ? (dev.state == "locked" ? "Unlock" : "Lock") : (dev.state == "on" ? "Off" : "On")) {
-                                let act: String
-                                if dev.kind == .lock {
-                                    act = dev.state == "locked" ? "unlock" : "lock"
-                                } else if dev.kind == .securitySystem {
-                                    act = dev.state == "armed" ? "disarm" : "arm"
-                                } else {
-                                    act = dev.state == "on" ? "off" : "on"
-                                }
-                                appState.controlSmartHomeDeviceFromUI(dev, action: act)
-                            }
-                            .font(.system(size: 10.5, weight: .semibold))
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 4)
-                            .background(DesignTokens.Monochrome.surfaceElevated)
-                            .cornerRadius(5)
-                            .buttonStyle(.plain)
-                        }
-                        .padding(7)
-                        .background(DesignTokens.Monochrome.surfaceElevated)
-                        .cornerRadius(6)
-                    }
-                }
-            }
-
-            settingsCard(title: "Apple Health & Wearables (Opt-In, On-Device)", icon: "heart.text.square.fill") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Toggle("Enable Opt-In On-Device Health Import & Trend Warnings", isOn: $healthOptInToggle)
-                        .font(.system(size: 12, weight: .semibold))
-                        .onChange(of: healthOptInToggle) { _, enabled in
-                            HealthInsightsManager.shared.setOptedIn(enabled)
-                            healthSummaryText = HealthInsightsManager.shared.computeDigest().summaryText
-                        }
-
-                    Text(healthSummaryText)
-                        .font(.system(size: 11))
-                        .foregroundColor(DesignTokens.Monochrome.textSecondary)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(DesignTokens.Monochrome.surfaceElevated)
-                        .cornerRadius(6)
-
-                    if healthOptInToggle {
-                        HStack(spacing: 8) {
-                            Button("Import Apple Health export.xml / JSON...") {
-                                let panel = NSOpenPanel()
-                                panel.canChooseFiles = true
-                                panel.canChooseDirectories = false
-                                if panel.runModal() == .OK, let url = panel.url {
-                                    let count = HealthInsightsManager.shared.importFromFileURL(url)
-                                    healthSummaryText = "Imported \(count) sample(s). " + HealthInsightsManager.shared.computeDigest().summaryText
-                                }
-                            }
-                            .font(.system(size: 11, weight: .semibold))
-
-                            TextField("Reminder (e.g. Hydrate)", text: $healthReminderTitle)
-                                .textFieldStyle(.roundedBorder)
-                            Button("Add Reminder") {
-                                let title = healthReminderTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                                guard !title.isEmpty else { return }
-                                _ = HealthInsightsManager.shared.addReminder(title: title, scheduleText: healthReminderSchedule)
-                                healthReminderTitle = ""
-                            }
-                            .font(.system(size: 11, weight: .semibold))
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var advancedLabSettingsTab: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            settingsCard(title: "Iron Legion Parallel Subagents", icon: "cpu.fill") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Spawn parallel Research, Code, and Summarize subagents tracked live in the Notch Agents tab.")
-                        .font(.system(size: 11))
-                        .foregroundColor(DesignTokens.Monochrome.textMuted)
-                    HStack(spacing: 8) {
-                        TextField("Mission goal...", text: $legionMissionInput)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Launch Iron Legion") {
-                            appState.launchIronLegionMission(goal: legionMissionInput)
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(6)
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            settingsCard(title: "Engineering Studio: CAD, Physics & 3D Hologram", icon: "cube.transparent") {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 10) {
-                        Picker("Shape", selection: $cadShapeChoice) {
-                            ForEach(CADShapeKind.allCases, id: \.self) { shape in
-                                Text(shape.rawValue.capitalized).tag(shape)
-                            }
-                        }
-                        .frame(width: 150)
-
-                        Picker("CAD Backend", selection: $cadBackendChoice) {
-                            ForEach(CADBackend.allCases, id: \.self) { backend in
-                                Text(backend.rawValue).tag(backend)
-                            }
-                        }
-                        .frame(width: 150)
-
-                        Button("Generate CAD & Hologram") {
-                            generatedCADResult = EngineeringStudioEngine.shared.generateCAD(
-                                shape: cadShapeChoice,
-                                backend: cadBackendChoice
-                            )
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(6)
-                        .buttonStyle(.plain)
-
-                        Button("Run Physics Sim") {
-                            let sim = EngineeringStudioEngine.shared.simulateProjectile(velocityMS: 24, angleDegrees: 45)
-                            physicsSummary = sim.summary
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-                    }
-
-                    HologramViewerView(htmlString: generatedCADResult.hologramHTML)
-                        .frame(height: 180)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.cyan.opacity(0.4), lineWidth: 1))
-
-                    Text(generatedCADResult.sourceCode)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(DesignTokens.Monochrome.textSecondary)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(DesignTokens.Monochrome.surfaceElevated)
-                        .cornerRadius(6)
-
-                    if !physicsSummary.isEmpty {
-                        Text(physicsSummary)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.cyan)
-                    }
-                }
-            }
-
-            settingsCard(title: "Cyber Defense & Lockdown Guardrail", icon: "shield.lefthalf.filled") {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(securityReportSummary)
-                        .font(.system(size: 11))
-                        .foregroundColor(DesignTokens.Monochrome.textSecondary)
-
-                    HStack(spacing: 10) {
-                        Button("Run Port & LAN Scan") {
-                            Task {
-                                let rep = await CyberDefenseMonitor.shared.runLiveAnomalyScan()
-                                await MainActor.run {
-                                    securityReportSummary = rep.summary
-                                    appState.latestSecurityReport = rep
-                                }
-                            }
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-
-                        Button("Emergency Lockdown (CONSEQUENTIAL)") {
-                            Task {
-                                _ = await ToolRegistry.shared.invoke(name: "security_lockdown", arguments: ["reason": "User UI trigger"])
-                            }
-                        }
-                        .font(.system(size: 11, weight: .bold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color.red.opacity(0.18))
-                        .foregroundColor(.red)
-                        .cornerRadius(6)
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            settingsCard(title: "Local Camera Vision (Opt-In, On-Device Only)", icon: "camera.metering.center.weighted") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(LocalCameraVisionService.privacyNotice)
-                        .font(.system(size: 11))
-                        .foregroundColor(DesignTokens.Monochrome.textMuted)
-
-                    Toggle("Enable Opt-In Camera Object Detection & Hand Gestures", isOn: $cameraOptIn)
-                        .font(.system(size: 12, weight: .semibold))
-                        .onChange(of: cameraOptIn) { _, enabled in
-                            LocalCameraVisionService.shared.setCameraOptedIn(enabled)
-                            faceRecOptIn = LocalCameraVisionService.shared.isFaceRecognitionEnabled()
-                        }
-
-                    if cameraOptIn {
-                        Toggle("Enable Local Face Recognition (Explicit Opt-In; Hashed Templates Only)", isOn: $faceRecOptIn)
-                            .font(.system(size: 11))
-                            .onChange(of: faceRecOptIn) { _, enabled in
-                                LocalCameraVisionService.shared.setFaceRecognitionEnabled(enabled)
-                            }
-                        Button("Wipe Stored Face Templates") {
-                            LocalCameraVisionService.shared.wipeFaceTemplates()
-                        }
-                        .font(.system(size: 11))
-                        .foregroundColor(.orange)
-                    }
-                }
-            }
-
-            settingsCard(title: "Phone Remote Companion & Approval Bridge", icon: "iphone.radiowaves.left.and.right") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Button("Generate Pairing PIN") {
-                            let challenge = PhoneCompanionService.shared.beginPairing()
-                            activePairingPIN = challenge.code
-                            companionStatusBanner = "Enter PIN \(challenge.code) to pair a companion device (expires in 5 min)."
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-
-                        if !activePairingPIN.isEmpty {
-                            Text("PIN: \(activePairingPIN)")
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                .foregroundColor(.blue)
-                        }
-                    }
-
-                    HStack(spacing: 8) {
-                        TextField("Device Name", text: $pairingDeviceNameInput)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 140)
-                        TextField("6-digit PIN", text: $companionPinInput)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 100)
-                        Button("Complete Pair") {
-                            if let paired = PhoneCompanionService.shared.completePairing(deviceName: pairingDeviceNameInput, code: companionPinInput) {
-                                companionStatusBanner = "Paired '\(paired.device.deviceName)' securely via Keychain."
-                                appState.refreshPhase3State()
-                            } else {
-                                companionStatusBanner = "Invalid or expired PIN."
-                            }
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-                    }
-
-                    if !companionStatusBanner.isEmpty {
-                        Text(companionStatusBanner)
-                            .font(.system(size: 10.5))
-                            .foregroundColor(.blue)
-                    }
-
-                    ForEach(appState.pairedCompanionDevices) { dev in
-                        HStack {
-                            Text(dev.deviceName)
-                                .font(.system(size: 11, weight: .semibold))
-                            Spacer()
-                            Button("Unpair") {
-                                PhoneCompanionService.shared.unpairDevice(id: dev.id)
-                                appState.refreshPhase3State()
-                            }
-                            .font(.system(size: 10.5))
-                            .foregroundColor(.red)
-                        }
-                    }
-                }
-            }
-
-            settingsCard(title: "External Plugin & MCP Loader", icon: "puzzlepiece.extension.fill") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        TextField("Plugin Tool Name (e.g. standup_note)", text: $newPluginName)
-                            .textFieldStyle(.roundedBorder)
-                        TextField("Reply Template ({{input}})", text: $newPluginReplyTemplate)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Install Plugin") {
-                            let cleanName = newPluginName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: " ", with: "_")
-                            guard !cleanName.isEmpty, !newPluginReplyTemplate.isEmpty else { return }
-                            let manifest = ExternalPluginManifest(
-                                id: "user_\(cleanName)",
-                                name: cleanName.capitalized,
-                                declarativeTools: [
-                                    DeclarativePluginToolSpec(
-                                        name: cleanName,
-                                        description: "User-defined declarative plugin tool",
-                                        permissionTier: "REVERSIBLE",
-                                        responseTemplate: newPluginReplyTemplate
-                                    )
-                                ]
-                            )
-                            Task {
-                                _ = await UserPluginManager.shared.installPlugin(manifest: manifest)
-                                await MainActor.run {
-                                    appState.refreshPhase3State()
-                                    newPluginName = ""
-                                    newPluginReplyTemplate = ""
-                                }
-                            }
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-                    }
-
-                    ForEach(appState.installedUserPlugins) { plugin in
-                        HStack {
-                            Text("\(plugin.name) (\(plugin.declarativeTools.count) tool(s))")
-                                .font(.system(size: 11))
-                            Spacer()
-                            Button("Uninstall") {
-                                UserPluginManager.shared.uninstallPlugin(id: plugin.id)
-                                appState.refreshPhase3State()
-                            }
-                            .font(.system(size: 10.5))
-                            .foregroundColor(.red)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private func connectLocalAIModels() {
         isConnectingLocalModels = true
         localModelStatusMessage = "Turning on Ollama daemon & starting local AI models..."

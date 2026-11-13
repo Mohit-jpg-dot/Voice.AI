@@ -137,6 +137,19 @@ High-impact actions are intercepted before any keystroke is sent. An approval ca
 
 ---
 
+## Set up your integrations
+
+Voice.AI includes built-in, guided setup wizards right inside the app for all supported integrations:
+- **Email (Gmail & Apple Mail)**: In-pill composer, draft sync, recipient chips, attachments, and 10s undo window.
+- **Slack**: Channel and DM messaging, thread replies, and presence.
+- **Discord**: Official bot integration for servers and threads with accessibility fallback for DMs.
+- **WhatsApp**: WhatsApp Desktop AX control and Business Cloud API.
+- **System & Dev Tools**: Spotify, Calendar, Reminders, Notes, Notion, and App Builder.
+
+For step-by-step connection instructions, permissions details, and one-time developer registration steps, read the [Integrations Setup Guide](set-up-guide.md).
+
+---
+
 ## AI modes
 
 | | Cloud API | Offline local | Google Search only |
@@ -240,10 +253,45 @@ The `auth` suite scores 37/41 offline because suites 3 and 5 need host disk acce
 Windows core suite (.NET):
 
 ```powershell
-dotnet run --project windows/tests/VoiceAI.Core.Tests/VoiceAI.Core.Tests.csproj --no-restore   # 114/114
+dotnet run --project windows/tests/VoiceAI.Core.Tests/VoiceAI.Core.Tests.csproj --no-restore   # 132/132
 ```
 
-Interactive computer-use test cases are in [real-test.md](real-test.md).
+Interactive computer-use, safe voice terminal, and memory test cases are in [real-test.md](real-test.md).
+
+---
+
+## Safe Voice Terminal Control & Persistent Local Memory
+
+- **Safe Voice Terminal (`CommandPolicy` + `SafeTerminalEngine` + `run_terminal_command`)**:
+  - Single `.consequential`-tier tool (`run_terminal_command(command, working_directory, purpose)`) backed by a real `ShellTokenizer` (no regex-only checks; rejects unparseable commands, `$(...)`, backticks, `$VAR` expansion, process substitution, and here-docs).
+  - Canonicalizes paths with `realpath` against user-configured working roots (`~/Desktop`, `~/Documents`, `~/Downloads`, `~/VoiceAI-Workspace` by default; additional folders can only be added manually in **Settings**, never by voice/LLM).
+  - **Never runs `rm`**: deletions show a dry run (item count & total size), move items to macOS Trash (`FileManager.trashItem`), and require a second spoken confirmation naming the item count for folders or >20 items.
+  - **Settings & defaults**: `Auto-run read-only commands` (`OFF`), `Command timeout` (`30s`), `Allowed working folders` (`Desktop`, `Documents`, `Downloads`, `VoiceAI-Workspace`), `Custom allowed CLI programs` (empty; always-blocked list cannot be overridden).
+  - **Approvals & sandbox**: Hash-bound to exact command + working directory, live-mic/UI-only (ignores TTS echo, active TTS playback, screen/file text, and 30s silence), scrubbed environment (`PATH`, `HOME`, `LANG` only), 64 KB output cap, `<UNTRUSTED_COMMAND_OUTPUT>` + `SecretRedactor`, and encrypted daily command audit logs (without output bodies).
+- **Persistent Local Memory (`MemoryStore` + `EncryptedChatHistoryManager`)**:
+  - Three layers: Working Context (active session, last commands, active folder), Session Memory (`ConversationSessionRecord` with auto-compacted `rollingSummary` after 12 turns), and Long-Term Facts (saved **only** with explicit user consent, never silently).
+  - Rejects instruction-like memories, scrubs secrets before storage, wraps retrieved memories in `<UNTRUSTED_MEMORY_CONTEXT>`, supports real deletion/forgetting, and persists active session ID across restarts.
+  - **Setting & default**: `Enable Persistent Local Memory` (`ON` by default; toggleable in **Settings**).
+- **Voice Email (`EmailService` + `VoiceEmailManager`)**:
+  - Ordered backend ladder: **Mail.app (Apple Events)** -> **Gmail API (OAuth in Keychain, minimal `gmail.send` + `gmail.readonly` scopes)** -> **IMAP/SMTP (Keychain)** -> **`mailto:` Draft fallback** (never reported as sent).
+  - Spoken email address normalization (`"dot"`, `"at"`, `"underscore"`, `"dash"`, digit words), macOS Contacts disambiguation (asks instead of guessing), persistent encrypted `EmailDraft`s, `.consequential` approval card for every send/reply/forward, configurable 10 s undo window, reply-all recipient-count warning, new/lookalike recipient warning, 5-in-10-minute rate limit, and `<UNTRUSTED_EMAIL_DATA>` prompt-injection boundary.
+  - Persistent encrypted `WatchRule`s (`thread` & `sender`, case-insensitive + Gmail `+tag` normalized) with 60 s background polling, exponential error backoff, quiet-hours support, and `"replied while you were away"` launch alerts (never auto-replies).
+  - *Note*: Live Mail.app/Gmail/Contacts permissions, acoustic TTS, and real delivery are pending manual QA in [real-test.md](real-test.md).
+- **Messaging Connectors (`SlackConnector`, `DiscordConnector`, `WhatsAppConnector`, `MessagingRouter`)**:
+  - **Full Voice Control in English, Hindi & Hinglish**:
+    - *"Send Rahul a WhatsApp saying I'll be late"* / *"Rahul ko WhatsApp pe bolo main late aaunga"*
+    - *"Message #general on Slack: standup in 5 minutes"* / *"Slack pe general channel me likho standup in 5 minutes"*
+    - *"Reply to the last message on Discord with 'sounds good'"* / *"Discord pe jawab do sounds good"*
+    - *"Read my unread Slack messages"* / *"Mere unread messages padho"*
+    - *"What did Priya say on WhatsApp?"* / *"Priya ne kya bheja?"*
+    - *"Open the dev-team channel"* / *"dev-team khol do"*
+    - *"React with a thumbs up"*, *"Set my Slack status to in a meeting"*, *"Search Slack for invoice"*
+  - **Official Connectors & ToS Compliance**:
+    - **Slack**: Official Web API via OAuth user token (`xoxp-...`) stored in Keychain `ai.voice.app.auth` (see [docs/setup-slack.md](docs/setup-slack.md)).
+    - **Discord**: Official Bot REST endpoints (no self-bots or user token automation); personal DMs fall back to driving Discord Desktop with approval (see [docs/setup-discord.md](docs/setup-discord.md)).
+    - **WhatsApp**: Official Business Cloud API (24h customer window detection & template guidance) + native WhatsApp Desktop backend (zero unofficial libraries, ban risk prevention) (see [docs/setup-whatsapp.md](docs/setup-whatsapp.md)).
+  - **Contact & Channel Resolution**: Fuzzy scoring across English, Devanagari Hindi, and Hinglish transliterations; spoken phone digit normalization; alias memory ("call him Bunty"); ambiguity disambiguation (*"Which Rahul? Rahul Sharma or Rahul Verma?"*).
+  - **Safety**: Mandatory `.consequential` Notch Approval Card on all sends; `<UNTRUSTED_MESSAGE_DATA>` isolation with prompt-injection neutralization (`[REDACTED_PROMPT_INJECTION]`); rate limits; spoken *"stop"* / *"ruko"* and Esc immediate cancellation.
 
 ---
 

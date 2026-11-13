@@ -6,6 +6,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Messaging Connectors (Slack, Discord, WhatsApp)] - 2026-11-13
+
+### Added
+- **First-Class Messaging Protocol & Architecture** (`MessagingConnector.swift`, `IMessagingConnector.cs`):
+  - Created platform-agnostic `MessagingConnector` protocol / interface for authentication, conversation listing, fuzzy contact resolution, message dispatch, thread replies, emoji reactions, unread message scanning, search, channel navigation, and status updates.
+  - Implemented `ContactResolver` with Hindi/English/Hinglish transliteration matching (e.g. "Rahul" / "राहुल" / "Rahool"), spoken phone digit normalization, custom alias memory caching ("call him Bunty"), and multi-candidate ambiguity detection (*"Which Rahul? Rahul Sharma or Rahul Verma?"*).
+  - Implemented `MessagingRouter` with local fast-path utterance routing ("Slack pe", "on Discord", "WhatsApp se"), fallback to last-used platform, and rate-limiting (max 10 sends/minute).
+- **Three Enterprise Connectors**:
+  - `SlackConnector`: Official Slack Web API using OAuth User Tokens (`chat:write`, `channels:read`, `im:read`, `search:read`, `reactions:write`, etc.) stored in Keychain `ai.voice.app.auth`.
+  - `DiscordConnector`: Official Discord Bot REST endpoints adhering strictly to Discord Terms of Service (zero self-bots/user tokens). Personal DMs fall back to driving Discord Desktop via macOS Accessibility with consequential approval.
+  - `WhatsAppConnector`: Dual backends combining (a) official WhatsApp Business Cloud API with 24-hour customer window error code 131047 detection and template guidance, and (b) native desktop app backend via `whatsapp://send?phone=...&text=...` deep-linking and Accessibility typing. Zero unofficial reverse-engineered libraries.
+- **Security & Safety Guardrails**:
+  - Consequential Notch Approval Card mandatory for every message send, post, or delete.
+  - Incoming message content wrapped and isolated in `<UNTRUSTED_MESSAGE_DATA>` with malicious prompt injection neutralization (`[REDACTED_PROMPT_INJECTION]`).
+  - Spoken *"stop"* / *"ruko"* and Esc cancel in-flight sends and UI loops immediately.
+- **UI & Settings Integration**:
+  - Added Messaging Connectors card in `SettingsView.swift` with token management, connection status, test-connection buttons, and scope explanations.
+- **Automated Verification**:
+  - Added `Suite 56` (14 new tests) in `Tests/core/test_core.swift` (547 total passing).
+  - Added new Hindi messaging utterances to `tests/hindi_commands/dataset.json` (131 total passing at 100% intent accuracy).
+  - Added `Suite 17` in `windows/tests/VoiceAI.Core.Tests/TestRunner.cs` (149 total passing).
+- **Documentation**:
+  - Added `docs/setup-slack.md`, `docs/setup-discord.md`, and `docs/setup-whatsapp.md`.
+  - Updated `real-test.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`, and `README.md`.
+
+---
+
+## [Voice Email (Draft, Send, Reply, Watch)] - 2026-11-12
+
+### Added
+- **Ordered Email Backends & Capability Probe** (`EmailService.swift`): Added `EmailService` protocol, `EmailAddressHelper` (spoken address normalization & Levenshtein lookalike check), `MailAppEmailBackend`, `GmailAPIEmailBackend` (Keychain OAuth, minimal scopes), `IMAPSMTPEmailBackend`, `MailtoDraftFallbackBackend` (draft-only, never reported as sent), and `MockEmailService`.
+- **Dictated Drafts, Replies, Approvals & Watch Rules** (`VoiceEmailManager.swift`, `ToolRegistry.swift`, `AutonomousAgentExecutor.swift`, `ProactiveRulesEngine.swift`, `AppState.swift`, `SettingsView.swift`):
+  - Persistent encrypted `EmailDraft`s and `WatchRule`s (survive restarts), macOS Contacts disambiguation, `.consequential` approval card for every send/reply/forward, 10 s configurable undo window, 5-in-10m rate limit, `<UNTRUSTED_EMAIL_DATA>` wrapping, 60 s watch polling with exponential backoff, and `"replied while you were away"` launch alerts (no auto-reply).
+- **Automated Tests & Windows Core Parity**: Added `Suite 54` in `Tests/core/test_core.swift` (`MockEmailService`), `VoiceEmailLogic.cs` + `Suite 16` in `windows/tests/VoiceAI.Core.Tests/TestRunner.cs`, and 11 live manual QA checks in `real-test.md` (live machine tests pending manual QA).
+
+---
+
+## [Safe Voice Terminal & Persistent Local Memory] - 2026-11-12
+
+### Added
+- **Safe Voice Terminal Control** (`CommandPolicy.swift`, `SafeTerminalEngine.swift`, `ToolRegistry.swift`, `AutonomousAgentExecutor.swift`, `SettingsView.swift`, Windows `CommandPolicy.cs`):
+  - Registered single `.consequential` tool `run_terminal_command(command, working_directory, purpose)` and routed legacy shell/system paths through `SafeTerminalEngine` or native telemetry (`LiveHostTelemetrySnapshot` / `FileManager`).
+  - Added real `ShellTokenizer` + `PathPolicy` (`realpath` canonicalization against `~/Desktop`, `~/Documents`, `~/Downloads`, `~/VoiceAI-Workspace` + manual Settings roots) + `CommandPolicy` (`BLOCKED`, `NEEDS_APPROVAL`, `READ_ONLY`) + command/directory SHA-256 `bindingHash`.
+  - Added `TrashDeletionPlanner` (Trash-only deletion with dry-run summary and second confirmation for folders or >20 items), `undoLastCommand()`, `SandboxedProcessRunner` (scrubbed `PATH`/`HOME`/`LANG`, `setpgid`/`kill(-pgid, SIGKILL)` on 30s timeout or `"stop"`/`"ruko"`, 64 KB cap), `<UNTRUSTED_COMMAND_OUTPUT>` + `SecretRedactor`, live-mic-only approval gating (rejecting TTS echo/screen/file text), and Keychain/AES-256 encrypted daily command audit logs (`EncryptedChatHistoryManager`).
+  - Added **Safe Voice Terminal & Sandbox** settings in `SettingsView.swift` (`Auto-run read-only commands` OFF by default, `Command Timeout` 30s default, manual `Add Folder...` picker, custom CLI allowlist).
+- **Persistent Local Memory & Session Continuity** (`MemoryStore.swift`, `EncryptedChatHistoryManager.swift`, `AppState.swift`, `AutonomousAgentExecutor.swift`, `SettingsView.swift`, Windows `SemanticMemoryStore.cs`):
+  - Enforced explicit-consent-only `.longTerm` fact storage (`explicitConsent: false` default on `recordConversationExchange`), `isInstructionLikeMemory` rejection, `SecretRedactor` scrubbing, `WorkingContextState`, rolling session summary compaction (`messages.count > 12`), `<UNTRUSTED_MEMORY_CONTEXT>` retrieval, active session ID persistence across restarts, and voice session commands (`start a new session`, `continue where we left off`, `open the session about ...`, `rename this session to ...`, `what commands did you run today`, `undo that`).
+- **Automated Tests**: Added `Suite 52` & `Suite 53` in `Tests/core/test_core.swift`, and `Suite 15` in `windows/tests/VoiceAI.Core.Tests/TestRunner.cs` (live mic audio/UI/real macOS filesystem & Finder Trash behavior remain pending manual QA in `real-test.md`).
+
+---
+
 ## [Phase 3 — Advanced] - 2026-11-11
 
 ### Added

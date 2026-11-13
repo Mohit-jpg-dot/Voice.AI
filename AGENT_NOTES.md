@@ -1,24 +1,64 @@
-# Voice.AI Architecture Notes (`self-heal/2026-11-11`)
+1. `AutonomousAgentExecutor` routes voice queries through firewall, conversation/24-7 controls, `RealWorldUtilityRouter`, `SandboxFileManagerEngine`, memory commands, `AgentToolParser`, and `LLMIntentOrchestrator` (which currently spawns `/bin/zsh -c` directly in `executeSafeShellCommand` without `CommandPolicy` or approval).
+2. `ToolRegistry` (`Sources/VoiceOSCore/Tools/ToolRegistry.swift`) registers MCP-compatible tools with `PermissionTier` (`.readOnly`, `.reversible`, `.consequential`); `ToolApprovalCoordinator` gates `.consequential` calls via `ToolApprovalPresenting` (Notch Approval Card) or `testResponder`.
+3. `SandboxFileManagerEngine` handles native `FileManager` create/read/move/copy/rename/delete/search with `ConversationSessionContext` undo stacks and fuzzy directory matching, currently without a configurable multi-root allowlist + `realpath` symlink/dotfile guard.
+4. `SecretRedactor` scrubs API keys, JWTs, bearer tokens, webhooks, and card numbers; `EncryptedChatHistoryManager` stores AES-256 Keychain-bound per-account `ConversationSessionRecord`s; `HistorySidebarWindowController` + `HistoryDrawerView` present the left-edge collapsible session sidebar and viewer.
+5. `MemoryStore` persists per-account AES-256 encrypted `StructuredMemoryItem`s (`.shortTerm`/`.longTerm`, `LocalEmbeddingProvider` 128-dim deterministic FNV-1a vectors, profile, export/clear), while `LocalChatMemoryManager` (`chat_history.json`) and `LocalMemoryManager` (`memory.json`) hold legacy caches and `VoiceOSDatabaseManager` stores SQLite insights/sessions.
+6. `SpeechPipelineEngine` and `TheVoiceAmbientListener` track active TTS (`isTTSActiveOrCoolingDown`, `recentSpokenTextCombined`, `bargeIn()`) to prevent TTS self-echo and background video audio from triggering commands.
+7. `Tests/core/test_core.swift` runs standalone async `assertTrue`/`assertEqual` suites via `./scripts/run-tests.sh core`; `windows/VoiceAI.Core` mirrors `ToolRegistry`, `SemanticMemoryStore`, `EncryptedHistoryManager`, and `SecretRedactor` with tests in `windows/tests/VoiceAI.Core.Tests/TestRunner.cs`.
+8. **Extension plan**: Replace direct `executeSafeShellCommand` with `CommandPolicy` + `run_terminal_command` (`.consequential` in `ToolRegistry`, voice+UI hash-bound approval, live-mic-only gate, Trash deletion, scrubbed env, 30s timeout, 64KB cap, `<UNTRUSTED_COMMAND_OUTPUT>`, encrypted audit log), audit/extend `MemoryStore` + `EncryptedChatHistoryManager` with working-context + rolling-summary + explicit-consent long-term memory + instruction-rejection, and port both pure-logic engines to `windows/VoiceAI.Core` + `TestRunner.cs`.
 
-Short reference summary recorded in Step 0 before running the real-world test plan.
+## Voice Email Architecture Notes
+10. `AppIntegrationEngine` (`emailClientMode: "auto" | "apple_mail" | "gmail"`) currently opens Mail.app compose drafts via AppleScript, falls back to Gmail web compose URLs, and runs `composeEmailWithBrain`; `CalendarMessagesService` (`summarizeRecentEmails`) and `ExtendedConnectorsAdapter` (`apple_mail`, `outlook`) only draft or open inbox UI without full thread/reply/watch support.
+11. `ToolRegistry` + `AgentToolSchema` declare permission-tiered tools (`.readOnly`, `.reversible`, `.consequential`); `ToolApprovalCoordinator` presents `.consequential` Notch Approval Cards and supports `setTestResponder` in tests.
+12. `EventBus` (`SystemEventKind`), `ProactiveRulesEngine` (`ProactiveRuleKind.importantEmail`, `ProactiveAlert` with `suggestedPrompt`), `MemoryStore`, and `EncryptedChatHistoryManager` (per-account Keychain-bound AES-256) provide the eventing, proactive alerting, and encrypted persistence layers.
+13. `LLMIntentOrchestrator` & `AutonomousAgentExecutor` route voice/chatbox utterances; `SpeechPipelineEngine` handles Kokoro/system TTS and `bargeIn()`.
+14. `EmailService` protocol + backend ladder (`MailAppEmailBackend`, `GmailAPIEmailBackend`, `IMAPSMTPEmailBackend`, `MailtoDraftFallbackBackend`, `MockEmailService`), `VoiceEmailManager` (spoken address normalization, Contacts disambiguation, persistent encrypted `EmailDraft`s, `.consequential` approval + configurable undo window, threading headers, new/lookalike recipient warnings, 5-in-10m rate limit, `<UNTRUSTED_EMAIL_DATA>` wrapping, `WatchRule` encrypted store + 60s backoff poller + offline away-reply alert), `ToolRegistry` email tools, `AutonomousAgentExecutor` voice routing, and `.NET` core parity in `windows/`.
 
-## Entry Point & Run Modes
-- **App Entry Point**: `Sources/VoiceOSApp/main.swift` launches Cocoa `NSApplication` and `AppDelegate` (`Sources/VoiceOSApp/App/AppDelegate.swift`), which manages the menu bar item, global hotkeys (`HotkeyManager`), Notch HUD (`NotchHUDWindowController`), and settings/setup windows.
-- **Headless / Test-Input Path**: Adding `--text "<command>"` (with optional `--dry-run`) in `Sources/VoiceOSApp/main.swift` so automated verification can exercise the exact `AutonomousAgentExecutor` pipeline without audio hardware or GUI windows.
+## Messaging Connectors Architecture Notes (Slack, Discord, WhatsApp)
+15. `ToolRegistry` + `AgentToolSchema` register MCP-compatible tools with permission tiers (`.readOnly`, `.reversible`, `.consequential`); all message send/reply/delete operations strictly bind to `.consequential` requiring user approval through `ToolApprovalCoordinator` (Notch Approval Card with voice/click confirmation).
+16. `EventBus` (`SystemEventKind` / `VoiceEvent`) provides typed asynchronous pub/sub messaging across macOS and Windows, scrubbing secrets and broadcasting connector status changes to the Notch HUD.
+17. `MessagingConnector` (Swift protocol & C# interface) provides a platform-agnostic contract for authentication, conversation listing, fuzzy contact/channel resolution, thread replies, emoji reactions, unread message fetching, search, navigation, status/presence, and read marking.
+18. `SlackConnector` interfaces with Slack's official Web API using an OAuth user token (`chat:write`, `channels:read`, `im:read`, `search:read`, `reactions:write`, etc.) stored in Keychain `ai.voice.app.auth`, supporting channels, direct messages, threads, unread fetching, and status.
+19. `DiscordConnector` operates via official Discord Bot REST & Gateway endpoints (respecting Discord ToS without self-bots/user tokens) for guilds/channels/threads, and gracefully falls back to driving Discord Desktop via `ComputerUseOperator` / macOS Accessibility with explicit approval for personal DMs.
+20. `WhatsAppConnector` combines dual backends behind one unified interface: (a) official WhatsApp Business Cloud API with phone-number-id, 24-hour customer care window, and template support, and (b) WhatsApp Desktop backend using `whatsapp://send?phone=...&text=...` deep-linking and Accessibility/UIA fallback.
+21. `MessagingRouter` identifies the intended service from English/Hindi/Hinglish cues ("Slack pe", "on Discord", "WhatsApp se"), remembers the last-used app context, and prompts disambiguation when targets or platforms are ambiguous.
+22. `ContactResolver` provides phonetic/Levenshtein fuzzy matching across English, Devanagari Hindi ("राहुल"/"Rahul"), and Hinglish nicknames, integrates with `MemoryStore` for persistent contact aliases ("call him Bunty"), and triggers Notch disambiguation cards if scores are close.
+23. Security & Anti-Prompt-Injection: All incoming message contents from Slack, Discord, and WhatsApp are treated as untrusted and wrapped in `<UNTRUSTED_MESSAGE_DATA>` tags with prompt injection stripping; secrets stay in Keychain (`ai.voice.app.auth`) / Windows Credential Manager; bulk sends (>3 recipients) enforce additional confirmation.
+24. Cross-platform parity & testability: `windows/VoiceAI.Core` implements matching interfaces (`IMessagingConnector`, `MessagingRouter`, `SlackConnector`, `DiscordConnector`, `WhatsAppConnector`), and all networking is abstracted behind mockable HTTP transports so unit test suites run fully offline without live network calls.
 
-## Pipeline Layers (`Sources/VoiceOSCore`)
-1. **Speech-to-Text (STT)**
-   - `Platform/SpeechPipelineEngine.swift` captures mic input via `AVAudioEngine` and routes to Apple `SFSpeechRecognizer`, `LocalWhisperProvider`, or `Platform/STTProviderEngine.swift` (`DeepgramStreamingClient` / `AudioDeviceManager`).
-   - `Platform/TheVoiceAmbientListener.swift` handles on-device ambient wake-word listening; `Platform/HotkeyManager.swift` detects `fn` hold-to-talk, `fn+D` clipboard dictation, `Control` agent mode, and `Esc` abort.
-2. **Command Parser & Intent Layer**
-   - `Platform/AutonomousAgentExecutor.swift` (`planAndExecute`) orchestrates fast interceptors in order: stop keywords -> `PersonaManager` safety guardrail -> `MemoryStore` ("remember"/"forget") -> `RoutineManager` -> `ModelRouter.switchModelByVoice` -> Phase 2 voice commands -> Circle-to-Ask VLM/OCR -> `Brain/MathEngine.swift` -> `AgentToolParser` -> `ComputerUseOperator` -> `Brain/LLMIntentOrchestrator.swift` -> `ModelRouter` chat or `GoogleSearchEngine`.
-   - `Platform/AgentToolSchema.swift` defines `AgentTool` and `AgentToolParser.parse(query:)` (supporting English, Devanagari Hindi, and Roman Hinglish via `Platform/HinglishTransliterator.swift`).
-3. **Action / Executor Layer**
-   - `Platform/AgentActionDispatcher.swift` executes parsed `AgentTool` intents via `Platform/AccessibilityControlEngine.swift`, `Platform/UniversalTextInserter.swift`, `Connectors/AppIntegrationEngine.swift`, and `ComputerUse/ComputerUseOperator.swift`.
-   - `Tools/ToolRegistry.swift`, `Tools/PermissionTier.swift` (`READ_ONLY`, `REVERSIBLE`, `CONSEQUENTIAL`), and `Platform/ToolApprovalCoordinator.swift` mediate confirmation prompts and fail-closed safety.
-4. **Text-to-Speech (TTS)**
-   - `Platform/SpeechPipelineEngine.swift` and `Platform/KokoroTTSEngine.swift` provide sentence-chunked streaming speech synthesis (`AVSpeechSynthesizer` / Kokoro-82M) with instant barge-in cancellation.
-
-## Storage & Diagnostics
-- Account-scoped encrypted storage (`Memory/EncryptedChatHistoryManager.swift`, `Memory/MemoryStore.swift`), Keychain secrets (`Brain/KeychainService.swift`), and `Security/SecretRedactor.swift`.
-
+## Email Composer & In-App Integration Setup Architecture Notes
+25. Reference design asset stored at `design-ref/pill-email-composer.png` (dark obsidian card, lighter gray header with Gmail icon + 'New Message', 'To' capsule chip, subject line, body area, blue pill Send button, soft blue outer glow and curved side wings).
+26. `NotchGlassIslandView` + `NotchShape` + `NotchHUDWindowController` + `NotchPanel`: Adaptive hardware notch island with spring animations (`NotchAnimations.openSpring`/`closeSpring`), expanding to `(520.0, 275.0)` for email composer while remaining non-activating until typing focus is requested.
+27. `IslandState` + `AppState`: Manages pill states (`.resting`, `.hoverExpanded`, `.voiceCompact`, `.selectionReview`); `currentEmailDraft` holds the active compose session, triggering the full composer view and blocking premature auto-collapse while active.
+28. `DesignTokens`: Defines `EmailComposer` design tokens for header background (`#2d2d30`), card body (`#202022`), recipient chip (`#222933` with `#8ab4f8` text), divider lines, and Google blue Send button (`#1671e2`).
+29. `ToolApprovalCoordinator`: In the email composer, the visual composer card itself serves as the explicit consequential approval surface; sends only execute on explicit Send button click, `Cmd+Return`, or confirmed live-mic voice input.
+30. `EmailService` + `VoiceEmailManager`: Provides multi-backend dispatch (`GmailAPIEmailBackend` via PKCE OAuth, `MailAppEmailBackend` via Apple Events, `IMAPSMTPEmailBackend`, `MailtoDraftFallbackBackend`, and `MockEmailService` for tests), 800ms debounced draft sync, 10s undo window, content-hash validation, and idempotency tracking.
+31. `SecretRedactor` + `KeychainService`: Secures tokens under `ai.voice.app.auth`, redacts secrets from logs, and wraps incoming/outgoing text in `<UNTRUSTED_EMAIL_DATA>` preventing prompt injection.
+32. `SpeechPipelineEngine`: Enforces speech barge-in and filters TTS self-playback so dictation and voice commands ("make it shorter", "send it", "undo") operate reliably without self-triggering.
+33. `AppIntegrationsGridView` + `AppsView`: Displays native and cloud app integrations; clicking any app icon launches the declarative `IntegrationSetupView` with live condition polling.
+34. `IntegrationSetupDescriptor` + `IntegrationSetupRegistry`: Declarative cross-platform model specifying connection methods (OAuth, Bot tokens, AX automation), step state machine (`.pending` -> `.inProgress` -> `.done` -> `.needsAttention`), auto-advancement, test actions, and disconnect handlers.
+35. `PermissionsDoctorView` + `docs/how-to-grant-permissions.md`: Deep-links into macOS System Settings (Accessibility, Automation, Contacts) reused by the setup steps.
+36. `set-up-guide.md`: Comprehensive user and developer setup documentation covering Google OAuth, Slack apps, Discord bots, WhatsApp Desktop/Cloud API, and permissions.
+37. `Tests/core/test_core.swift`: Comprehensive unit tests validating composer view model, chip editing, attachments, size enforcement, undo countdown, idempotency, and integration descriptors.
+38. `windows/VoiceAI.Core`: C# interfaces and models mirroring the platform-agnostic email composer view model, validation, and integration setup descriptors.
+39. Non-intrusive UI guarantee: No browser windows, Safari tabs, or Dock bounces appear during drafting or sending; all operations execute in-process or headless.
+- `Sources/VoiceOSCore/Connectors/MessagingConnector.swift` (new: protocol, models, `MessagingRouter`, `ContactResolver`, `<UNTRUSTED_MESSAGE_DATA>`)
+- `Sources/VoiceOSCore/Connectors/SlackConnector.swift` (new: Slack Web API connector)
+- `Sources/VoiceOSCore/Connectors/DiscordConnector.swift` (new: Discord Bot REST + Desktop AX fallback connector)
+- `Sources/VoiceOSCore/Connectors/WhatsAppConnector.swift` (new: WhatsApp Cloud API + Desktop AX backend)
+- `Sources/VoiceOSCore/Tools/ToolRegistry.swift` (register messaging tools at `.readOnly` and `.consequential`)
+- `Sources/VoiceOSCore/Platform/AgentToolSchema.swift` (add/extend messaging tool schemas and parsing)
+- `Sources/VoiceOSCore/Connectors/HinglishParser.swift` (fast-path voice patterns)
+- `Sources/VoiceOSCore/Platform/AutonomousAgentExecutor.swift` (fast-path execution & TTS readout with reply barge-in)
+- `Sources/VoiceOSCore/Brain/KeychainService.swift` (support `ai.voice.app.auth` namespace / messaging tokens)
+- `Sources/VoiceOSApp/Settings/SettingsView.swift` & `Sources/VoiceOSApp/UI/AppsView.swift` (messaging connector connection/test UI & status)
+- `Tests/core/test_core.swift` (Suite 56 for mocked messaging connectors, security injection defense, ambiguous disambiguation)
+- `tests/hindi_commands/dataset.json` & `Tests/hindi_commands/test_runner.swift` (new Hindi messaging utterances while keeping 125 passing)
+- `windows/VoiceAI.Core/Connectors/IMessagingConnector.cs` (new: C# interfaces & models)
+- `windows/VoiceAI.Core/Connectors/MessagingRouter.cs` (new: C# messaging router)
+- `windows/VoiceAI.Core/Connectors/SlackConnector.cs` (new: C# Slack connector)
+- `windows/VoiceAI.Core/Connectors/DiscordConnector.cs` (new: C# Discord connector)
+- `windows/VoiceAI.Core/Connectors/WhatsAppConnector.cs` (new: C# WhatsApp connector)
+- `windows/tests/VoiceAI.Core.Tests/TestRunner.cs` (Suite 17 for Windows messaging parity)
+- `docs/setup-slack.md`, `docs/setup-discord.md`, `docs/setup-whatsapp.md` (new guides)
+- `README.md`, `CHANGELOG.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`, `real-test.md` (documentation updates)

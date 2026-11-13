@@ -16,6 +16,8 @@ public enum SystemEventKind: Hashable, Codable, Sendable {
     case approvalRequested
     case approvalResolved
     case memoryUpdated
+    case emailDraftCreated
+    case calendarDraftCreated
     case custom(String)
 
     public var rawKey: String {
@@ -28,6 +30,8 @@ public enum SystemEventKind: Hashable, Codable, Sendable {
         case .approvalRequested: return "approval_requested"
         case .approvalResolved: return "approval_resolved"
         case .memoryUpdated: return "memory_updated"
+        case .emailDraftCreated: return "email_draft_created"
+        case .calendarDraftCreated: return "calendar_draft_created"
         case .custom(let name): return name
         }
     }

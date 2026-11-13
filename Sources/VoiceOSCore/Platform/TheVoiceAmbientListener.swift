@@ -109,6 +109,16 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
             UserDefaults.standard.set(newValue, forKey: alwaysOnKey)
             if newValue && !isTheVoiceModeEnabled {
                 isTheVoiceModeEnabled = true
+            } else if !newValue {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.pendingFreeTalkWorkItem?.cancel()
+                    self.pendingFreeTalkWorkItem = nil
+                    self.pendingFreeTalkTranscript = ""
+                    if self.isListening {
+                        self.restartTask()
+                    }
+                }
             }
         }
     }
@@ -118,9 +128,11 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
     /// Allows direct silence phrases ("shut up") without wake prefix when Notch pill is open or TTS is speaking.
     public var canAcceptDirectSilenceCommand: (() -> Bool)?
     /// Zero-lag hot capture callbacks (avoids CoreAudio teardown/cold-start when waking up)
+    public var onHotCaptureStarted: ((String) -> Void)?
     public var onHotCaptureLevels: (([CGFloat]) -> Void)?
     public var onHotCapturePartial: ((String) -> Void)?
     public var onHotCaptureCompleted: ((String) -> Void)?
+    private var hotCaptureStripWakePrefix: Bool = false
     
     private var lastTriggerTime: Date = .distantPast
     
@@ -289,8 +301,9 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
         let activePhrase = wakePhrase
         req.contextualStrings = [
             activePhrase, "hey \(activePhrase)", "ok \(activePhrase)",
-            "jarvis", "hey jarvis", "jarvis shut up", "bro", "hey bro",
-            "voice", "hey voice"
+            "jarvis", "hey jarvis", "jarvis shut up",
+            "bro", "hey bro", "bro mode", "turn on bro mode", "turn off bro mode",
+            "24/7 listening mode", "voice", "hey voice"
         ]
         return req
     }
@@ -422,7 +435,8 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
     public static func extractCommand(
         from transcript: String,
         wakePhrase: String,
-        allowCasualShortTriggers: Bool = true
+        allowCasualShortTriggers: Bool = true,
+        allowBroTriggers: Bool = true
     ) -> String? {
         let clean = transcript.replacingOccurrences(of: "[,.!?।]", with: " ", options: .regularExpression)
                               .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
@@ -452,11 +466,13 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
                 patterns.append(#"\b(?:hey|hi|ok|okay|hello|the|arey)\s+voice\b"#)
             }
 
-            // Casual "Hey bro <cmd>", standalone "bro" / "hey bro", or leading "bro <cmd>" without matching trailing "... bro"
-            patterns.append(#"^(?:(?:hey|hi|yo|ok|okay|arey)\s+)?bro\b"#)
-            patterns.append(#"\b(?:hey|hi|yo|ok|okay|arey)\s+bro\b"#)
-        } else {
-            // Even while YouTube/music plays, explicit "Hey bro <cmd>" still wakes Voice.AI cleanly
+            if allowBroTriggers {
+                // Casual "Hey bro <cmd>", standalone "bro" / "hey bro", or leading "bro <cmd>" without matching trailing "... bro"
+                patterns.append(#"^(?:(?:hey|hi|yo|ok|okay|arey)\s+)?bro\b"#)
+                patterns.append(#"\b(?:hey|hi|yo|ok|okay|arey)\s+bro\b"#)
+            }
+        } else if allowBroTriggers {
+            // Even while YouTube/music plays, explicit "Hey bro <cmd>" still wakes Voice.AI cleanly when Bro mode is active
             patterns.append(#"\b(?:hey|hi|yo|ok|okay|arey)\s+bro\b"#)
         }
 
@@ -530,19 +546,26 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
     }
 
     /// Starts active command capture on the ALREADY-RUNNING AVAudioEngine (zero CoreAudio teardown delay!).
-    public func beginHotFollowUpCapture() {
+    public func beginHotFollowUpCapture(initialTranscript: String = "", keepActiveTask: Bool = false, stripWakePrefix: Bool = false) {
         guard isListening else {
             startAmbientListening()
             return
         }
         isCapturingHotCommand = true
+        hotCaptureStripWakePrefix = stripWakePrefix
         hotCaptureStartedAt = Date()
-        hotCaptureTranscript = ""
+        hotCaptureTranscript = initialTranscript
         pendingWakeWorkItem?.cancel()
         pendingWakeWorkItem = nil
         pendingFreeTalkWorkItem?.cancel()
         pendingFreeTalkWorkItem = nil
-        restartTask()
+        if !keepActiveTask {
+            restartTask()
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.onHotCaptureStarted?(initialTranscript)
+        }
 
         hotCaptureTimeoutWorkItem?.cancel()
         let timeoutWork = DispatchWorkItem { [weak self] in
@@ -550,6 +573,15 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
         }
         hotCaptureTimeoutWorkItem = timeoutWork
         DispatchQueue.main.asyncAfter(deadline: .now() + 10.0, execute: timeoutWork)
+
+        if !initialTranscript.isEmpty {
+            hotCaptureSilenceWorkItem?.cancel()
+            let silenceWork = DispatchWorkItem { [weak self] in
+                self?.finalizeHotFollowUpCapture()
+            }
+            hotCaptureSilenceWorkItem = silenceWork
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: silenceWork)
+        }
     }
 
     public func cancelHotFollowUpCapture() {
@@ -654,7 +686,14 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
         let isTTSCoolingDown = SpeechPipelineEngine.shared.isTTSActiveOrCoolingDown
 
         if isCapturingHotCommand {
-            let cleanLive = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            var cleanLive = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            if hotCaptureStripWakePrefix {
+                if let extracted = Self.extractCommand(from: cleanLive, wakePhrase: wakePhrase, allowCasualShortTriggers: true, allowBroTriggers: isAlwaysOn24x7Mode) {
+                    cleanLive = extracted
+                } else {
+                    cleanLive = Self.cleanContinuousUtterance(cleanLive)
+                }
+            }
             if !cleanLive.isEmpty {
                 // Reject residual TTS echo arriving in the first ~300ms after barge-in/TTS stop
                 if (isTTSCoolingDown || Date().timeIntervalSince(hotCaptureStartedAt) < 0.35),
@@ -706,7 +745,8 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
         let extractedWake = Self.extractCommand(
             from: transcript,
             wakePhrase: wakePhrase,
-            allowCasualShortTriggers: !suppressBackgroundMedia
+            allowCasualShortTriggers: !suppressBackgroundMedia,
+            allowBroTriggers: isAlwaysOn24x7Mode
         )
         let directSilence = (extractedWake == nil && canAcceptDirectSilenceCommand?() == true && AppState.isSilenceAndCollapseCommand(transcript))
 
@@ -796,7 +836,13 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
             return
         }
 
-        // Non-empty command is growing after the wake word: only reschedule if trailing text actually changed
+        // Non-empty command is growing after the wake word: open Listening UI immediately and capture full utterance!
+        if !termAfter.cleaned.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            SpeechPipelineEngine.shared.bargeIn()
+            ComputerUseOperator.shared.stopActiveRun()
+            beginHotFollowUpCapture(initialTranscript: trimmedAfter, keepActiveTask: true, stripWakePrefix: true)
+            return
+        }
         if !pendingWakeWasEmpty && pendingWakeTranscript == trimmedAfter && pendingWakeWorkItem != nil {
             return
         }
@@ -821,7 +867,7 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
         guard wordCount >= 2 || isActionableShort || isFinal || term.terminated else { return }
         guard Date().timeIntervalSince(lastTriggerTime) > 0.65 else { return }
 
-        if isFinal || term.terminated {
+        if term.terminated {
             pendingFreeTalkWorkItem?.cancel()
             pendingFreeTalkWorkItem = nil
             pendingFreeTalkTranscript = ""
@@ -833,33 +879,14 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
             return
         }
 
-        if pendingFreeTalkTranscript == cleaned && pendingFreeTalkWorkItem != nil {
-            return
+        // Enter minimalist Listening Notch immediately so Voice.AI listens to the full command before answering
+        if !Self.shouldSuppressWakeAsSelfEcho(
+            transcript: cleaned,
+            spokenNormalized: SpeechPipelineEngine.shared.recentSpokenTextCombined,
+            isTTSActiveOrCoolingDown: SpeechPipelineEngine.shared.isTTSActiveOrCoolingDown
+        ) {
+            beginHotFollowUpCapture(initialTranscript: cleaned, keepActiveTask: true, stripWakePrefix: true)
         }
-        pendingFreeTalkTranscript = cleaned
-        pendingFreeTalkWorkItem?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self = self, self.isAlwaysOn24x7Mode else { return }
-            guard !Self.shouldSuppressWakeAsSelfEcho(
-                transcript: cleaned,
-                spokenNormalized: SpeechPipelineEngine.shared.recentSpokenTextCombined,
-                isTTSActiveOrCoolingDown: SpeechPipelineEngine.shared.isTTSActiveOrCoolingDown
-            ) else { return }
-            if Self.isExternalComputerMediaPlaying() && !ComputerAudioListenerService.shared.isEnabled &&
-               ComputerAudioListenerService.parseListeningToggleCommand(cleaned) == nil {
-                return
-            }
-            guard Date().timeIntervalSince(self.lastTriggerTime) > 0.65 else { return }
-            self.lastTriggerTime = Date()
-            self.pendingFreeTalkWorkItem = nil
-            self.pendingFreeTalkTranscript = ""
-            self.restartTask()
-            DispatchQueue.main.async { [weak self] in
-                self?.onWakeWordTriggered?(cleaned)
-            }
-        }
-        pendingFreeTalkWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: work)
     }
     
     private func restartTask() {

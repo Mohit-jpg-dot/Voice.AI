@@ -23,8 +23,77 @@ public struct NotchGlassIslandView: View {
         self.appState = appState
     }
     
+    private var currentEmailDraft: EmailDraft? {
+        if let active = appState.activeEmailDraft {
+            return active
+        }
+        if case .emailDraftExpanded(let draft) = appState.islandState {
+            return draft
+        }
+        if let action = appState.currentAction, isEmailAction(action) {
+            let to = action.payload["to"] ?? action.payload["recipient"] ?? ""
+            let subj = action.payload["subject"] ?? action.title.replacingOccurrences(of: "Send email to ", with: "")
+            let body = action.payload["body"] ?? action.subtitle ?? ""
+            return EmailDraft(
+                to: to.isEmpty ? [] : to.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) },
+                subject: subj,
+                body: body
+            )
+        }
+        return nil
+    }
+
+    private var currentEventDraft: CalendarEventDraft? {
+        if let active = appState.activeEventDraft {
+            return active
+        }
+        if case .calendarEventExpanded(let draft) = appState.islandState {
+            return draft
+        }
+        if let action = appState.currentAction, isCalendarOrReminderAction(action) {
+            let rawTitle = action.payload["title"] ?? action.title
+            let title = rawTitle
+                .replacingOccurrences(of: "Schedule ", with: "")
+                .replacingOccurrences(of: "Add reminder: ", with: "")
+                .replacingOccurrences(of: "Create event: ", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let isRem = action.appName.lowercased().contains("reminder") || (action.payload["tool_name"] ?? "").contains("reminder") || action.title.lowercased().contains("reminder")
+            let isMeet = action.title.lowercased().contains("meet") || (action.payload["platform"] ?? "").lowercased().contains("meet") || (action.payload["type"] ?? "").contains("meet")
+            let type: EventDraftType = isRem ? .reminder : (isMeet ? .googleMeet : .calendar)
+            let dateStr = action.payload["date"] ?? action.payload["date_string"] ?? "Thursday"
+            let timeStr = action.payload["time"] ?? action.payload["time_string"] ?? "2:00 – 2:30 PM"
+            let participant = action.payload["participant"] ?? action.payload["recipient"] ?? "david@company.com"
+            let platform = isRem ? "Reminders" : (type == .googleMeet ? "Google Meet" : "Apple Calendar")
+            return CalendarEventDraft(
+                title: title.isEmpty ? (isRem ? "New Reminder" : "Design review with David") : title,
+                type: type,
+                dateString: dateStr,
+                timeString: timeStr,
+                participants: [participant],
+                platform: platform,
+                isReminder: isRem
+            )
+        }
+        return nil
+    }
+
+    private func isEmailAction(_ action: AgentAction) -> Bool {
+        let name = (action.payload["tool_name"] ?? action.appName).lowercased()
+        let title = action.title.lowercased()
+        return name.contains("email") || name.contains("mail") || title.contains("email") || action.payload["to"] != nil || action.payload["recipient"] != nil
+    }
+
+    private func isCalendarOrReminderAction(_ action: AgentAction) -> Bool {
+        let name = (action.payload["tool_name"] ?? action.appName).lowercased()
+        let title = action.title.lowercased()
+        return name.contains("calendar") || name.contains("reminder") || name.contains("meet") ||
+               title.contains("calendar") || title.contains("meeting") || title.contains("reminder") ||
+               action.payload["date_string"] != nil || action.payload["time_string"] != nil
+    }
+
     private var isOpen: Bool {
         if appState.isMediaExpanded { return true }
+        if currentEmailDraft != nil || currentEventDraft != nil { return true }
         switch appState.islandState {
         case .resting, .voiceCompact, .circleToAskActive:
             return false
@@ -65,6 +134,10 @@ public struct NotchGlassIslandView: View {
             return (physicalNotchWidth, physicalNotchHeight)
         }
         
+        if currentEmailDraft != nil || currentEventDraft != nil {
+            return (520.0, 275.0)
+        }
+
         // Compact Pill Mode (matches reference Image 1 & 10)
         if isCompactMode || appState.isCompactResponseMode {
             return calculateAdaptiveNotchSize(for: compactDisplayText)
@@ -243,6 +316,16 @@ public struct NotchGlassIslandView: View {
                     }
                 }
             )
+            .overlay(alignment: .topLeading) {
+                if currentEmailDraft != nil || currentEventDraft != nil {
+                    Image(systemName: "globe")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.85))
+                        .padding(.leading, 24)
+                        .padding(.top, max(physicalNotchHeight * 0.28, 9.0))
+                        .transition(.opacity)
+                }
+            }
             .shadow(
                 color: (isOpen || appState.isCurrentlyListening || isHovering) ? Color.black.opacity(0.65) : Color.clear,
                 radius: (isOpen || appState.isCurrentlyListening) ? 8 : 4,
@@ -316,6 +399,7 @@ public struct NotchGlassIslandView: View {
                 isFieldFocused = false
                 isHovering = false
                 hoverTask?.cancel()
+                isCompactMode = true
             }
         }
     }
@@ -1113,9 +1197,34 @@ public struct NotchGlassIslandView: View {
     // MARK: - Open Notch Content (Dynamically sized)
     private var openNotchContent: some View {
         VStack(spacing: 8) {
-            // 1. Triptych Header Row
-            triptychHeader
-                .frame(height: 32)
+            if let draft = currentEmailDraft {
+                EmailDraftCardView(
+                    appState: appState,
+                    draft: draft,
+                    onSend: { updatedDraft in
+                        appState.sendActiveEmailDraft(customDraft: updatedDraft)
+                    },
+                    onDismiss: {
+                        appState.dismissEmailDraft()
+                    }
+                )
+                .transition(.opacity)
+            } else if let eventDraft = currentEventDraft {
+                CalendarEventDraftCardView(
+                    appState: appState,
+                    draft: eventDraft,
+                    onSave: { updatedDraft in
+                        appState.saveActiveCalendarEventDraft(customDraft: updatedDraft)
+                    },
+                    onDismiss: {
+                        appState.dismissCalendarEventDraft()
+                    }
+                )
+                .transition(.opacity)
+            } else {
+                // 1. Triptych Header Row
+                triptychHeader
+                    .frame(height: 32)
 
             // 2. Now Playing Mini Bar (if playing Spotify, YouTube, or Apple Music)
             if appState.isNotchMediaDisplayEnabled, let media = appState.currentMedia {
@@ -1136,6 +1245,7 @@ public struct NotchGlassIslandView: View {
                 }
             }
             .transition(NotchAnimations.contentTransition)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, max(physicalNotchHeight + 4.0, 36.0))
@@ -1224,8 +1334,34 @@ public struct NotchGlassIslandView: View {
                     .frame(height: 220)
                     .transition(.opacity)
             } else if let action = appState.currentAction {
-                actionApprovalCard(action)
+                if isEmailAction(action), let draft = currentEmailDraft {
+                    EmailDraftCardView(
+                        appState: appState,
+                        draft: draft,
+                        onSend: { updatedDraft in
+                            appState.sendActiveEmailDraft(customDraft: updatedDraft)
+                        },
+                        onDismiss: {
+                            appState.dismissEmailDraft()
+                        }
+                    )
                     .transition(.opacity)
+                } else if isCalendarOrReminderAction(action), let draft = currentEventDraft {
+                    CalendarEventDraftCardView(
+                        appState: appState,
+                        draft: draft,
+                        onSave: { updatedDraft in
+                            appState.saveActiveCalendarEventDraft(customDraft: updatedDraft)
+                        },
+                        onDismiss: {
+                            appState.dismissCalendarEventDraft()
+                        }
+                    )
+                    .transition(.opacity)
+                } else {
+                    actionApprovalCard(action)
+                        .transition(.opacity)
+                }
             } else {
                 VStack(spacing: 8) {
                     // Top Input Bar with Key Focus & Action Glyphs

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 import VoiceOSCore
 
 public struct EmailDraftCardView: View {
@@ -11,7 +12,10 @@ public struct EmailDraftCardView: View {
     @FocusState private var isSubjectFocused: Bool
     @FocusState private var isBodyFocused: Bool
     @FocusState private var isToInputFocused: Bool
-    @State private var isAttachingFile: Bool = false
+    @FocusState private var isFromInputFocused: Bool
+    @State private var isDropTargeted: Bool = false
+    @State private var isHoveringCard: Bool = false
+    @State private var autoCollapseTimer: Timer? = nil
 
     public init(
         appState: AppState,
@@ -68,7 +72,10 @@ public struct EmailDraftCardView: View {
                     Spacer()
 
                     // Discard / Close Button
-                    Button(action: onDismiss) {
+                    Button(action: {
+                        cancelAutoCollapseTimer()
+                        onDismiss()
+                    }) {
                         Image(systemName: "xmark")
                             .font(.system(size: 9.5, weight: .bold))
                             .foregroundColor(Color.white.opacity(0.40))
@@ -80,7 +87,7 @@ public struct EmailDraftCardView: View {
                     .help("Close composer (draft is saved)")
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 9.5)
+                .padding(.vertical, 8.5)
                 .background(DesignTokens.EmailComposer.headerBackground)
 
                 // Divider below Header
@@ -88,24 +95,49 @@ public struct EmailDraftCardView: View {
                     .fill(DesignTokens.EmailComposer.dividerLine)
                     .frame(height: 0.8)
 
-                // MARK: - "To" Line with Recipient Chips
+                // MARK: - "From" Sender Row (Manual Sender Editing)
+                HStack(spacing: 8) {
+                    Text("From")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.45))
+                        .frame(width: 32, alignment: .leading)
+
+                    TextField("sender@company.com (optional)", text: $viewModel.fromAddress)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12.0))
+                        .foregroundColor(.white.opacity(0.85))
+                        .focused($isFromInputFocused)
+                        .onChange(of: viewModel.fromAddress) { _, _ in
+                            resetAutoCollapseTimer()
+                            viewModel.scheduleDraftSync()
+                        }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 5)
+
+                Rectangle()
+                    .fill(DesignTokens.EmailComposer.dividerLine)
+                    .frame(height: 0.6)
+
+                // MARK: - "To" Line with Recipient Chips & Manual Text Field
                 VStack(spacing: 0) {
                     HStack(spacing: 8) {
                         Text("To")
                             .font(.system(size: 13, weight: .medium))
                             .foregroundColor(Color.white.opacity(0.50))
-                            .frame(width: 26, alignment: .leading)
+                            .frame(width: 32, alignment: .leading)
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
                                 ForEach(Array(viewModel.toChips.enumerated()), id: \.offset) { idx, chip in
                                     HStack(spacing: 4) {
                                         Text(chip)
-                                            .font(.system(size: 12.5, weight: .medium))
+                                            .font(.system(size: 12.0, weight: .medium))
                                             .foregroundColor(DesignTokens.EmailComposer.recipientChipText)
 
                                         Button(action: {
                                             viewModel.removeRecipient(at: idx)
+                                            resetAutoCollapseTimer()
                                         }) {
                                             Image(systemName: "xmark")
                                                 .font(.system(size: 8, weight: .bold))
@@ -113,8 +145,8 @@ public struct EmailDraftCardView: View {
                                         }
                                         .buttonStyle(.plain)
                                     }
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 3.5)
                                     .background(DesignTokens.EmailComposer.recipientChipBg)
                                     .clipShape(Capsule())
                                     .overlay(
@@ -122,14 +154,21 @@ public struct EmailDraftCardView: View {
                                     )
                                 }
 
-                                TextField("", text: $viewModel.toInput)
+                                TextField(viewModel.toChips.isEmpty ? "recipient@company.com" : "+ Add recipient", text: $viewModel.toInput)
                                     .textFieldStyle(.plain)
-                                    .font(.system(size: 12.5))
+                                    .font(.system(size: 12.0))
                                     .foregroundColor(.white)
-                                    .frame(minWidth: 80)
+                                    .frame(minWidth: 110)
                                     .focused($isToInputFocused)
+                                    .onChange(of: viewModel.toInput) { _, _ in
+                                        resetAutoCollapseTimer()
+                                    }
                                     .onSubmit {
-                                        viewModel.addRecipient(viewModel.toInput)
+                                        let input = viewModel.toInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if !input.isEmpty {
+                                            viewModel.addRecipient(input)
+                                        }
+                                        resetAutoCollapseTimer()
                                     }
                             }
                         }
@@ -140,6 +179,7 @@ public struct EmailDraftCardView: View {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 viewModel.isCcBccVisible.toggle()
                             }
+                            resetAutoCollapseTimer()
                         }) {
                             Text(viewModel.isCcBccVisible ? "Hide Cc" : "Cc/Bcc")
                                 .font(.system(size: 11, weight: .medium))
@@ -148,7 +188,7 @@ public struct EmailDraftCardView: View {
                         .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 6.5)
 
                     // Optional CC / BCC Rows
                     if viewModel.isCcBccVisible {
@@ -160,7 +200,7 @@ public struct EmailDraftCardView: View {
                             Text("Cc")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(Color.white.opacity(0.50))
-                                .frame(width: 26, alignment: .leading)
+                                .frame(width: 32, alignment: .leading)
 
                             ForEach(Array(viewModel.ccChips.enumerated()), id: \.offset) { idx, chip in
                                 Text(chip)
@@ -187,15 +227,16 @@ public struct EmailDraftCardView: View {
                 HStack(spacing: 8) {
                     TextField("Subject", text: $viewModel.subject)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 14, weight: .medium, design: .default))
+                        .font(.system(size: 13.5, weight: .medium, design: .default))
                         .foregroundColor(.white)
                         .focused($isSubjectFocused)
                         .onChange(of: viewModel.subject) { _, _ in
+                            resetAutoCollapseTimer()
                             viewModel.scheduleDraftSync()
                         }
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 8.5)
+                .padding(.vertical, 7)
 
                 // Divider below Subject
                 Rectangle()
@@ -206,7 +247,7 @@ public struct EmailDraftCardView: View {
                 ZStack(alignment: .topLeading) {
                     if viewModel.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text("Write your message here...")
-                            .font(.system(size: 13.5, weight: .regular))
+                            .font(.system(size: 13, weight: .regular))
                             .foregroundColor(Color.white.opacity(0.28))
                             .padding(.top, 7)
                             .padding(.leading, 4)
@@ -214,12 +255,13 @@ public struct EmailDraftCardView: View {
 
                     TextEditor(text: $viewModel.body)
                         .scrollContentBackground(.hidden)
-                        .font(.system(size: 13.5, weight: .regular))
+                        .font(.system(size: 13, weight: .regular))
                         .foregroundColor(Color.white.opacity(0.92))
                         .lineSpacing(3.5)
-                        .frame(minHeight: 70, maxHeight: 110)
+                        .frame(minHeight: 80, maxHeight: 130)
                         .focused($isBodyFocused)
                         .onChange(of: viewModel.body) { _, _ in
+                            resetAutoCollapseTimer()
                             viewModel.scheduleDraftSync()
                         }
                 }
@@ -238,6 +280,7 @@ public struct EmailDraftCardView: View {
                                         .font(.system(size: 11, weight: .medium))
                                     Button(action: {
                                         viewModel.removeAttachment(at: idx)
+                                        resetAutoCollapseTimer()
                                     }) {
                                         Image(systemName: "xmark")
                                             .font(.system(size: 8, weight: .bold))
@@ -262,40 +305,26 @@ public struct EmailDraftCardView: View {
                     Button(action: {
                         presentAttachmentPicker()
                     }) {
-                        Image(systemName: "paperclip")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(Color.white.opacity(0.50))
-                            .padding(6)
-                            .background(Color.white.opacity(0.06))
-                            .clipShape(Circle())
+                        HStack(spacing: 4) {
+                            Image(systemName: "paperclip")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(Color.white.opacity(0.60))
+                        }
+                        .padding(6)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .help("Attach files (up to 25 MB)")
+                    .help("Attach files (or drag and drop into card)")
 
                     // Live Status line
                     Text(viewModel.status.displayText)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(statusColor)
 
-                    // Undo Button when in undo window
-                    if case .undoWindow = viewModel.status {
-                        Button(action: {
-                            viewModel.cancelSend()
-                        }) {
-                            Text("Undo")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 3)
-                                .background(Color.red.opacity(0.80))
-                                .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-
                     Spacer()
 
-                    // Blue Send Capsule Button (exactly matches reference screenshot)
+                    // Blue Send Capsule Button
                     Button(action: {
                         triggerSend()
                     }) {
@@ -305,11 +334,11 @@ public struct EmailDraftCardView: View {
                                     .scaleEffect(0.55)
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             }
-                            Text("Send")
+                            Text(viewModel.status == .sending ? "Sending..." : "Send")
                                 .font(.system(size: 13.5, weight: .semibold, design: .default))
                                 .foregroundColor(.white)
                         }
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, 22)
                         .padding(.vertical, 7)
                         .background(DesignTokens.EmailComposer.sendButtonBg)
                         .clipShape(Capsule())
@@ -320,24 +349,46 @@ public struct EmailDraftCardView: View {
                     .keyboardShortcut(.return, modifiers: [.command])
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 9)
+                .padding(.vertical, 8)
             }
             .background(DesignTokens.EmailComposer.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: DesignTokens.EmailComposer.cardCornerRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: DesignTokens.EmailComposer.cardCornerRadius, style: .continuous)
-                    .stroke(DesignTokens.EmailComposer.cardBorder, lineWidth: 0.8)
+                    .stroke(isDropTargeted ? Color.cyan.opacity(0.8) : DesignTokens.EmailComposer.cardBorder, lineWidth: isDropTargeted ? 1.5 : 0.8)
             )
-            .shadow(color: DesignTokens.EmailComposer.cardGlow, radius: 18, x: 0, y: 4)
+            .shadow(color: isDropTargeted ? Color.cyan.opacity(0.4) : DesignTokens.EmailComposer.cardGlow, radius: 18, x: 0, y: 4)
             .frame(width: 500)
+            // MARK: - Drag and Drop Files
+            .onDrop(of: [UTType.fileURL.identifier, UTType.item.identifier], isTargeted: $isDropTargeted) { providers in
+                resetAutoCollapseTimer()
+                for provider in providers {
+                    _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                        if let fileUrl = url {
+                            DispatchQueue.main.async {
+                                _ = viewModel.addAttachment(path: fileUrl.path)
+                                BoringSoundEngine.shared.playTap()
+                            }
+                        }
+                    }
+                }
+                return true
+            }
+        }
+        // MARK: - 5-Second Idle Auto-Collapse Timer
+        .onHover { hovering in
+            isHoveringCard = hovering
+            if hovering {
+                cancelAutoCollapseTimer()
+            } else {
+                startAutoCollapseTimer()
+            }
         }
         .onAppear {
-            // Focus subject or body if to is already specified
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                if !viewModel.toChips.isEmpty && viewModel.subject.isEmpty {
-                    isSubjectFocused = true
-                }
-            }
+            startAutoCollapseTimer()
+        }
+        .onDisappear {
+            cancelAutoCollapseTimer()
         }
     }
 
@@ -354,29 +405,59 @@ public struct EmailDraftCardView: View {
     }
 
     private func triggerSend() {
+        cancelAutoCollapseTimer()
         BoringSoundEngine.shared.playTap()
-        viewModel.startSendPipeline { success, message in
-            if success {
-                BoringSoundEngine.shared.playDone()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    onSend(viewModel.draft)
-                }
-            } else {
-                BoringSoundEngine.shared.playError()
-            }
+        let val = viewModel.validateBeforeSend()
+        guard val.valid else {
+            viewModel.validationError = val.reason
+            viewModel.status = .failed(reason: val.reason ?? "Invalid draft")
+            BoringSoundEngine.shared.playError()
+            return
         }
+
+        viewModel.updateDraftModel()
+        viewModel.status = .sending
+        onSend(viewModel.draft)
     }
 
     private func presentAttachmentPicker() {
+        resetAutoCollapseTimer()
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
         panel.prompt = "Attach"
-        if panel.runModal() == .OK {
-            for url in panel.urls {
-                _ = viewModel.addAttachment(path: url.path)
+        panel.level = .modalPanel
+        panel.begin { response in
+            if response == .OK {
+                for url in panel.urls {
+                    _ = viewModel.addAttachment(path: url.path)
+                }
+                BoringSoundEngine.shared.playTap()
             }
         }
+    }
+
+    private func startAutoCollapseTimer() {
+        autoCollapseTimer?.invalidate()
+        autoCollapseTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { _ in
+            DispatchQueue.main.async {
+                if !isSubjectFocused && !isBodyFocused && !isToInputFocused && !isFromInputFocused && !isHoveringCard {
+                    withAnimation(NotchAnimations.closeSpring) {
+                        appState.islandState = .resting
+                    }
+                }
+            }
+        }
+    }
+
+    private func resetAutoCollapseTimer() {
+        autoCollapseTimer?.invalidate()
+        startAutoCollapseTimer()
+    }
+
+    private func cancelAutoCollapseTimer() {
+        autoCollapseTimer?.invalidate()
+        autoCollapseTimer = nil
     }
 }

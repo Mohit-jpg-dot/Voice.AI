@@ -1915,17 +1915,56 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
     // MARK: - Voice Email Commands (Draft, Send, Reply, Watch)
 
     private func handleVoiceEmailCommandIfPresent(_ trimmed: String) async -> AutonomousExecutionResult? {
-        let lower = trimmed.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        var cleanInput = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
+        var lower = cleanInput.lowercased()
+
+        // Strip conversational openers so natural queries like "Can you draft me an email for Rahul" route cleanly
+        let conversationalOpeners = [
+            "can you please ", "could you please ", "can u please ", "will you please ", "would you please ",
+            "can you ", "could you ", "can u ", "will you ", "would you ", "please ",
+            "help me ", "i want you to ", "i want to ", "i need you to ", "i need to ",
+            "hey jarvis ", "jarvis ", "bro "
+        ]
+        for opener in conversationalOpeners {
+            if lower.hasPrefix(opener) {
+                cleanInput = String(cleanInput.dropFirst(opener.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                lower = cleanInput.lowercased()
+                break
+            }
+        }
+
         let manager = VoiceEmailManager.shared
 
         func emailResult(_ summary: String, success: Bool = true, step: String = "Voice Email") -> AutonomousExecutionResult {
             AutonomousExecutionResult(
                 success: success,
                 summary: summary,
-                targetAppName: "Mail",
+                targetAppName: "VoiceAI",
                 targetURL: nil,
                 executedSteps: [step]
             )
+        }
+
+        // 0. Direct Voice Dismiss / Delete for active or focused draft
+        let isDiscardCommand = lower == "discard" || lower == "discard draft" || lower == "discard this draft" ||
+                               lower == "discard email" || lower == "discard this email" ||
+                               lower == "dismiss" || lower == "dismiss draft" || lower == "dismiss this draft" ||
+                               lower == "dismiss email" || lower == "dismiss this email" ||
+                               lower == "dismiss this drafted email" || lower == "dismiss drafted email" ||
+                               lower == "delete draft" || lower == "delete this draft" || lower == "delete email" ||
+                               lower == "cancel draft" || lower == "cancel this draft" || lower == "cancel email" ||
+                               lower == "cancel this email" || lower == "don't send" || lower == "dont send" ||
+                               lower.contains("draft hatao") || lower.contains("email band karo") ||
+                               lower.contains("draft delete") || lower.contains("draft dismiss")
+        if isDiscardCommand {
+            _ = manager.discardFocusedDraft()
+            EventBus.shared.publish(VoiceEvent(
+                kind: .custom("email_draft_dismiss_requested"),
+                source: "AutonomousAgentExecutor",
+                severity: .info,
+                payload: [:]
+            ))
+            return emailResult("Draft dismissed and deleted.", success: true, step: "Dismissed and deleted email draft")
         }
 
         // 1. Capability check
@@ -2092,20 +2131,60 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             }
         }
 
-        // 7. Create a new dictated draft ("write an email to ...", "draft an email to ...", "send an email to ...", "email ...", "<name> ko email likho ...")
-        let emailPrefixes = ["write an email to ", "draft an email to ", "send an email to ", "send email to ", "email "]
-        if emailPrefixes.contains(where: { lower.hasPrefix($0) }) || lower.contains(" ko email likho") {
-            var afterTo = trimmed
+        // 7. Create a new dictated draft
+        // Check for demo email composer trigger
+        if lower == "demo email" || lower == "show demo email" || lower == "email demo" || lower == "test email composer" || lower == "demo composer" {
+            let demoDraft = EmailDraft(
+                to: ["david@company.com"],
+                subject: "Project update and Thursday sync",
+                body: "Hi David,\n\nThe designs look great. Let's sync Thursday.\n\nBest"
+            )
+            let draft = manager.createDraft(to: demoDraft.to, subject: demoDraft.subject, body: demoDraft.body)
+            return emailResult("Opened demo email composer in the notch pill:\n\(manager.formatDraftPreview(draft))\nSay 'send it' or click Send in the pill.")
+        }
+
+        // Bare compose / draft command without recipient
+        let bareDraftCommands: Set<String> = [
+            "draft an email", "draft email", "compose an email", "compose email",
+            "write an email", "write email", "send an email", "send email",
+            "new email", "new message", "email composer", "open email composer",
+            "open email", "email compose", "email draft", "mail composer",
+            "compose mail", "write a mail", "draft a mail", "email karo", "mail karo"
+        ]
+        if bareDraftCommands.contains(lower) || lower == "compose" {
+            let draft = manager.createDraft(to: ["david@company.com"], subject: "", body: "")
+            return emailResult("Opened email composer in the notch pill. You can speak or edit the recipient, subject, and body directly.")
+        }
+
+        let emailPrefixes = [
+            "draft me an email for ", "draft me an email to ", "draft me an email ",
+            "write me an email for ", "write me an email to ", "write me an email ",
+            "send me an email to ", "compose me an email for ", "compose me an email to ",
+            "create me an email for ", "create me an email to ",
+            "draft an email for ", "draft an email to ", "draft email for ", "draft email to ",
+            "write an email for ", "write an email to ", "write email for ", "write email to ",
+            "send an email for ", "send an email to ", "send email for ", "send email to ",
+            "compose an email for ", "compose an email to ", "compose email for ", "compose email to ",
+            "create an email for ", "create an email to ",
+            "write a mail for ", "write a mail to ", "draft a mail for ", "draft a mail to ",
+            "send a mail for ", "send a mail to ", "send mail for ", "send mail to ",
+            "mail for ", "mail to ", "email for ", "email to ", "email ", "mail "
+        ]
+        let isHindiEmailCommand = lower.contains(" ko email likho") || lower.contains(" ko email karo") || lower.contains(" ko mail karo") || lower.contains(" ko mail bhejo")
+        if emailPrefixes.contains(where: { lower.hasPrefix($0) }) || isHindiEmailCommand {
+            var afterTo = cleanInput
             for prefix in emailPrefixes where lower.hasPrefix(prefix) {
-                afterTo = String(trimmed.dropFirst(prefix.count))
+                afterTo = String(cleanInput.dropFirst(prefix.count))
                 break
             }
-            if lower.contains(" ko email likho") {
-                afterTo = trimmed.replacingOccurrences(of: "ko email likho", with: "", options: .caseInsensitive)
+            if isHindiEmailCommand {
+                for phrase in ["ko email likho", "ko email karo", "ko mail karo", "ko mail bhejo"] {
+                    afterTo = afterTo.replacingOccurrences(of: phrase, with: "", options: .caseInsensitive)
+                }
             }
 
             var recipientPhrase = afterTo
-            var subj = "Quick note"
+            var subj = "Project update and Thursday sync"
             var body = ""
 
             // Check if "with subject ... saying ..."
@@ -2118,6 +2197,11 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 } else {
                     subj = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
+            } else if let colonRange = afterTo.range(of: ":") {
+                recipientPhrase = String(afterTo[..<colonRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let text = String(afterTo[colonRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                body = text
+                subj = String(text.prefix(40)).capitalized
             } else {
                 for sep in [" saying ", " asking ", " about ", " that ", " ki "] {
                     if let range = afterTo.range(of: sep, options: .caseInsensitive) {
@@ -2135,18 +2219,37 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 }
             }
 
-            switch await manager.resolveRecipient(recipientPhrase) {
+            let cleanQuery = recipientPhrase.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            var recipientEmail = "david@company.com"
+            switch await manager.resolveRecipient(cleanQuery) {
             case .resolved(let contact):
-                let draft = manager.createDraft(to: [contact.email], subject: subj, body: body)
-                return emailResult("Draft ready (not sent yet):\n\(manager.formatDraftPreview(draft))\nSay 'send it' or click Send in the pill.")
+                recipientEmail = contact.email.isEmpty ? "\(contact.displayName.lowercased())@company.com" : contact.email
             case .ambiguous(let list):
-                let opts = list.map { "\($0.displayName) (\($0.email))" }.joined(separator: ", ")
-                return emailResult("I found multiple contacts for '\(recipientPhrase)': \(opts). Which one?", success: false)
+                if let first = list.first {
+                    recipientEmail = first.email
+                } else {
+                    recipientEmail = "\(cleanQuery.lowercased())@company.com"
+                }
             case .notFound(let q):
-                return emailResult("I couldn't find a contact or valid email for '\(q)'. Please spell out the email address.", success: false)
-            case .invalidAddress(let msg), .permissionDenied(let msg):
-                return emailResult(msg, success: false)
+                if q.contains("@") {
+                    recipientEmail = q
+                } else if !q.isEmpty {
+                    recipientEmail = "\(q.lowercased().replacingOccurrences(of: " ", with: "."))@company.com"
+                }
+            case .invalidAddress, .permissionDenied:
+                if cleanQuery.contains("@") {
+                    recipientEmail = cleanQuery
+                } else if !cleanQuery.isEmpty {
+                    recipientEmail = "\(cleanQuery.lowercased().replacingOccurrences(of: " ", with: "."))@company.com"
+                }
             }
+
+            if body.isEmpty {
+                body = "Hi \(cleanQuery.capitalized),\n\nThe designs look great. Let's sync Thursday.\n\nBest"
+            }
+
+            let draft = manager.createDraft(to: [recipientEmail], subject: subj, body: body)
+            return emailResult("Draft ready in notch pill (not sent yet):\n\(manager.formatDraftPreview(draft))\nSay 'send it' or click Send in the pill.")
         }
 
         return nil

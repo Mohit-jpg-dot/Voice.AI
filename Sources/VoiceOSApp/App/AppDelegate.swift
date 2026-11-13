@@ -243,74 +243,62 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         }
         
         let menu = NSMenu()
-        
-        let versionItem = NSMenuItem(title: "\(AppBrand.name) \(AppBrand.displayVersion)", action: nil, keyEquivalent: "")
-        versionItem.isEnabled = false
-        menu.addItem(versionItem)
-        
-        menu.addItem(NSMenuItem.separator())
 
+        // 1. Settings (⌘,)
+        let settingsItem = NSMenuItem(title: "Settings", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.keyEquivalentModifierMask = [.command]
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        // 2. Open Voice.AI Panel (⌘O)
         let openPanelItem = NSMenuItem(title: "Open \(AppBrand.name) Panel", action: #selector(toggleMainWindow), keyEquivalent: "o")
+        openPanelItem.keyEquivalentModifierMask = [.command]
         openPanelItem.target = self
         menu.addItem(openPanelItem)
-        
-        let toggleItem = NSMenuItem(title: "Toggle Notch Island", action: #selector(toggleHUD), keyEquivalent: "")
-        toggleItem.target = self
-        menu.addItem(toggleItem)
 
-        let toggleOrbItem = NSMenuItem(title: "Toggle Floating Orb", action: #selector(toggleFloatingOrb), keyEquivalent: "")
-        toggleOrbItem.target = self
-        menu.addItem(toggleOrbItem)
-
-        let toggleHistoryItem = NSMenuItem(title: "Toggle History Sidebar", action: #selector(toggleHistorySidebar), keyEquivalent: "h")
-        toggleHistoryItem.keyEquivalentModifierMask = [.command]
-        toggleHistoryItem.target = self
-        menu.addItem(toggleHistoryItem)
-
-        let alwaysListenItem = NSMenuItem(title: "24/7 Always-On Listening Mode", action: #selector(toggleAlwaysOnListening(_:)), keyEquivalent: "")
-        alwaysListenItem.target = self
-        alwaysListenItem.state = appState.isAlwaysOnListeningMode ? .on : .off
-        menu.addItem(alwaysListenItem)
-
-        let computerAudioItem = NSMenuItem(title: "Listen to Computer Audio (YouTube / Media)", action: #selector(toggleComputerAudioListening(_:)), keyEquivalent: "")
-        computerAudioItem.target = self
-        computerAudioItem.state = appState.isComputerAudioListeningEnabled ? .on : .off
-        menu.addItem(computerAudioItem)
-        
-        let circleItem = NSMenuItem(title: "Circle to Ask (Lasso)", action: #selector(triggerCircleToAskFromMenu), keyEquivalent: "C")
-        circleItem.keyEquivalentModifierMask = [.command, .shift]
-        circleItem.target = self
-        menu.addItem(circleItem)
-
-        let clipboardDictItem = NSMenuItem(title: "Clipboard Dictation (Fn+D)", action: #selector(triggerClipboardDictationFromMenu), keyEquivalent: "")
-        clipboardDictItem.target = self
-        menu.addItem(clipboardDictItem)
-        
-        menu.addItem(NSMenuItem.separator())
-        
+        // 3. Check for Updates…
         let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         updateItem.target = self
         menu.addItem(updateItem)
-        
-        let autoUpdateItem = NSMenuItem(title: "Automatically Check for Updates", action: #selector(toggleAutoUpdates), keyEquivalent: "")
-        autoUpdateItem.target = self
-        autoUpdateItem.state = UpdateManager.shared.automaticallyChecksForUpdates ? .on : .off
-        menu.addItem(autoUpdateItem)
-        
-        let modelSetupItem = NSMenuItem(title: "Model Setup & Downloads…", action: #selector(openModelSetup), keyEquivalent: "m")
-        modelSetupItem.target = self
-        menu.addItem(modelSetupItem)
-        
-        let setupItem = NSMenuItem(title: "Setup Assistant…", action: #selector(rerunSetup), keyEquivalent: "")
-        setupItem.target = self
-        menu.addItem(setupItem)
-        
+
         menu.addItem(NSMenuItem.separator())
-        
-        let quitItem = NSMenuItem(title: "Quit \(AppBrand.name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+
+        // 4. Restart Voice.AI
+        let restartItem = NSMenuItem(title: "Restart \(AppBrand.name)", action: #selector(restartApp), keyEquivalent: "")
+        restartItem.target = self
+        menu.addItem(restartItem)
+
+        // 5. Quit Voice.AI (⌘Q)
+        let quitItem = NSMenuItem(title: "Quit \(AppBrand.name)", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.keyEquivalentModifierMask = [.command]
+        quitItem.target = self
         menu.addItem(quitItem)
         
         statusItem?.menu = menu
+    }
+    
+    @objc public func openSettings() {
+        appState.activeNavTab = .settings
+        guard let window = mainWindow else {
+            setupMainWindow(showImmediately: true)
+            return
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func restartApp() {
+        let url = Bundle.main.bundleURL
+        let task = Process()
+        task.launchPath = "/usr/bin/open"
+        task.arguments = ["-n", url.path]
+        try? task.run()
+        quitApp()
+    }
+
+    @objc private func quitApp() {
+        ModelLifecycleManager.shared.shutdownOllamaAndUnloadModels()
+        NSApplication.shared.terminate(nil)
     }
     
     @objc private func checkForUpdates() {

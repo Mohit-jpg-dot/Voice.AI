@@ -217,6 +217,7 @@ public struct EmailMessage: Identifiable, Codable, Sendable, Equatable {
 
 public struct EmailDraft: Identifiable, Codable, Sendable, Equatable {
     public let id: String
+    public var from: String?
     public var to: [String]
     public var cc: [String]
     public var bcc: [String]
@@ -233,6 +234,7 @@ public struct EmailDraft: Identifiable, Codable, Sendable, Equatable {
 
     public init(
         id: String = UUID().uuidString,
+        from: String? = nil,
         to: [String] = [],
         cc: [String] = [],
         bcc: [String] = [],
@@ -248,6 +250,7 @@ public struct EmailDraft: Identifiable, Codable, Sendable, Equatable {
         updatedAt: Date = Date()
     ) {
         self.id = id
+        self.from = from
         self.to = to
         self.cc = cc
         self.bcc = bcc
@@ -378,9 +381,15 @@ public final class MailAppEmailBackend: EmailService, @unchecked Sendable {
             "make new attachment with properties {file name:(POSIX file \"\(escapeAS($0))\")} at after the last paragraph"
         }.joined(separator: "\n")
 
+        let senderProp: String
+        if let from = draft.from, !from.isEmpty {
+            senderProp = ", sender:\"\(escapeAS(from))\""
+        } else {
+            senderProp = ""
+        }
         let script = """
         tell application "Mail"
-            set newMsg to make new outgoing message with properties {subject:"\(escapedSubject)", content:"\(escapedBody)", visible:false}
+            set newMsg to make new outgoing message with properties {subject:"\(escapedSubject)", content:"\(escapedBody)"\(senderProp), visible:false}
             tell newMsg
                 \(toLines)
                 \(ccLines)

@@ -262,9 +262,9 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
         case "pause", "stop":
             scriptAction = "pause"
         case "next":
-            scriptAction = "next track\n        delay 0.2\n        play"
+            scriptAction = "next track"
         case "previous":
-            scriptAction = "previous track\n        delay 0.2\n        play"
+            scriptAction = "previous track"
         default:
             if targetApp == "Spotify" {
                 scriptAction = """
@@ -285,12 +285,23 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
             }
         }
         
-        let script = """
-        tell application "\(targetApp)"
-            activate
-            \(scriptAction)
-        end tell
-        """
+        let script: String
+        if targetApp == "Spotify" {
+            script = """
+            tell application "Spotify"
+                try
+                    \(scriptAction)
+                end try
+            end tell
+            """
+        } else {
+            script = """
+            tell application "\(targetApp)"
+                activate
+                \(scriptAction)
+            end tell
+            """
+        }
         let res = executeAppleScript(script).success
         NowPlayingMediaManager.shared.pollMediaState()
         return res

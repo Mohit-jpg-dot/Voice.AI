@@ -646,6 +646,48 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         }
 
         // -------------------------------------------------------------
+        // Step -1.41: Notch Shelf Voice Actions ("what's on my shelf?", "put report.pdf on shelf", etc.)
+        // -------------------------------------------------------------
+        let shelfAction = ShelfVoiceEngine.shared.parseVoiceIntent(trimmed)
+        if shelfAction != .none {
+            let (speech, disambiguation, actionForApproval) = await ShelfVoiceEngine.shared.executeAction(shelfAction)
+            
+            // Consequential actions require approval via ToolApprovalCoordinator
+            if let act = actionForApproval {
+                let approvalResult = await ToolApprovalCoordinator.shared.requestAuthorizationIfNeeded(
+                    toolName: act.payload["operation"] ?? "shelf_action",
+                    appName: act.appName,
+                    title: act.title,
+                    subtitle: act.subtitle,
+                    payload: act.payload,
+                    tier: .consequential
+                )
+                if !approvalResult.approved {
+                    let deniedMsg = "Cancelled. Action was not approved."
+                    ConversationSessionContext.shared.recordReply(deniedMsg, forCommand: trimmed)
+                    return AutonomousExecutionResult(success: false, summary: deniedMsg, targetAppName: "Shelf", executedSteps: ["User denied shelf action approval"])
+                }
+            }
+
+            if shelfAction == .showShelf {
+                EventBus.shared.publish(VoiceEvent(
+                    kind: .custom("open_notch_tab"),
+                    source: "AutonomousAgentExecutor",
+                    severity: .info,
+                    payload: ["tab": "shelf"]
+                ))
+            }
+
+            ConversationSessionContext.shared.recordReply(speech, forCommand: trimmed)
+            return AutonomousExecutionResult(
+                success: true,
+                summary: speech,
+                targetAppName: "Shelf",
+                executedSteps: ["Executed voice shelf command: \(speech)"]
+            )
+        }
+
+        // -------------------------------------------------------------
         // Step -1.4: Voice Toggle for 24/7 Continuous Listening Mode & Computer Audio Mode
         // -------------------------------------------------------------
         if triggerMode == .agent {

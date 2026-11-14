@@ -131,6 +131,10 @@ public struct NotchGlassIslandView: View {
             if appState.isNotchMediaDisplayEnabled, let media = appState.currentMedia, media.isPlaying {
                 return (physicalNotchWidth + 100.0, physicalNotchHeight + 6.0)
             }
+            let shelfCount = ShelfStore.shared.count
+            if shelfCount > 0 && ShelfStore.shared.settings.showCountBadgeOnCollapsedNotch {
+                return (physicalNotchWidth + 40.0, physicalNotchHeight)
+            }
             return (physicalNotchWidth, physicalNotchHeight)
         }
         
@@ -147,6 +151,11 @@ public struct NotchGlassIslandView: View {
         
         // Full Opened States based on Tab & Response Length
         switch appState.activeNotchTab {
+        case .shelf:
+            let count = ShelfStore.shared.count
+            let width: CGFloat = count > 4 ? 620.0 : 540.0
+            return (width, 220.0 + mediaOffset)
+
         case .apps:
             // App integrations grid matching Image 2
             return (580.0, 325.0 + mediaOffset)
@@ -409,6 +418,22 @@ public struct NotchGlassIslandView: View {
         .onAppear {
             appState.dynamicNotchSize = CGSize(width: currentWidth, height: currentHeight)
             liveTelemetry = LiveHostTelemetrySnapshot.capture()
+
+            ShelfDragDetector.shared.onDragNearNotch = { [weak appState] _ in
+                DispatchQueue.main.async {
+                    guard let appState = appState else { return }
+                    if ShelfStore.shared.settings.isEnabled && ShelfStore.shared.settings.autoOpenOnDragNearNotch {
+                        withAnimation(NotchAnimations.openSpring) {
+                            appState.activeNotchTab = .shelf
+                            appState.setHoverExpanded(true)
+                        }
+                    }
+                }
+            }
+            ShelfDragDetector.shared.startMonitoring()
+        }
+        .onDisappear {
+            ShelfDragDetector.shared.stopMonitoring()
         }
         .onReceive(Timer.publish(every: 3.0, on: .main, in: .common).autoconnect()) { _ in
             if isOpen || isHovering {
@@ -534,6 +559,21 @@ public struct NotchGlassIslandView: View {
                 Text(AppBrand.name)
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(Color.white.opacity(0.85))
+
+                let shelfCount = ShelfStore.shared.count
+                if shelfCount > 0 && ShelfStore.shared.settings.showCountBadgeOnCollapsedNotch {
+                    HStack(spacing: 3) {
+                        Image(systemName: "tray.2.fill")
+                            .font(.system(size: 8))
+                        Text("\(shelfCount)")
+                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(Color.white.opacity(0.9))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background(Color.white.opacity(0.18))
+                    .clipShape(Capsule())
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
@@ -1385,6 +1425,8 @@ public struct NotchGlassIslandView: View {
                 switch appState.activeNotchTab {
                 case .ask:
                     askTabView
+                case .shelf:
+                    ShelfView(appState: appState)
                 case .apps:
                     AppIntegrationsGridView(appState: appState)
                 case .tasks:

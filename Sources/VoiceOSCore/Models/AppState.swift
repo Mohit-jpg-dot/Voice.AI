@@ -185,6 +185,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     
     public enum NotchTab: String, CaseIterable, Identifiable, Sendable {
         case ask = "Ask"
+        case shelf = "Shelf"
         case apps = "Apps"
         case tasks = "Agents"
         case memory = "Memory"
@@ -194,6 +195,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         public var iconName: String {
             switch self {
             case .ask: return "sparkles"
+            case .shelf: return "tray.2.fill"
             case .apps: return "square.grid.2x2"
             case .tasks: return "cpu"
             case .memory: return "brain"

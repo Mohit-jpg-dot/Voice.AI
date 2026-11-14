@@ -344,6 +344,13 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 
 ---
 
+## Acknowledgements & Third-Party Code
+
+Voice.AI incorporates ideas, algorithms, and native architecture ports from the open-source community:
+- **islandcn**: Dynamic notch engine architecture (activity stack, presentations, priority queue, alerts, reduced-motion fallbacks) and presets (timer, media, recording, transfer, battery, step ETA) ported to native Swift and C# under the MIT License (Copyright © 2026 Leo). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+---
+
 ## License
 
 Released under the [MIT License](LICENSE). Copyright © 2026 Voice.AI Team.

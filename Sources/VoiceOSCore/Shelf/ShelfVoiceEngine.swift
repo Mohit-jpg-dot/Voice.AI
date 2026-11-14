@@ -132,7 +132,10 @@ public final class ShelfVoiceEngine: @unchecked Sendable {
         if lower.contains("move ") && (lower.contains("folder") || lower.contains("directory")) {
             var destFolder = "Reports"
             if let intoIdx = lower.range(of: "into ") {
-                let rest = lower[intoIdx.upperBound...].replacingOccurrences(of: "folder", with: "").trimmingCharacters(in: .whitespaces)
+                var rest = lower[intoIdx.upperBound...].replacingOccurrences(of: "folder", with: "").replacingOccurrences(of: "directory", with: "").trimmingCharacters(in: .whitespaces)
+                if rest.lowercased().hasPrefix("the ") {
+                    rest = String(rest.dropFirst(4)).trimmingCharacters(in: .whitespaces)
+                }
                 if !rest.isEmpty { destFolder = rest.capitalized }
             }
             return .moveFiles(target: "shelf_items", destinationFolder: destFolder)
@@ -196,8 +199,8 @@ public final class ShelfVoiceEngine: @unchecked Sendable {
         }
 
         // 12. Show / List Shelf
-        if lower == "what's on my shelf?" || lower == "whats on my shelf" || lower == "what is on my shelf" ||
-           lower == "shelf mein kya hai?" || lower == "shelf mein kya hai" || lower == "show the shelf" ||
+        if lower.contains("what's on my shelf") || lower.contains("whats on my shelf") || lower.contains("what is on my shelf") ||
+           lower.contains("shelf mein kya hai") || lower == "show the shelf" ||
            lower == "show shelf" || lower == "open the shelf" || lower == "shelf dikhao" || lower == "shelf kholo" {
             if lower.contains("show") || lower.contains("open") || lower.contains("kholo") || lower.contains("dikhao") {
                 return .showShelf

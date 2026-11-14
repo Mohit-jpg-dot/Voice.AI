@@ -14,28 +14,18 @@ public final class ShelfDragDetector: @unchecked Sendable {
     public init() {}
 
     // MARK: - Hot Zone Geometry Computation (Clean, Deterministic, Multi-Display)
-    public static func hotZone(for screen: NSScreen) -> CGRect {
-        let frame = screen.frame
-        let hasPhysicalNotch = screen.safeAreaInsets.top > 20.0
+    public static func hotZone(frame: CGRect, safeAreaTop: CGFloat = 0, customNotchWidth: CGFloat? = nil) -> CGRect {
+        let hasPhysicalNotch = safeAreaTop > 20.0
 
         if hasPhysicalNotch {
-            let notchWidth: CGFloat
-            if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
-                notchWidth = frame.width - left.width - right.width + 4.0
-            } else {
-                notchWidth = 185.0
-            }
-            let notchHeight = screen.safeAreaInsets.top > 0 ? screen.safeAreaInsets.top : 32.0
-
-            // Hot zone extends 50pt to each side and 30pt downwards into screen
+            let notchWidth = customNotchWidth ?? 185.0
             let zoneWidth = notchWidth + 100.0
-            let zoneHeight = notchHeight + 35.0
+            let zoneHeight = (safeAreaTop > 0 ? safeAreaTop : 32.0) + 35.0
             let zoneX = frame.origin.x + (frame.width - zoneWidth) / 2.0
             let zoneY = frame.origin.y + frame.height - zoneHeight
 
             return CGRect(x: zoneX, y: zoneY, width: zoneWidth, height: zoneHeight)
         } else {
-            // Notch-less display: top-center strip
             let zoneWidth: CGFloat = 260.0
             let zoneHeight: CGFloat = 42.0
             let zoneX = frame.origin.x + (frame.width - zoneWidth) / 2.0
@@ -43,6 +33,21 @@ public final class ShelfDragDetector: @unchecked Sendable {
 
             return CGRect(x: zoneX, y: zoneY, width: zoneWidth, height: zoneHeight)
         }
+    }
+
+    public static func hotZone(for screen: NSScreen) -> CGRect {
+        let frame = screen.frame
+        let topInset = screen.safeAreaInsets.top
+        var calculatedWidth: CGFloat? = nil
+        if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
+            calculatedWidth = frame.width - left.width - right.width + 4.0
+        }
+        return hotZone(frame: frame, safeAreaTop: topInset, customNotchWidth: calculatedWidth)
+    }
+
+    public static func isPointInHotZone(_ point: CGPoint, frame: CGRect, safeAreaTop: CGFloat = 0) -> Bool {
+        let zone = hotZone(frame: frame, safeAreaTop: safeAreaTop)
+        return zone.contains(point)
     }
 
     public static func isPointInHotZone(_ point: CGPoint, screen: NSScreen) -> Bool {

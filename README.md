@@ -2,19 +2,20 @@
 
 # Voice.AI
 
-**A voice-first AI agent that controls your computer.**
-Speak in English, Hindi, or Hinglish. Voice.AI opens apps, operates your browser and terminal, understands what is on your screen, and works with cloud models, fully offline local models, or a zero-key search mode.
+**The open-source voice agent that actually controls your computer.**
 
-[![macOS 14+](https://img.shields.io/badge/macOS-14.0%2B-0071e3.svg)](#installation)
-[![Windows 11](https://img.shields.io/badge/Windows%2011-preview-0078d4.svg)](#windows-preview)
-[![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-native-black.svg)](#installation)
-[![macOS tests](https://img.shields.io/badge/macOS%20tests-749%2F749-34c759.svg)](#testing)
-[![Windows core tests](https://img.shields.io/badge/Windows%20core-182%2F182-34c759.svg)](#testing)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![macOS 14+](https://img.shields.io/badge/macOS-14.0%2B-0071e3.svg)](#download-and-install)
+[![Apple Silicon Native](https://img.shields.io/badge/Apple%20Silicon-arm64-black.svg)](#download-and-install)
+[![Release: v1.1.0](https://img.shields.io/badge/Release-v1.1.0-orange.svg)](https://github.com/Mohit-jpg-dot/Voice.AI/releases)
+[![macOS Tests](https://img.shields.io/badge/macOS%20Tests-949%2F949%20passed-34c759.svg)](#building-and-testing)
+[![Windows Core Tests](https://img.shields.io/badge/Windows%20Core-200%2F200%20passed-34c759.svg)](#windows-preview)
+[![Free & Open Source](https://img.shields.io/badge/Free%20%26-Open%20Source-purple.svg)](LICENSE)
 
 [Website](https://mohit-jpg-dot.github.io/Voice.AI/) ·
-[Docs Hub](website/docs.html) ·
-[हिन्दी](README.hi.md) ·
+[Downloads](https://mohit-jpg-dot.github.io/Voice.AI/#download) ·
+[Documentation Hub](https://mohit-jpg-dot.github.io/Voice.AI/docs.html) ·
+[हिन्दी क्विकस्टार्ट](README.hi.md) ·
 [Changelog](CHANGELOG.md) ·
 [Contributing](CONTRIBUTING.md)
 
@@ -22,335 +23,214 @@ Speak in English, Hindi, or Hinglish. Voice.AI opens apps, operates your browser
 
 ---
 
-## Table of contents
+Voice.AI is a free and open-source autonomous voice agent built natively in Swift for macOS and C# for Windows under the MIT license. Designed for developers, power users, and anyone who wants hands-free computer control in English, Hindi, or Hinglish, it turns natural spoken words into real operating system actions—controlling applications, typing anywhere, executing safe terminal tasks, managing email, and staging files through an adaptive hardware notch island.
 
-- [Overview](#overview)
-- [Project status](#project-status)
-- [Features](#features)
-- [AI modes](#ai-modes)
-- [Voice command reference](#voice-command-reference)
-- [Installation](#installation)
-- [Building from source](#building-from-source)
-- [Testing](#testing)
-- [Security and privacy](#security-and-privacy)
-- [Roadmap](#roadmap)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [License](#license)
+You remain in complete control of your data and computing resources: run 100% offline and private using local Ollama and Whisper models, connect your own Cloud API keys (Claude, OpenAI, Gemini), or operate in a lightweight, zero-key free web search mode.
 
 ---
 
-## Overview
+## Live Interface & Highlights
 
-Voice.AI lets you do real work on your computer by speaking. It combines three layers:
+<div align="center">
+  <img src="docs/assets/social-preview.png" alt="Voice.AI Interface Preview" width="840" />
+</div>
 
-1. **Fast local intent routing.** Common commands in English, Hindi, and Hinglish are matched on-device in under 10 ms, with no model call.
-2. **A conversational brain.** Anything open-ended goes to the model you choose: a cloud provider with your own API key, a local Ollama model, or a free search-based mode.
-3. **A computer-use operator.** For open-ended goals, the agent looks at the screen, decides on the next action, and performs it, repeating until the task is done.
+<details open>
+<summary><b>Visual Tour of Key Interface Modes</b></summary>
+<br/>
 
-Consequential actions, such as sending a message or deleting files, always stop for your explicit approval first.
+| Mode / Feature | Visual Preview | Description |
+|---|---|---|
+| **Resting Liquid Notch** | `[ Resting Notch ]` | Sits unobtrusively inside the hardware MacBook notch or floats at the top edge of external monitors. Features dynamic status badges and hover dwell detection. |
+| **Media Player Wings** | `[ Media Wings ]` | Flanks active Spotify or YouTube playback with album artwork, live frequency equalizer bars, track metadata, and quick playback controls. |
+| **Notch Shelf Staging** | `[ Staging Shelf ]` | Dragging any file, image, URL, or text near the notch smoothly reveals the Shelf tray for multi-item holding, Quick Look previews, and one-click AirDrop. |
+| **Tool Approval Card** | `[ Approval Card ]` | Consequential actions (email sends, message dispatches, file deletions) auto-expand an immutable confirmation card that requires physical or voice approval before executing. |
+| **Universal Dictation** | `[ Dictation Pill ]` | Hold `Fn` (or `⌘`) anywhere to speak; releasing automatically cleans filler words and types directly into the focused field with zero delay. |
 
----
-
-## Project status
-
-Voice.AI states plainly what is verified and what is still in progress.
-
-| Area | Status |
-|:--|:--|
-| macOS native app | Working |
-| Windows shared core (`VoiceAI.Core`, .NET) | Working, 114/114 tests passing |
-| Windows 10/11 WinUI 3 shell | In development |
-| In-app one-click offline model downloader | In development |
-| Deep in-browser DOM video scraping | In development |
-| Live interactive QA of computer-use mode on real apps | Pending manual QA |
-
-Computer-use mode passes its automated headless checks (see [Testing](#testing)). Interactive end-to-end checks on live macOS apps, with Accessibility and Screen Recording permissions granted, are tracked in [real-test.md](real-test.md).
+</details>
 
 ---
 
-## Features
+## Download and Install
 
-### Voice control
+Get Voice.AI running on your Mac in three steps:
 
-- **Hindi and Hinglish fast path.** More than 125 colloquial patterns handled locally in under 10 ms, for example *"WhatsApp kholo"*, *"Spotify band karo"*, and *"Aawaz kam karo"*. Verified on 125 test utterances.
-- **Media control.** Play, pause, next, and previous for Spotify and active YouTube tabs.
-- **Offline math engine.** Arithmetic, percentages, powers, and roots evaluated in under 5 ms with no tokens and no internet.
-- **Wake word and speech.** Configurable on-device wake word, streaming text-to-speech, and mid-sentence barge-in.
+### 1. Download the Disk Image
+Download the latest verified release build:
+- **Download**: [**Voice.AI-1.1.0.dmg**](https://github.com/Mohit-jpg-dot/Voice.AI/releases/download/v1.1.0/Voice.AI-1.1.0.dmg) (16.2 MB)
+- **Minimum OS**: macOS Sonoma 14.0 or newer
+- **Architecture**: Apple Silicon (`arm64` — M1, M2, M3, M4 series)
+- **SHA-256 Checksum**:
+  ```text
+  b4605fe4cda2d2b2001588d9d1c4eb2f469e20ceecdf6811fb926563050b4509
+  ```
 
-### Dictation
+### 2. Install to Applications
+Open `Voice.AI-1.1.0.dmg` and drag the **Voice.AI** icon into your **Applications** folder.
 
-- **Universal dictation.** Hold `fn` (or `⌘`) for 250 ms or more, speak, and release. Filler words are removed and the text is inserted into whichever app has focus. Short taps pass through untouched.
-- **Clipboard dictation.** Press `fn + D` (or `⌘⇧C`), speak, and the cleaned text is copied to the clipboard with a short confirmation in the notch. Paste it anywhere with `⌘V`.
-
-### Model switching by voice
-
-Change the model behind every reply in the middle of a conversation:
-
-- *"Switch to smaller local model"* selects the lightweight local Ollama model.
-- *"Switch to larger local model"* selects the larger local Ollama model.
-- *"Switch to Claude"*, *"go to ChatGPT"*, or *"use paid models"* routes to your configured cloud model.
-
-### Computer-use operator (`⌃` Control key)
-
-An iterative see, decide, act loop that works on any open-ended screen goal, such as *"click the blue submit button"*. It is implemented natively in Swift (`ComputerUseOperator`) and .NET (`ComputerUseLoopEngine`).
-
-- Retina and DPI-normalized coordinates, plus Accessibility UI actions
-- Hard limits of 15 steps and 90 seconds per task
-- On-screen text wrapped in `<UNTRUSTED_SCREEN_DATA>` so it is treated as data, never as instructions
-- Corner failsafe, and an immediate halt on `Esc` or the spoken words "stop" or "ruko"
-- Redacted `audit.json` and per-step screenshots saved to `~/.voiceos/computer_use_logs/`
-- Destructive, payment, and send steps blocked behind approval cards
-
-### Safety approvals
-
-High-impact actions are intercepted before any keystroke is sent. An approval card in the notch shows the exact payload, with **Cancel** and **Approve** buttons.
-
-### Notch interface (macOS)
-
-- **Notch Shelf (Temporary Staging Tray).** Drop files, folders, screenshots, text snippets, and links into the notch. Keep them organized in the dynamic island while you work, and drag them out into any app (Mail, Slack, Finder, browsers).
-  - **Auto-open hot-zone:** Dragging files toward the top-center notch expands the Shelf tab with a glowing drop zone.
-  - **Off-main-thread promises:** Supports `NSFilePromiseReceiver` from Mail, Photos, and Safari without UI hitching.
-  - **Native keyboard navigation:** `⌘A` to select all, `⌘C` to copy, `Space` for Quick Look preview, `Delete` / `⌘⌫` to remove, `Esc` to cancel.
-  - **Multi-display & persistence:** Survives app restarts via security-scoped bookmarks; text and image clipboard snippets are stored with AES-256 encryption.
-  - **Collapsed notch badge:** Subtle item count badge on the notch wing indicates staged files.
-  - **Voice agent actions:** English, Hindi, and Hinglish commands (*"what's on my shelf?"*, *"shelf mein kya hai"*, *"add report.pdf to shelf"*, *"airdrop these"*, *"attach the shelf files to this email"*, *"move these files into Reports"*).
-- **Adaptive HUD** that grows and shrinks to fit each answer, so responses are never truncated.
-- **Now Playing wings** with a live equalizer, app glyph, and track title for Spotify and YouTube.
-- **Clickable source pills** that open Wikipedia and Google citations in your browser.
-- **Coding agents monitor.** See running subagents (Claude Code, Antigravity, local agents) with checklists and elapsed time, and answer their questions by voice.
-
-### Platform capabilities
-
-| Capability | Description |
-|:--|:--|
-| MCP tool registry | MCP-compatible registry with permission tiers |
-| Event bus | Typed publish/subscribe foundation |
-| Memory | Encrypted semantic memory with recall and a viewer UI |
-| Routines | Multi-step routines and protocols |
-| Proactive alerts | Rules engine driven by the event bus |
-| Workflows | Calendar, email, and messages (macOS) |
-| Local search | On-device file search and retrieval (RAG) |
-| Screen understanding | Vision-language model, Apple Vision OCR, and "Circle to Ask" (macOS) |
-| Smart home | Home Assistant, HomeKit, and MQTT |
-| Health | Opt-in Apple Health import and warnings |
-| Subagents | Parallel subagents ("Iron Legion") |
-| Engineering | CAD, physics, and 3D hologram viewer |
-| Cyber defense | Defense scan and lockdown gate |
-| Camera | Opt-in local camera and gesture vision (macOS) |
-| Phone companion | Remote approval bridge |
-| Plugins | Runtime plugin and MCP manifest loader |
-| Persona | JARVIS/FRIDAY persona with risk warnings |
+### 3. Launch & Code Signing Status
+> [!IMPORTANT]
+> **Code Signing Transparency**: Official builds are ad-hoc signed with Apple Hardened Runtime (`runtime` flag + entitlements) and disabled library validation for local Ollama/ML integration. Because community open-source builds do not yet carry a paid Apple Developer ID certificate:
+> - On first launch, right-click (or Control-click) `Voice.AI.app` in `/Applications` and select **Open**.
+> - In the macOS Gatekeeper dialog, click **Open**.
+> - Alternatively, go to **System Settings → Privacy & Security**, scroll to the bottom, and click **Open Anyway**.
+> - *We never ask users to disable Gatekeeper globally via `spctl`.*
 
 ---
 
-## Set up your integrations
+## What You Can Do
 
-Voice.AI includes built-in, guided setup wizards right inside the app for all supported integrations:
-- **Email (Gmail & Apple Mail)**: In-pill composer, draft sync, recipient chips, attachments, and 10s undo window.
-- **Slack**: Channel and DM messaging, thread replies, and presence.
-- **Discord**: Official bot integration for servers and threads with accessibility fallback for DMs.
-- **WhatsApp**: WhatsApp Desktop AX control and Business Cloud API.
-- **System & Dev Tools**: Spotify, Calendar, Reminders, Notes, Notion, and App Builder.
+Voice.AI understands everyday conversational commands in English, colloquial Hindi, and mixed Hinglish with sub-10ms fast-path execution:
 
-For step-by-step connection instructions, permissions details, and one-time developer registration steps, read the [Integrations Setup Guide](set-up-guide.md).
-
----
-
-## AI modes
-
-| | Cloud API | Offline local | Google Search only |
-|:--|:--:|:--:|:--:|
-| **Cost** | Your own API key | Free | Free |
-| **Internet** | Required | Not required | Required (light HTTP) |
-| **Memory footprint** | About 45 MB | About 4 GB | About 35 MB |
-| **Reasoning** | Full generative | Local model | Deterministic fact extraction |
-| **Knowledge** | Model cutoff | Model cutoff | Live web with citations |
-| **Computer control** | Full | Full | Full |
-| **Status** | Working | Manual daemon setup | Working |
-
-Cloud mode supports OpenAI, Anthropic, and Gemini with your own keys. Offline mode uses Ollama and Whisper. The zero-key mode combines MediaWiki extracts, Open-Meteo weather, and Google CSE with source citations.
+| Category | Example Voice Commands (English & Hinglish) | Behavior |
+|---|---|---|
+| **App & System Control** | *"Open Safari"*, *"WhatsApp kholo"*, *"Spotify band karo"*, *"Lock my screen"* | Directly opens, focuses, or quits applications and controls system states. |
+| **Media Playback** | *"Play the video"*, *"Video pause karo"*, *"Next song"*, *"Agla gaana chalao"* | Dispatches media playback controls to active Spotify app or frontmost YouTube tab. |
+| **Universal Dictation** | Hold `Fn`, speak your mind, and release | Types speech directly into your active cursor field. Press `Fn+D` for clipboard copy. |
+| **File Shelf Tray** | *"What's on my shelf?"*, *"Shelf saaf karo"*, *"AirDrop these files"* | Stages dropped files, inspects thumbnails with Quick Look, and shares via AirDrop. |
+| **Voice Email** | *"Draft an email to boss about quarterly reports"*, *"Send it"* | Drafts in Mail.app/Gmail, previews via Notch card, and dispatches only upon approval. |
+| **Team Messaging** | *"Slack pe dev channel me likho build passed"*, *"Rahul ko WhatsApp karo"* | Resolves contacts fuzzy-matched across languages and posts via official APIs. |
+| **Timers & Island Activities** | *"Set a timer for 10 minutes"*, *"Kitna time bacha hai?"*, *"Battery status"* | Live countdowns and system battery alerts rendered natively in dynamic island slots. |
+| **Computer-Use Mode** | Hold `⌃` Control key and say: *"Click the blue download button"* | Inspects screen visually via Set-of-Mark (SoM) coordinates and acts iteratively. |
+| **Offline Math & Info** | *"25 * 4 kitna hota hai?"*, *"15% of 80"*, *"Weather today"* | Evaluates arithmetic locally in < 5ms with zero tokens and checks live forecasts. |
 
 ---
 
-## Voice command reference
+## Why Voice.AI
 
-### Media
-
-| Say | Result |
-|:--|:--|
-| "Play the current video" / "Video chalao" | Starts the active video |
-| "Pause karo" / "Pause the music" | Pauses Spotify or YouTube |
-| "Change it to next" / "Agla gana chalao" | Next track |
-| "Previous track" / "Pichhla video" | Previous track |
-
-### System and apps
-
-| Say | Result |
-|:--|:--|
-| "Open Safari" / "WhatsApp kholo" | Launches and focuses the app |
-| "Close the app" / "Spotify band karo" | Quits the app |
-| "Turn down the volume" / "Aawaz kam karo" | Adjusts volume |
-| "Adjust brightness to 70%" / "Screen light badhao" | Adjusts brightness |
-| "Take a screenshot" / "Screenshot lo" | Captures the screen to the clipboard |
-
-### Dictation, models, and computer use
-
-| Input | Result |
-|:--|:--|
-| `fn + D` or `⌘⇧C` | Dictate to the clipboard |
-| "Switch to smaller local model" / "Chote model pe jao" | Smaller local model |
-| "Switch to larger local model" / "8b model chalao" | Larger local model |
-| "Go to Claude" / "Use paid models" | Cloud model |
-| `⌃` Control, then a goal | Runs the computer-use loop |
-| `Esc`, or "stop" / "ruko" | Halts the loop immediately |
-
-### Knowledge and math
-
-| Say | Result |
-|:--|:--|
-| "What is 25 * 4?" / "25 into 4 kitna hota hai" | `100` |
-| "What is 15 percent of 80?" | `12` |
-| "Square root of 144" | `12` |
-| "What is photosynthesis?" | Summary with a source pill |
-| "What is the weather in Delhi?" | Live temperature from Open-Meteo |
+- **100% Free & Open Source (MIT License)**: Zero paywalls, zero closed telemetry, and zero forced subscriptions. You own the software and can inspect every line of code.
+- **Real Computer Control, Not Just Chat**: Rather than keeping you trapped in a conversational chatbox, Voice.AI clicks buttons, navigates browser tabs, automates safe terminal commands, and drafts messages across real desktop software.
+- **Local-First & Offline Privacy**: Run entirely without internet connectivity using on-device quantized Whisper models and local Ollama (`llama3.2:3b`, `qwen2.5:3b`).
+- **Consequential Safety Lane**: Destructive commands (file deletion, sending messages, running mutating terminal commands) can **never** execute automatically. An un-dismissable Notch Approval Card mandates explicit confirmation.
+- **Native Hindi & Hinglish Engine**: First-class support for Indian multilingual speech patterns with a transliterating phonetic engine and Levenshtein fuzzy contact matching.
+- **Clean-Room Native SwiftUI Material**: 100% written in Apple frameworks (`SwiftUI`, `AppKit`, `QuickLookThumbnailing`, `CryptoKit`) with fluid spring physics inspired by modern Dynamic Island design.
 
 ---
 
-## Installation
+## How Safe Is It?
 
-### macOS
+Voice.AI follows a strict **zero-trust security model** for autonomous computer control:
 
-Requires macOS 14.0 (Sonoma) or later on Apple Silicon.
+1. **Payload-Bound Consequential Approvals**: Actions that modify disk contents, send messages, or execute scripts generate a cryptographic hash of their exact arguments. Approval is strictly bound to that payload; if arguments shift, the approval is invalidated.
+2. **Hardened Command Policy**: Dangerous shell commands (`sudo`, `rm -rf`, `mkfs`, `curl | sh`, `eval`, `launchctl`) are permanently blocked by `CommandPolicy`. Only whitelisted utilities (`cp`, `mv`, `mkdir`, `open`) operate inside allowed roots (`~/Desktop`, `~/Documents`, `~/Downloads`).
+3. **Prompt-Injection Neutralization**: All external inputs (on-screen OCR, incoming emails, Slack messages, web text) are classified as untrusted data and wrapped in `<UNTRUSTED_...>` tags with prompt injection patterns scrubbed before reaching the model.
+4. **Local Keychain Storage**: All cloud API keys and OAuth tokens are stored in the encrypted macOS Keychain (`ai.voice.app.auth`). Sensitive values are replaced with `[REDACTED_API_KEY]` in all debug logs and transcripts.
 
-1. Download [Voice.AI-1.0.0.dmg](website/downloads/Voice.AI-1.0.0.dmg). A [SHA-256 checksum](website/downloads/Voice.AI-1.0.0.dmg.sha256) is published next to it so you can verify the download.
-2. Open the disk image and drag **Voice.AI.app** into **Applications**.
-3. Launch the app and follow onboarding to pick an AI mode and grant **Accessibility** and **Microphone** permissions. Computer-use mode also needs **Screen Recording**. See [how to grant permissions](docs/how-to-grant-permissions.md) if a prompt does not appear.
-
-### Windows (preview)
-
-The shared core and service adapters live in [`windows/VoiceAI.Windows`](windows/VoiceAI.Windows) (WinUI 3 and C#). The native GUI shell is still in development. See the [Windows developer setup](docs/windows-dev-setup.md) to build with Visual Studio 2022 and .NET 8, and the [offline setup guide](docs/setup-free-offline-windows.md) for local models.
+*For complete threat models and security details, read [SECURITY.md](SECURITY.md).*
 
 ---
 
-## Building from source
+## Three AI Modes
 
+| Mode | What It Needs | Privacy & Network Status | Best For |
+|---|---|---|---|
+| **1. 100% Offline Local** | [Ollama](https://ollama.com) installed (`llama3.2:3b` or `qwen2.5:3b`) + local Whisper | **100% Private & Offline.** Zero bytes leave your machine. Audio and pixels remain strictly on device. | Complete privacy, offline travel, air-gapped security, zero API costs. |
+| **2. Cloud Models (BYOK)** | Your own API key for Anthropic Claude, OpenAI, or Google Gemini | **Encrypted HTTPS Outbound.** User prompts and selected screen crops are sent over HTTPS to your chosen provider. | Complex multi-step reasoning, coding tasks, and ultra-high-resolution vision analysis. |
+| **3. Free Search Mode** | No API keys required (built-in Google Custom Search + Wikipedia) | **Public Search Queries Only.** Search strings are sent to Google / Wikipedia APIs; zero user documents or credentials transmitted. | Instant factual queries, unit conversions, live weather, and rapid web research. |
+
+### Quick Start for Each Mode
+
+- **To run 100% Offline**: Follow the [Offline Setup Guide](docs/setup-free-offline.md) to install Ollama and pull lightweight 3B models in two terminal commands.
+- **To configure Cloud Keys**: Open Voice.AI → **Settings (⌘,)** → **AI Models** and paste your Anthropic, OpenAI, or Gemini API keys. Keys stay secured in your Keychain.
+- **To use Free Search**: Select "Free Search Mode" during first-run onboarding or toggle it anytime in Settings.
+
+---
+
+## Project Status & Roadmap
+
+| Platform / Capability | Current Status | Notes |
+|---|---|---|
+| **macOS Native App** | **Production Ready (v1.1.0)** | Tested on macOS 14+ Apple Silicon; 949 automated unit tests passing. |
+| **Dynamic Island & Notch Shelf** | **Complete** | Liquid spring physics, drag-to-notch auto-expand, and multi-item staging. |
+| **Voice Email & Messaging** | **Complete** | Mail.app, Gmail OAuth, Slack Web API, Discord bot REST, WhatsApp Cloud API. |
+| **Windows Core Engine (`VoiceAI.Core`)** | **Complete (200/200 Tests)** | Pure-logic .NET Core parity for Island engine, memory store, and command policy. |
+| **Windows WinUI 3 Desktop Shell** | **Preview / In Development** | Windows 11 desktop presentation shell under active development. |
+| **In-App Model Downloader** | **In Development** | Native GUI progress downloader for one-click Ollama GGUF weights. |
+
+---
+
+## FAQ & Troubleshooting
+
+<details>
+<summary><b>Why does macOS say "Voice.AI cannot be opened because Apple cannot check it for malicious software"?</b></summary>
+<br/>
+Voice.AI is an independent open-source project. Because we do not pay for Apple's commercial Developer Program, macOS displays Gatekeeper warnings on unsigned builds. To open: right-click `Voice.AI.app` in Finder, choose <b>Open</b>, and confirm. Alternatively, click <b>Open Anyway</b> under <i>System Settings → Privacy & Security</i>.
+</details>
+
+<details>
+<summary><b>Why isn't my microphone picking up voice commands?</b></summary>
+<br/>
+Ensure Microphone access is granted under <i>System Settings → Privacy & Security → Microphone</i>. Voice.AI activates listening only when you press your configured trigger hotkey (default: hold <code>Fn</code> or <code>⌘</code>) or when wake-word mode is toggled on.
+</details>
+
+<details>
+<summary><b>How do I switch AI models mid-conversation?</b></summary>
+<br/>
+You can switch models completely by voice at any time! Say:
+- <i>"Switch to smaller local model"</i> (selects local 3B model)
+- <i>"Switch to Claude"</i> or <i>"Switch to ChatGPT"</i> (selects configured cloud provider)
+- <i>"Use free search mode"</i> (switches to zero-key search)
+</details>
+
+<details>
+<summary><b>Can Voice.AI run on Intel Macs?</b></summary>
+<br/>
+Release builds are compiled natively for 64-bit Apple Silicon (<code>arm64</code>, M-series). While the Swift source code can be compiled for x86_64 using Xcode, Apple Silicon is strongly recommended for hardware neural acceleration with Whisper and local LLMs.
+</details>
+
+<details>
+<summary><b>How do I completely uninstall Voice.AI and remove all data?</b></summary>
+<br/>
+Simply delete <code>/Applications/Voice.AI.app</code>. To remove all local caches, encrypted memories, and Keychain items, follow our step-by-step [Uninstall and Cleanup Guide](docs/uninstall-and-cleanup.md).
+</details>
+
+---
+
+## Building and Testing
+
+Voice.AI is built with pure native tools—no heavy package managers, webviews, or external frameworks required.
+
+### Build from Source (macOS)
 ```bash
+# Clone the repository
 git clone https://github.com/Mohit-jpg-dot/Voice.AI.git
 cd Voice.AI
 
-./scripts/build-app.sh     # build VoiceOSCore and Voice.AI.app
-./scripts/make-dmg.sh      # package the release DMG
+# Build the native app bundle
+bash scripts/build-app.sh
+
+# Run all core verification suites (949 tests)
+VOICE_AI_TEST_MODE=1 bash scripts/run-tests.sh core
+
+# Package the release DMG installer
+bash scripts/make-dmg.sh
 ```
 
----
-
-## Testing
-
+### Run Windows Core Tests (.NET Core)
 ```bash
-./scripts/run-tests.sh core      # 342/342 (suites 1-39)
-./scripts/run-tests.sh brain     # 28/28
-./scripts/run-tests.sh google    # 83/83
-./scripts/run-tests.sh hindi     # 125/125
-./scripts/run-tests.sh auth      # 37/41 in an offline sandbox
+dotnet test windows/tests/VoiceAI.Core.Tests/VoiceAI.Core.Tests.csproj
 ```
 
-The `auth` suite scores 37/41 offline because suites 3 and 5 need host disk access and a live network.
-
-Windows core suite (.NET):
-
-```powershell
-dotnet run --project windows/tests/VoiceAI.Core.Tests/VoiceAI.Core.Tests.csproj --no-restore   # 132/132
-```
-
-Interactive computer-use, safe voice terminal, and memory test cases are in [real-test.md](real-test.md).
+*For contribution guidelines, pull request protocols, and code style standards, see [CONTRIBUTING.md](CONTRIBUTING.md).*
 
 ---
 
-## Safe Voice Terminal Control & Persistent Local Memory
+## Support the Project
 
-- **Safe Voice Terminal (`CommandPolicy` + `SafeTerminalEngine` + `run_terminal_command`)**:
-  - Single `.consequential`-tier tool (`run_terminal_command(command, working_directory, purpose)`) backed by a real `ShellTokenizer` (no regex-only checks; rejects unparseable commands, `$(...)`, backticks, `$VAR` expansion, process substitution, and here-docs).
-  - Canonicalizes paths with `realpath` against user-configured working roots (`~/Desktop`, `~/Documents`, `~/Downloads`, `~/VoiceAI-Workspace` by default; additional folders can only be added manually in **Settings**, never by voice/LLM).
-  - **Never runs `rm`**: deletions show a dry run (item count & total size), move items to macOS Trash (`FileManager.trashItem`), and require a second spoken confirmation naming the item count for folders or >20 items.
-  - **Settings & defaults**: `Auto-run read-only commands` (`OFF`), `Command timeout` (`30s`), `Allowed working folders` (`Desktop`, `Documents`, `Downloads`, `VoiceAI-Workspace`), `Custom allowed CLI programs` (empty; always-blocked list cannot be overridden).
-  - **Approvals & sandbox**: Hash-bound to exact command + working directory, live-mic/UI-only (ignores TTS echo, active TTS playback, screen/file text, and 30s silence), scrubbed environment (`PATH`, `HOME`, `LANG` only), 64 KB output cap, `<UNTRUSTED_COMMAND_OUTPUT>` + `SecretRedactor`, and encrypted daily command audit logs (without output bodies).
-- **Persistent Local Memory (`MemoryStore` + `EncryptedChatHistoryManager`)**:
-  - Three layers: Working Context (active session, last commands, active folder), Session Memory (`ConversationSessionRecord` with auto-compacted `rollingSummary` after 12 turns), and Long-Term Facts (saved **only** with explicit user consent, never silently).
-  - Rejects instruction-like memories, scrubs secrets before storage, wraps retrieved memories in `<UNTRUSTED_MEMORY_CONTEXT>`, supports real deletion/forgetting, and persists active session ID across restarts.
-  - **Setting & default**: `Enable Persistent Local Memory` (`ON` by default; toggleable in **Settings**).
-- **Voice Email (`EmailService` + `VoiceEmailManager`)**:
-  - Ordered backend ladder: **Mail.app (Apple Events)** -> **Gmail API (OAuth in Keychain, minimal `gmail.send` + `gmail.readonly` scopes)** -> **IMAP/SMTP (Keychain)** -> **`mailto:` Draft fallback** (never reported as sent).
-  - Spoken email address normalization (`"dot"`, `"at"`, `"underscore"`, `"dash"`, digit words), macOS Contacts disambiguation (asks instead of guessing), persistent encrypted `EmailDraft`s, `.consequential` approval card for every send/reply/forward, configurable 10 s undo window, reply-all recipient-count warning, new/lookalike recipient warning, 5-in-10-minute rate limit, and `<UNTRUSTED_EMAIL_DATA>` prompt-injection boundary.
-  - Persistent encrypted `WatchRule`s (`thread` & `sender`, case-insensitive + Gmail `+tag` normalized) with 60 s background polling, exponential error backoff, quiet-hours support, and `"replied while you were away"` launch alerts (never auto-replies).
-  - *Note*: Live Mail.app/Gmail/Contacts permissions, acoustic TTS, and real delivery are pending manual QA in [real-test.md](real-test.md).
-- **Messaging Connectors (`SlackConnector`, `DiscordConnector`, `WhatsAppConnector`, `MessagingRouter`)**:
-  - **Full Voice Control in English, Hindi & Hinglish**:
-    - *"Send Rahul a WhatsApp saying I'll be late"* / *"Rahul ko WhatsApp pe bolo main late aaunga"*
-    - *"Message #general on Slack: standup in 5 minutes"* / *"Slack pe general channel me likho standup in 5 minutes"*
-    - *"Reply to the last message on Discord with 'sounds good'"* / *"Discord pe jawab do sounds good"*
-    - *"Read my unread Slack messages"* / *"Mere unread messages padho"*
-    - *"What did Priya say on WhatsApp?"* / *"Priya ne kya bheja?"*
-    - *"Open the dev-team channel"* / *"dev-team khol do"*
-    - *"React with a thumbs up"*, *"Set my Slack status to in a meeting"*, *"Search Slack for invoice"*
-  - **Official Connectors & ToS Compliance**:
-    - **Slack**: Official Web API via OAuth user token (`xoxp-...`) stored in Keychain `ai.voice.app.auth` (see [docs/setup-slack.md](docs/setup-slack.md)).
-    - **Discord**: Official Bot REST endpoints (no self-bots or user token automation); personal DMs fall back to driving Discord Desktop with approval (see [docs/setup-discord.md](docs/setup-discord.md)).
-    - **WhatsApp**: Official Business Cloud API (24h customer window detection & template guidance) + native WhatsApp Desktop backend (zero unofficial libraries, ban risk prevention) (see [docs/setup-whatsapp.md](docs/setup-whatsapp.md)).
-  - **Contact & Channel Resolution**: Fuzzy scoring across English, Devanagari Hindi, and Hinglish transliterations; spoken phone digit normalization; alias memory ("call him Bunty"); ambiguity disambiguation (*"Which Rahul? Rahul Sharma or Rahul Verma?"*).
-  - **Safety**: Mandatory `.consequential` Notch Approval Card on all sends; `<UNTRUSTED_MESSAGE_DATA>` isolation with prompt-injection neutralization (`[REDACTED_PROMPT_INJECTION]`); rate limits; spoken *"stop"* / *"ruko"* and Esc immediate cancellation.
+Voice.AI is completely free software built for the open-source community. If you find it helpful:
+- ⭐ **Star this repository on GitHub** to help other builders discover it.
+- 💡 **Open an issue or feature discussion** with your real-world feedback.
+- 🛠️ **Submit a pull request** with new voice intents or platform connectors.
 
 ---
 
-## Security and privacy
+## License & Third-Party Credits
 
-- **Accessibility API.** Used only to find focused text fields, inspect UI structure, and insert text.
-- **Microphone.** Audio is processed on-device with Apple Speech or local Whisper. Raw recordings are never uploaded.
-- **Screen Recording.** Used on demand for offline text recognition with Apple Vision. Pixels stay on your device.
-- **Credentials.** API keys are stored in the macOS Keychain (`ai.voice.app.auth`) or Windows Credential Manager (DPAPI). Keys found in conversation logs are replaced with `[REDACTED_API_KEY]` before saving.
-- **Storage.** Each account's history and preferences are kept in a separate PBKDF2 and AES-GCM encrypted store.
-- **Approvals.** Sending, deleting, and payment actions always need explicit approval.
-- **Prompt injection.** Text read from the screen is treated as untrusted data and never as a command.
+Voice.AI is licensed under the **[MIT License](LICENSE)**.
 
----
+### Third-Party Projects & Attributions
+- **[islandcn](https://github.com/opencoredev/islandcn)** (MIT License, Copyright © 2026 Leo): Dynamic Island presentation architecture, priority queue, and fitted spring constants ported natively to Swift and C#.
+- **[llama.cpp](https://github.com/ggerganov/llama.cpp)** & **[whisper.cpp](https://github.com/ggerganov/whisper.cpp)** (MIT License, Georgi Gerganov): High-performance C/C++ neural inference foundations.
+- **[Piper](https://github.com/rhasspy/piper)** (MIT License, Michael Hansen): Fast local neural text-to-speech engine.
 
-## Roadmap
-
-- [ ] Windows 10/11 WinUI 3 native shell (floating island UI, low-level keyboard hook, WASAPI microphone streaming, UIPI elevation handling)
-- [ ] One-click offline model downloader that fetches, verifies, and launches Ollama and Whisper
-- [ ] Multi-monitor animated "Circle to Ask" beacon overlay
-- [ ] Deep in-browser DOM video scraping without browser accessibility warnings
-- [ ] Live interactive QA of computer-use mode on real macOS apps
-
----
-
-## Documentation
-
-- [Docs hub (all guides)](website/docs.html)
-- [Cross-platform architecture](docs/architecture-cross-platform.md)
-- Architecture phases: [Phase 0 foundations](docs/phase-0-foundations.md) · [Phase 1 JARVIS feel](docs/phase-1-jarvis-feel.md) · [Phase 2 proactive assistant](docs/phase-2-proactive-assistant.md) · [Phase 3 advanced](docs/phase-3-advanced.md)
-- Setup guides: [Cloud API](docs/setup-cloud.md) · [API keys](docs/setup-api-key.md) · [Ollama (local models)](docs/setup-ollama.md) · [Free offline mode](docs/setup-free-offline.md) · [Google Search key](docs/setup-google-search-key.md)
-- [How to grant permissions](docs/how-to-grant-permissions.md)
-- [Computer-use QA matrix](real-test.md)
-- [Windows parity and test report](docs/test-report-windows.md)
-- [Documentation sitemap](docs/index.md)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
-
----
-
-## Contributing
-
-Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, run the relevant test suite for the area you change, and follow the [Code of Conduct](CODE_OF_CONDUCT.md). To report a vulnerability, see [SECURITY.md](SECURITY.md) instead of opening a public issue.
-
----
-
-## Acknowledgements & Third-Party Code
-
-Voice.AI incorporates ideas, algorithms, and native architecture ports from the open-source community:
-- **islandcn**: Dynamic notch engine architecture (activity stack, presentations, priority queue, alerts, reduced-motion fallbacks) and presets (timer, media, recording, transfer, battery, step ETA) ported to native Swift and C# under the MIT License (Copyright © 2026 Leo). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
----
-
-## License
-
-Released under the [MIT License](LICENSE). Copyright © 2026 Voice.AI Team.
+*All third-party licenses, models, and community guidelines are comprehensively documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).*

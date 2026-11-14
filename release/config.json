@@ -1,8 +1,8 @@
 {
   "appName": "Voice.AI",
   "bundleIdentifier": "ai.voice.app",
-  "version": "1.0.0",
-  "buildNumber": "42",
+  "version": "1.1.0",
+  "buildNumber": "43",
   "deploymentTarget": "14.0",
   "sdkTarget": "26.0",
   "architectures": [
@@ -10,7 +10,7 @@
   ],
   "minMacOSVersion": "14.0",
   "copyright": "Copyright © 2026 Voice.AI Team. All rights reserved.",
-  "dmgName": "Voice.AI-1.0.0.dmg",
+  "dmgName": "Voice.AI-1.1.0.dmg",
   "installerDmgName": "Voice.AI-Installer.dmg",
   "releaseChannel": "development",
   "downloadBaseURL": "downloads/",

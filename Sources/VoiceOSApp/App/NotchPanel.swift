@@ -24,17 +24,28 @@ public final class NotchHostingView<Content: View>: NSHostingView<Content> {
         guard let panel = notchPanel, !panel.visibleNotchBounds.isEmpty else {
             return super.hitTest(point)
         }
+
+        // 1. If an active drag session is already over the window, accept drop in notch or hot-zone
+        if panel.isDragActiveOverWindow {
+            if panel.visibleNotchBounds.contains(point) || panel.isPointInDragHotZone(point) {
+                return self
+            }
+        }
+
+        // 2. During mouse dragging (left button held down), accept hit-test if near the notch hot-zone
+        // so AppKit can immediately deliver draggingEntered to open the Shelf tray.
+        if NSEvent.pressedMouseButtons != 0 && ShelfStore.shared.settings.isEnabled && ShelfStore.shared.settings.autoOpenOnDragNearNotch {
+            if panel.isPointInDragHotZone(point) || panel.visibleNotchBounds.contains(point) {
+                return self
+            }
+        }
         
-        // 1. Strictly check if point is inside the active visible notch shape
+        // 3. Normal mouse hover/click: Strictly check if point is inside the active visible notch shape
         if panel.visibleNotchBounds.contains(point) {
             return super.hitTest(point)
         }
-
-        // 2. When a drag is active over the window and point is in the hot-zone, accept hit-test
-        if panel.isDragActiveOverWindow && panel.isPointInDragHotZone(point) {
-            return self
-        }
         
+        // 4. Click-through for all transparent areas outside visible notch
         return nil
     }
 

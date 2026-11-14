@@ -62,13 +62,14 @@ jobs:
           NOTARY_API_KEY: ${{ secrets.NOTARY_API_KEY }}
         run: |
           echo "Submitting DMG to Apple Notarization Service..."
-          xcrun notarytool submit build/VoiceOS-1.0.0.dmg \
+          DMG_FILE=$(ls build/Voice.AI-*.dmg | head -n 1)
+          xcrun notarytool submit "${DMG_FILE}" \
             --key "${NOTARY_API_KEY}" \
             --key-id "${NOTARY_KEY_ID}" \
             --issuer "${NOTARY_ISSUER_ID}" \
             --wait
-          xcrun stapler staple build/VoiceOS-1.0.0.dmg
-          xcrun stapler validate build/VoiceOS-1.0.0.dmg
+          xcrun stapler staple "${DMG_FILE}"
+          xcrun stapler validate "${DMG_FILE}"
 
       - name: Verify Final DMG and Website Artifacts
         run: |
@@ -77,7 +78,7 @@ jobs:
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4.3.4
         with:
-          name: VoiceOS-DMG-and-Metadata
+          name: Voice.AI-DMG-and-Metadata
           path: |
             build/*.dmg
             build/*.sha256
@@ -90,23 +91,23 @@ jobs:
         with:
           draft: true
           prerelease: false
-          name: "VoiceOS ${{ github.ref_name }}"
+          name: "Voice.AI ${{ github.ref_name }}"
           files: |
-            build/VoiceOS-*.dmg
-            build/VoiceOS-*.dmg.sha256
+            build/Voice.AI-*.dmg
+            build/Voice.AI-*.dmg.sha256
             release/latest.json
             website/appcast.xml
           body: |
-            ## VoiceOS ${{ github.ref_name }} Release
+            ## Voice.AI ${{ github.ref_name }} Release
             
             - **Platform:** macOS 14.0+ (Apple Silicon)
             - **Architecture:** `arm64`
-            - **Sparkle Appcast:** `https://voiceos.com/appcast.xml`
+            - **Sparkle Appcast:** `https://voice.ai/appcast.xml`
             
             ### Verification Checksums
             Please verify the SHA-256 hash before running:
             ```bash
-            shasum -a 256 VoiceOS-*.dmg
+            shasum -a 256 Voice.AI-*.dmg
             ```
             
             *Note: Unsigned development builds require Gatekeeper override on first launch: Right-click -> Open.*

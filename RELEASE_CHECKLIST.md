@@ -104,3 +104,4 @@ xcrun notarytool submit build/Voice.AI-1.1.0.dmg --keychain-profile "notarytool-
 # Staple ticket to DMG
 xcrun stapler staple build/Voice.AI-1.1.0.dmg
 ```
+

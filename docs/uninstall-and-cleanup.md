@@ -83,3 +83,4 @@ When installing a new release over an older version:
 - **Keychain Secrets**: Preserved in Keychain `ai.voice.app.auth`.
 - **Encrypted Local Memory & Shelf Items**: Preserved and automatically migrated in `~/Library/Application Support/VoiceAI`.
 - **Replaced App Bundle**: Simply drag the new `Voice.AI.app` into `/Applications` and choose **Replace**.
+

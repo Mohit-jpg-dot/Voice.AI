@@ -343,7 +343,16 @@ public struct NotchGlassIslandView: View {
             }
             .overlay(
                 Group {
-                    if isOpen || appState.isCurrentlyListening {
+                    if appState.isShelfDragTargetHovered {
+                        NotchShape(
+                            topCornerRadius: currentTopRadius,
+                            bottomCornerRadius: currentBottomRadius
+                        )
+                        .stroke(
+                            DesignTokens.Colors.accentCyan,
+                            lineWidth: 2.0
+                        )
+                    } else if isOpen || appState.isCurrentlyListening {
                         NotchShape(
                             topCornerRadius: currentTopRadius,
                             bottomCornerRadius: currentBottomRadius
@@ -359,6 +368,23 @@ public struct NotchGlassIslandView: View {
                     }
                 }
             )
+            .overlay(alignment: .trailing) {
+                if !isOpen && ShelfStore.shared.settings.showCountBadgeOnCollapsedNotch && ShelfStore.shared.count > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "tray.2.fill")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(DesignTokens.Colors.accentCyan)
+                        Text("\(ShelfStore.shared.count)")
+                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.9))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.white.opacity(0.15))
+                    .clipShape(Capsule())
+                    .padding(.trailing, 10)
+                }
+            }
             .overlay(alignment: .topLeading) {
                 if currentEmailDraft != nil || currentEventDraft != nil {
                     Image(systemName: "globe")

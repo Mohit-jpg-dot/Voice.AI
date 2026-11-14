@@ -51,9 +51,58 @@ public final class NotchHUDWindowController: NSWindowController {
         
         super.init(window: panel)
         
+        setupShelfDragCallbacks(panel: panel)
+        updateDragHotZoneBounds()
         positionUnderNotch()
         bindStateTransitions()
         observeScreenChanges()
+    }
+
+    private func setupShelfDragCallbacks(panel: NotchPanel) {
+        panel.onDragEnterHotZone = { [weak self] in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.appState.isShelfDragTargetHovered = true
+                if self.appState.activeNotchTab != .shelf || self.appState.islandState == .resting {
+                    withAnimation(NotchAnimations.openSpring) {
+                        self.appState.activeNotchTab = .shelf
+                        self.appState.setHoverExpanded(true)
+                    }
+                }
+            }
+        }
+
+        panel.onDragExitHotZone = { [weak self] in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.appState.isShelfDragTargetHovered = false
+            }
+        }
+
+        panel.onPerformDrop = { [weak self] pasteboard in
+            guard let self = self else { return false }
+            self.appState.isShelfDragTargetHovered = false
+
+            Task {
+                let results = await ShelfDropController.shared.processPasteboard(pasteboard, sourceAppName: "NotchDrop")
+                await MainActor.run {
+                    if !results.isEmpty {
+                        BoringSoundEngine.shared.playNotchOpen()
+                        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                        NotificationCenter.default.post(name: NSNotification.Name("VoiceOS.ShelfItemsUpdated"), object: nil)
+
+                        if ShelfStore.shared.settings.closeAfterDrop {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                withAnimation(NotchAnimations.closeSpring) {
+                                    self.appState.setHoverExpanded(false)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return true
+        }
     }
     
     required init?(coder: NSCoder) {
@@ -276,6 +325,25 @@ public final class NotchHUDWindowController: NSWindowController {
         let targetY = screenFrame.origin.y + screenFrame.height - windowHeight
         
         window.setFrameOrigin(NSPoint(x: targetX, y: targetY))
+        updateDragHotZoneBounds()
+    }
+
+    public func updateDragHotZoneBounds() {
+        let screen = Self.targetNotchScreen()
+        let notchWidth = Self.calculateClosedNotchWidth(for: screen)
+        let notchHeight = Self.calculateClosedNotchHeight(for: screen)
+        let windowWidth = Self.panelWindowWidth
+        let windowHeight = Self.panelWindowHeight
+
+        // Generous, smooth hot-zone around notch: 70pt left/right, 50pt downwards
+        let hotZoneWidth = notchWidth + 140.0
+        let hotZoneHeight = notchHeight + 50.0
+        let hotZoneX = (windowWidth - hotZoneWidth) / 2.0
+        let hotZoneY = windowHeight - hotZoneHeight
+
+        if let panel = self.window as? NotchPanel {
+            panel.dragHotZoneBounds = NSRect(x: hotZoneX, y: hotZoneY, width: hotZoneWidth, height: hotZoneHeight)
+        }
     }
     
     public static func calculateClosedNotchWidth(for screen: NSScreen = targetNotchScreen()) -> CGFloat {

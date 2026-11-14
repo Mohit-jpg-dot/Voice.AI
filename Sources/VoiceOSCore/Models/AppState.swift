@@ -20,6 +20,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     }
     @Published public var isPinned: Bool = false
     @Published public var isMediaExpanded: Bool = false
+    @Published public var isShelfDragTargetHovered: Bool = false
     @Published public var isNotchMediaDisplayEnabled: Bool = true {
         didSet {
             UserDefaults.standard.set(isNotchMediaDisplayEnabled, forKey: "VoiceAI_NotchMediaDisplayEnabled")

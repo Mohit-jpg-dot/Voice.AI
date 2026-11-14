@@ -116,6 +116,14 @@ public struct ShelfView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshItems()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("VoiceOS.ShelfItemsUpdated"))) { _ in
+            refreshItems()
+        }
+        .onChange(of: appState.isShelfDragTargetHovered) { _, hovered in
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isTargetedForDrop = hovered
+            }
+        }
         // Keyboard Shortcuts
         .background(
             Group {

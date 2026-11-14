@@ -153,8 +153,8 @@ public struct NotchGlassIslandView: View {
         switch appState.activeNotchTab {
         case .shelf:
             let count = ShelfStore.shared.count
-            let width: CGFloat = count > 4 ? 620.0 : 540.0
-            return (width, 220.0 + mediaOffset)
+            let width: CGFloat = count > 3 ? 640.0 : (count > 0 ? 560.0 : 500.0)
+            return (width, 215.0 + mediaOffset)
 
         case .apps:
             // App integrations grid matching Image 2

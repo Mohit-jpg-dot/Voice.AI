@@ -51,7 +51,7 @@ public struct DashboardView: View {
                     
                     Spacer()
                     
-                    // About / System Info button
+                    // About / System Info buttom
                     Button(action: {
                         showingAboutModal.toggle()
                     }) {

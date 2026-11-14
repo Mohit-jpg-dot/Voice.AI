@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Notch Shelf (Temporary Staging Tray & Voice Agent Integration)] - 2026-11-14
+
+### Added
+- **Clean-Room Native Apple Framework Shelf Tray (MIT Mode A)**:
+  - Built 100% from scratch using pure Apple frameworks (`AppKit`, `SwiftUI`, `QuickLookThumbnailing`, `QuickLookUI`, `UniformTypeIdentifiers`, `CryptoKit`) with zero code copied, ported, or paraphrased from Boring Notch or any GPL project.
+  - `ShelfModels` & `ShelfStore`: In-memory and persisted storage with security-scoped bookmarks (`URL.bookmarkData`), deduplication by normalized path/URL, automatic LRU capacity management (`maxItemCount`), auto-expiry pruning (`autoExpireDays`), and AES-256 encrypted storage (`storedPayloadEncrypted`) for pasted text snippets and raw clipboard bitmaps.
+  - `ShelfDropController`: Off-main-thread async drop controller handling file URLs, directory folders (kept as single folder tiles, never expanded), asynchronous file promises (`NSFilePromiseReceiver`), web URLs, and rich text snippets. Strictly checks file attributes without loading multi-megabyte/gigabyte files into memory.
+  - `ShelfDragDetector`: Global & local low-overhead mouse monitor that wakes when an active drag enters the notch hot-zone (top-center calibrated geometry for both physical notched displays and notch-less external monitors), smoothly expanding the notch to the Shelf tab.
+  - `ShelfThumbnailCache`: Asynchronous high-resolution thumbnail generator leveraging `QLThumbnailGenerator` with memory caching and system icon fallbacks.
+  - `ShelfView`: Native SwiftUI tray interface featuring interactive item tiles with file size badges, multi-item selection, keyboard shortcuts (⌘A to select all, ⌘C to copy, Space for Quick Look preview, ⌘⌫ / Delete to remove, Esc to cancel), drag-out source via `NSItemProvider` (Copy by default; Option key for Move), context menus (Open, Quick Look, Copy, Show in Finder, AirDrop, Remove, Move to Trash), and empty state.
+  - `NotchGlassIslandView` Integration: Added `.shelf` tab to the Dynamic Island header with adaptive sizing, spring transitions, and a collapsed notch shelf item count badge.
+  - `SettingsView`: Comprehensive Shelf Settings card allowing users to configure auto-open hot-zone, auto-close after drop, default drag-out action (Copy/Move), post-drag removal, auto-expiration schedule, capacity caps, and collapsed badge visibility.
+- **Voice Agent Shelf Integration (`ShelfVoiceEngine`)**:
+  - Implemented 45+ English, Hindi, and Hinglish voice intents covering listing items (*"what's on my shelf?"*, *"shelf mein kya hai"*), showing shelf (*"shelf dikhao"*), adding named files (*"report.pdf ko shelf pe rakho"*), folders (*"add my project folder"*), latest downloads (*"aakhri download shelf pe rakho"*), latest screenshots, Finder selection, browsing for files, AirDrop (*"airdrop these"*), email attachment (*"attach the shelf files to this email"*), messaging dispatch (*"send the first item to Rahul on WhatsApp"*), moving files into folders (*"move these files into the Reports folder"*), trash deletion, and undo (*"undo that"*).
+  - High-precision file resolver with fuzzy matching, plural normalization, and safe-root path checking restricted to allowed directories (`~/Desktop`, `~/Documents`, `~/Downloads`).
+  - Strict security refusal: Any attempt to access protected paths (`~/.ssh`, `id_rsa`, `.env`, hidden credential files) is immediately refused. Outside-root requests require explicit consent.
+  - Consequential Approval: Destructive actions (`clearShelf`, `moveToTrash`, `airDrop`) trigger a high-risk `.consequential` Tool Approval Card before execution.
+  - Anti-Prompt-Injection: Summarized shelf file contents are sanitized via `SecretRedactor` (stripping API keys and secrets) and wrapped in `<UNTRUSTED_FILE_DATA filename="...">` delimiters before presentation to the LLM.
+- **Windows .NET Parity (`windows/VoiceAI.Core/Shelf/ShelfStoreLogic.cs`)**:
+  - Full C# implementation of `ShelfStoreLogic`, `ShelfSettings`, `ShelfItem`, and `ShelfVoiceEngineLogic` with matching AES-256 encryption, capacity/expiry pruning, voice intent parsing, safe-root guardrails, and untrusted file wrapping.
+- **Automated Verification**:
+  - Added `[Suite 59]` in `Tests/core/test_core.swift` with comprehensive coverage of store logic, encryption, drops, geometry, voice intents, and security (749 total tests passing with 0 failures).
+  - Added `[Suite 18]` in `windows/tests/VoiceAI.Core.Tests/TestRunner.cs` (182 total tests passing with 0 failures).
+
+---
+
 ## [Messaging Connectors (Slack, Discord, WhatsApp)] - 2026-11-13
 
 ### Added

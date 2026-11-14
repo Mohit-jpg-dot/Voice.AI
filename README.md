@@ -8,8 +8,8 @@ Speak in English, Hindi, or Hinglish. Voice.AI opens apps, operates your browser
 [![macOS 14+](https://img.shields.io/badge/macOS-14.0%2B-0071e3.svg)](#installation)
 [![Windows 11](https://img.shields.io/badge/Windows%2011-preview-0078d4.svg)](#windows-preview)
 [![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-native-black.svg)](#installation)
-[![macOS tests](https://img.shields.io/badge/macOS%20tests-342%2F342-34c759.svg)](#testing)
-[![Windows core tests](https://img.shields.io/badge/Windows%20core-114%2F114-34c759.svg)](#testing)
+[![macOS tests](https://img.shields.io/badge/macOS%20tests-749%2F749-34c759.svg)](#testing)
+[![Windows core tests](https://img.shields.io/badge/Windows%20core-182%2F182-34c759.svg)](#testing)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [Website](https://mohit-jpg-dot.github.io/Voice.AI/) ·
@@ -108,6 +108,13 @@ High-impact actions are intercepted before any keystroke is sent. An approval ca
 
 ### Notch interface (macOS)
 
+- **Notch Shelf (Temporary Staging Tray).** Drop files, folders, screenshots, text snippets, and links into the notch. Keep them organized in the dynamic island while you work, and drag them out into any app (Mail, Slack, Finder, browsers).
+  - **Auto-open hot-zone:** Dragging files toward the top-center notch expands the Shelf tab with a glowing drop zone.
+  - **Off-main-thread promises:** Supports `NSFilePromiseReceiver` from Mail, Photos, and Safari without UI hitching.
+  - **Native keyboard navigation:** `⌘A` to select all, `⌘C` to copy, `Space` for Quick Look preview, `Delete` / `⌘⌫` to remove, `Esc` to cancel.
+  - **Multi-display & persistence:** Survives app restarts via security-scoped bookmarks; text and image clipboard snippets are stored with AES-256 encryption.
+  - **Collapsed notch badge:** Subtle item count badge on the notch wing indicates staged files.
+  - **Voice agent actions:** English, Hindi, and Hinglish commands (*"what's on my shelf?"*, *"shelf mein kya hai"*, *"add report.pdf to shelf"*, *"airdrop these"*, *"attach the shelf files to this email"*, *"move these files into Reports"*).
 - **Adaptive HUD** that grows and shrinks to fit each answer, so responses are never truncated.
 - **Now Playing wings** with a live equalizer, app glyph, and track title for Spotify and YouTube.
 - **Clickable source pills** that open Wikipedia and Google citations in your browser.

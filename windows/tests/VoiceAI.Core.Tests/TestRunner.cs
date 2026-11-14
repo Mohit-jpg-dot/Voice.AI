@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 using VoiceAI.Core.Agents;
 using VoiceAI.Core.Brain;
@@ -16,6 +17,7 @@ using VoiceAI.Core.Memory;
 using VoiceAI.Core.Proactive;
 using VoiceAI.Core.Routines;
 using VoiceAI.Core.Security;
+using VoiceAI.Core.Shelf;
 using VoiceAI.Core.SmartHome;
 using VoiceAI.Core.Tools;
 
@@ -78,6 +80,7 @@ namespace VoiceAI.Core.Tests
             TestSafeTerminalCommandPolicyAndMemory();
             TestVoiceEmailLogic();
             await TestMessagingConnectors();
+            TestNotchShelfLogic();
 
             Console.WriteLine("\n=================================================================");
             Console.WriteLine($"Test Run Completed: {_passed} PASSED, {_failed} FAILED");
@@ -743,6 +746,112 @@ namespace VoiceAI.Core.Tests
             AssertEqual(d3.Platform, VoiceAI.Core.Connectors.MessagingPlatform.Discord, "Routes 'Discord with...' to Discord");
             AssertEqual(d3.Action, "reply", "Identifies reply action");
             AssertEqual(d3.Text, "sounds good", "Extracts cleaned reply text");
+        }
+
+        // -------------------------------------------------------------
+        // Suite 18: Notch Shelf Pure Logic, Voice Intents & Security (.NET Port)
+        // -------------------------------------------------------------
+        private static void TestNotchShelfLogic()
+        {
+            Console.WriteLine("\n[Suite 18] Notch Shelf Logic, AES Storage & Voice Security");
+
+            var store = new ShelfStoreLogic();
+            store.Clear();
+            AssertEqual(store.Count, 0, "ShelfStore begins empty");
+
+            // 1. Add file and deduplication
+            string tempFile = Path.GetTempFileName();
+            File.WriteAllText(tempFile, "Temporary PDF Content");
+
+            var item1 = store.AddFile(tempFile, "FileExplorer");
+            AssertEqual(item1.Kind, ShelfItemKind.File, "Adds file as file kind");
+            AssertEqual(store.Count, 1, "ShelfStore count is 1 after addition");
+
+            var dedup = store.AddFile(tempFile, "FileExplorer");
+            AssertEqual(store.Count, 1, "ShelfStore deduplicates identical path");
+            AssertEqual(dedup.Id, item1.Id, "Deduplication maintains item identity");
+
+            // 2. Encrypted snippet storage
+            string secretSnippet = "Top Secret Strategy Notes";
+            var textItem = store.AddTextSnippet(secretSnippet, "Notes");
+            AssertEqual(textItem.Kind, ShelfItemKind.TextSnippet, "Text snippet kind is TextSnippet");
+            AssertTrue(textItem.StoredPayloadEncrypted != null, "Text snippet stored encrypted");
+
+            byte[]? decSnippetBytes = store.RetrieveDecryptedPayload(textItem);
+            AssertTrue(decSnippetBytes != null, "Encrypted payload decrypts cleanly");
+            if (decSnippetBytes != null)
+            {
+                string decSnippet = System.Text.Encoding.UTF8.GetString(decSnippetBytes);
+                AssertEqual(decSnippet, secretSnippet, "Decrypted snippet matches original plaintext");
+            }
+
+            // 3. Encrypted image payload
+            byte[] fakeImage = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+            var imgItem = store.AddImageData(fakeImage, "Screenshot.png", "Clipboard");
+            AssertEqual(imgItem.Kind, ShelfItemKind.Image, "Image kind is Image");
+            byte[]? decImg = store.RetrieveDecryptedPayload(imgItem);
+            AssertTrue(decImg != null && decImg.Length == fakeImage.Length, "Decrypted image matches fake image bytes");
+
+            // 4. Capacity limit pruning
+            var capacityStore = new ShelfStoreLogic(new ShelfSettings { MaxItemCount = 2, AutoExpireDays = 0 });
+            capacityStore.AddTextSnippet("Item 1");
+            capacityStore.AddTextSnippet("Item 2");
+            capacityStore.AddTextSnippet("Item 3");
+            AssertEqual(capacityStore.Count, 2, "Enforces MaxItemCount capacity limit by pruning oldest");
+
+            // 5. Voice Intents (English, Hindi, Hinglish)
+            string allowedDir = Path.GetTempPath();
+            var voiceEngine = new ShelfVoiceEngineLogic(store, new List<string> { allowedDir });
+
+            var a1 = voiceEngine.ParseVoiceIntent("what's on my shelf?");
+            AssertEqual(a1.Kind, ShelfVoiceActionKind.ListItems, "Voice intent 'what\\'s on my shelf?' -> ListItems");
+
+            var a2 = voiceEngine.ParseVoiceIntent("shelf mein kya hai");
+            AssertEqual(a2.Kind, ShelfVoiceActionKind.ListItems, "Voice intent 'shelf mein kya hai' -> ListItems");
+
+            var a3 = voiceEngine.ParseVoiceIntent("show the shelf");
+            AssertEqual(a3.Kind, ShelfVoiceActionKind.ShowShelf, "Voice intent 'show the shelf' -> ShowShelf");
+
+            var a4 = voiceEngine.ParseVoiceIntent("move these files into the Reports folder");
+            AssertEqual(a4.Kind, ShelfVoiceActionKind.MoveFiles, "Voice intent move files -> MoveFiles");
+            AssertEqual(a4.DestinationFolder, "Reports", "Destination folder extracted as Reports");
+
+            var a5 = voiceEngine.ParseVoiceIntent("airdrop these");
+            AssertEqual(a5.Kind, ShelfVoiceActionKind.AirDrop, "Voice intent 'airdrop these' -> AirDrop");
+
+            var a6 = voiceEngine.ParseVoiceIntent("attach the shelf files to this email");
+            AssertEqual(a6.Kind, ShelfVoiceActionKind.AttachToEmail, "Voice intent 'attach...' -> AttachToEmail");
+
+            var a7 = voiceEngine.ParseVoiceIntent("send the first item to Rahul on WhatsApp");
+            AssertEqual(a7.Kind, ShelfVoiceActionKind.SendToContact, "Voice intent send to contact -> SendToContact");
+            AssertEqual(a7.Contact, "Rahul", "Contact extracted as Rahul");
+            AssertEqual(a7.Platform, "WhatsApp", "Platform extracted as WhatsApp");
+
+            var a8 = voiceEngine.ParseVoiceIntent("move report.pdf to trash");
+            AssertEqual(a8.Kind, ShelfVoiceActionKind.MoveToTrash, "Voice intent move to trash -> MoveToTrash");
+
+            var a9 = voiceEngine.ParseVoiceIntent("undo that");
+            AssertEqual(a9.Kind, ShelfVoiceActionKind.UndoAdd, "Voice intent 'undo that' -> UndoAdd");
+
+            var a10 = voiceEngine.ParseVoiceIntent("what is the weather in Delhi");
+            AssertEqual(a10.Kind, ShelfVoiceActionKind.None, "Unrelated query rejected (.None)");
+
+            // 6. Security: Refusal of Sensitive Paths and Allowed Roots
+            AssertTrue(ShelfVoiceEngineLogic.IsProtectedSensitivePath("/Users/user/.ssh/id_rsa"), "Protected .ssh/id_rsa path is refused");
+            AssertTrue(ShelfVoiceEngineLogic.IsProtectedSensitivePath("C:\\Users\\user\\.env"), "Protected .env path is refused");
+            AssertTrue(voiceEngine.IsInsideAllowedRoots(tempFile), "Temporary file is inside allowed roots");
+
+            // 7. Security: Consequential Approval Check
+            AssertTrue(ShelfVoiceEngineLogic.RequiresConsequentialApproval(new ShelfVoiceAction(ShelfVoiceActionKind.ClearShelf)), "ClearShelf requires consequential approval");
+            AssertTrue(ShelfVoiceEngineLogic.RequiresConsequentialApproval(new ShelfVoiceAction(ShelfVoiceActionKind.MoveToTrash)), "MoveToTrash requires consequential approval");
+            AssertTrue(ShelfVoiceEngineLogic.RequiresConsequentialApproval(new ShelfVoiceAction(ShelfVoiceActionKind.AirDrop)), "AirDrop requires consequential approval");
+
+            // 8. Security: Untrusted Data Wrapping & API Key Redaction
+            string hostile = ShelfVoiceEngineLogic.WrapUntrustedDataForAI("hostile.txt", "sk-proj-1234567890abcdef12345678 is secret");
+            AssertTrue(hostile.Contains("<UNTRUSTED_FILE_DATA filename=\"hostile.txt\">"), "Wraps untrusted file data in tags");
+            AssertTrue(hostile.Contains("[REDACTED_API_KEY]"), "Redacts sk- API keys before model presentation");
+
+            try { File.Delete(tempFile); } catch { }
         }
     }
 }

@@ -20,6 +20,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     }
     @Published public var isPinned: Bool = false
     @Published public var isMediaExpanded: Bool = false
+    @Published public var isShelfDragTargetHovered: Bool = false
     @Published public var isNotchMediaDisplayEnabled: Bool = true {
         didSet {
             UserDefaults.standard.set(isNotchMediaDisplayEnabled, forKey: "VoiceAI_NotchMediaDisplayEnabled")
@@ -185,6 +186,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     
     public enum NotchTab: String, CaseIterable, Identifiable, Sendable {
         case ask = "Ask"
+        case shelf = "Shelf"
         case apps = "Apps"
         case tasks = "Agents"
         case memory = "Memory"
@@ -194,6 +196,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
         public var iconName: String {
             switch self {
             case .ask: return "sparkles"
+            case .shelf: return "tray.2.fill"
             case .apps: return "square.grid.2x2"
             case .tasks: return "cpu"
             case .memory: return "brain"
@@ -1812,6 +1815,20 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
 
         guard let draftToSend = customDraft ?? activeEmailDraft ?? VoiceEmailManager.shared.focusedDraft() else { return }
 
+        // If called from the pill's onSend callback (after ViewModel already sent),
+        // just clear state — don't re-send.
+        if customDraft != nil {
+            self.activeEmailDraft = nil
+            self.executionState = .completed("✓ Email sent to \(draftToSend.to.joined(separator: ", ")).")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                guard let self = self else { return }
+                if !self.isPinned { self.islandState = .resting }
+                self.executionState = .idle
+            }
+            return
+        }
+
+        // Voice-triggered send path (no pill ViewModel) — send via backend
         Task { @MainActor in
             self.executionState = .executing("Sending email to \(draftToSend.to.joined(separator: ", "))...")
             let result = await VoiceEmailManager.shared.sendDraft(draftToSend, undoWindowOverride: 0) { _ in true }
@@ -1823,6 +1840,7 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
                     if !self.isPinned {
                         self.islandState = .resting
                     }
+                    self.executionState = .idle
                 }
             } else {
                 self.executionState = .error(result.errorMessage ?? "Failed to send email.")

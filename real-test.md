@@ -79,4 +79,24 @@ This document tracks verification scenarios for the **Control-key (`⌃`) Comput
 | 10 | WhatsApp 24-Hour Customer Window Expiration | Cloud API returns error code 131047; Voice.AI explains the 24-hour window restriction and guides user | Automated in `[Suite 56]` & Windows `[Suite 17]` |
 | 11 | Bulk message (>3 recipients) | Extra confirmation prompt displayed before dispatching; prevents spam broadcast | Enforced in `MessagingRouter`; live UI pending manual QA |
 
+---
+
+## Notch Shelf Manual QA & Live Verification (Clean-Room Apple Native)
+
+| # | Manual Live Test Scenario | Expected Result | Status |
+|---|---|---|---|
+| 1 | **Drop one file from Finder**<br>Drag `report.pdf` toward notch | Notch expands automatically to Shelf tab with glowing cyan drop zone; tile appears with thumbnail, name, and size | Automated in `[Suite 59]` (`ShelfDropController`); live mouse drag pending manual QA |
+| 2 | **Drop multiple files**<br>Drag 3 files simultaneously | 3 distinct tiles appear in order without hanging main thread | Automated in `[Suite 59]`; live drag pending manual QA |
+| 3 | **Drop a folder**<br>Drag directory into notch | Adds single folder tile (never expanded into contents) with folder icon & item count | Automated in `[Suite 59]`; live UI pending manual QA |
+| 4 | **Drop text & web links**<br>Drag text from Safari; drag URL | Text snippet tile created with preview; URL tile created with domain/favicon | Automated in `[Suite 59]`; live drag pending manual QA |
+| 5 | **Drop from other apps (Promises)**<br>Drag Mail attachment or Photos image | Resolves `NSFilePromiseReceiver` asynchronously off main thread; creates tile cleanly | Automated in `[Suite 59]`; live Photos/Mail pending manual QA |
+| 6 | **Drag out to another app**<br>Drag tile out into Finder / Mail | Item dropped into destination (Copy by default; Option-drag moves); optional auto-remove | Implemented in `ShelfView.swift` (`NSItemProvider`); live drag-out pending manual QA |
+| 7 | **Keyboard navigation**<br>Arrow keys, Space, Delete, ⌘C, ⌘A | Arrow keys select, Space opens Quick Look (`QLPreviewController`), Delete removes, ⌘C copies, ⌘A selects all | Implemented in `ShelfView.swift`; live keyboard pending manual QA |
+| 8 | **Persist across relaunch**<br>Add items, quit Voice.AI, relaunch | Items reload via security-scoped bookmarks and encrypted metadata | Automated in `[Suite 59]` (`PersistenceTest`); live relaunch pending manual QA |
+| 9 | **Missing file handling**<br>Move or delete file in Finder | Tile shows dimmed `.opacity(0.55)` and `exclamationmark.triangle` without crashing | Automated in `[Suite 59]`; live Finder delete pending manual QA |
+| 10 | **Badge on collapsed notch**<br>Collapse notch with items on shelf | Subtle count badge appears on notch wing; hides when shelf is empty | Implemented in `NotchGlassIslandView.swift`; verified in `[Suite 59]` |
+| 11 | **Voice agent integration**<br>English, Hindi, Hinglish commands | Accurate intent classification for 45+ phrases; safe search inside allowed roots; strict refusal of `.ssh`/`.env`; `.consequential` approval for Clear/Trash/AirDrop; prompt-injection wrapper | Automated in `[Suite 59]` & Windows `[Suite 18]`; live mic pending manual QA |
+| 12 | **Settings toggles**<br>Settings -> Shelf | Toggles for auto-open on drag near notch, close after drop, default drag-out action (Copy/Move), auto-clear (1/3/7/14/30 days), max capacity (10/25/50/100) apply immediately | Implemented in `SettingsView.swift`; verified in `[Suite 59]` |
+
+
 

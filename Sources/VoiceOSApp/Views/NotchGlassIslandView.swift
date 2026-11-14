@@ -92,6 +92,8 @@ public struct NotchGlassIslandView: View {
     }
 
     private var isOpen: Bool {
+        if appState.isShelfDragTargetHovered { return true }
+        if appState.activeNotchTab == .shelf && appState.islandState != .resting { return true }
         if appState.isMediaExpanded { return true }
         if currentEmailDraft != nil || currentEventDraft != nil { return true }
         switch appState.islandState {
@@ -118,8 +120,8 @@ public struct NotchGlassIslandView: View {
     // MARK: - Dynamic Response-Adaptive Sizing Engine
     // Automatically calculates opening width and height based on current response length or view mode
     private var dynamicDimensions: (width: CGFloat, height: CGFloat) {
-        if appState.isMediaExpanded {
-            return (460.0, 195.0)
+        if appState.isMediaExpanded && !appState.isShelfDragTargetHovered && appState.activeNotchTab != .shelf {
+            return (480.0, 215.0)
         }
         if !isOpen {
             if case .voiceCompact = appState.islandState {
@@ -131,6 +133,10 @@ public struct NotchGlassIslandView: View {
             if appState.isNotchMediaDisplayEnabled, let media = appState.currentMedia, media.isPlaying {
                 return (physicalNotchWidth + 100.0, physicalNotchHeight + 6.0)
             }
+            let shelfCount = ShelfStore.shared.count
+            if shelfCount > 0 && ShelfStore.shared.settings.showCountBadgeOnCollapsedNotch {
+                return (physicalNotchWidth + 40.0, physicalNotchHeight)
+            }
             return (physicalNotchWidth, physicalNotchHeight)
         }
         
@@ -139,14 +145,20 @@ public struct NotchGlassIslandView: View {
         }
 
         // Compact Pill Mode (matches reference Image 1 & 10)
-        if isCompactMode || appState.isCompactResponseMode {
+        // Never hijack when user is dragging a file toward the notch or when Shelf tab is active!
+        if (isCompactMode || appState.isCompactResponseMode) && !appState.isShelfDragTargetHovered && appState.activeNotchTab != .shelf {
             return calculateAdaptiveNotchSize(for: compactDisplayText)
         }
         
-        let mediaOffset: CGFloat = (appState.currentMedia != nil) ? 38.0 : 0.0
+        let mediaOffset: CGFloat = (appState.currentMedia != nil && !appState.isShelfDragTargetHovered && appState.activeNotchTab != .shelf) ? 38.0 : 0.0
         
         // Full Opened States based on Tab & Response Length
         switch appState.activeNotchTab {
+        case .shelf:
+            let count = ShelfStore.shared.count
+            let width: CGFloat = count > 3 ? 640.0 : (count > 0 ? 560.0 : 500.0)
+            return (width, 215.0 + mediaOffset)
+
         case .apps:
             // App integrations grid matching Image 2
             return (580.0, 325.0 + mediaOffset)
@@ -254,7 +266,7 @@ public struct NotchGlassIslandView: View {
         ZStack(alignment: .top) {
             // Main Animated Notch Body (Liquid Translucent Black Glass)
             VStack(spacing: 0) {
-                if appState.isNotchMediaDisplayEnabled && appState.isMediaExpanded, let media = appState.currentMedia {
+                if appState.isNotchMediaDisplayEnabled && appState.isMediaExpanded && !appState.isShelfDragTargetHovered && appState.activeNotchTab != .shelf, let media = appState.currentMedia {
                     aestheticMediaPanel(media: media)
                 } else if isOpen {
                     if let draft = currentEmailDraft {
@@ -291,7 +303,7 @@ public struct NotchGlassIslandView: View {
                         .padding(.top, max(physicalNotchHeight + 4.0, 36.0))
                         .padding(.bottom, 12)
                         .transition(.opacity)
-                    } else if isCompactMode || appState.isCompactResponseMode {
+                    } else if (isCompactMode || appState.isCompactResponseMode) && !appState.isShelfDragTargetHovered && appState.activeNotchTab != .shelf {
                         compactResponsePillView
                     } else {
                         openNotchContent
@@ -334,7 +346,16 @@ public struct NotchGlassIslandView: View {
             }
             .overlay(
                 Group {
-                    if isOpen || appState.isCurrentlyListening {
+                    if appState.isShelfDragTargetHovered {
+                        NotchShape(
+                            topCornerRadius: currentTopRadius,
+                            bottomCornerRadius: currentBottomRadius
+                        )
+                        .stroke(
+                            DesignTokens.Colors.accentCyan,
+                            lineWidth: 2.0
+                        )
+                    } else if isOpen || appState.isCurrentlyListening {
                         NotchShape(
                             topCornerRadius: currentTopRadius,
                             bottomCornerRadius: currentBottomRadius
@@ -350,6 +371,23 @@ public struct NotchGlassIslandView: View {
                     }
                 }
             )
+            .overlay(alignment: .trailing) {
+                if !isOpen && ShelfStore.shared.settings.showCountBadgeOnCollapsedNotch && ShelfStore.shared.count > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "tray.2.fill")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(DesignTokens.Colors.accentCyan)
+                        Text("\(ShelfStore.shared.count)")
+                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.9))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.white.opacity(0.15))
+                    .clipShape(Capsule())
+                    .padding(.trailing, 10)
+                }
+            }
             .overlay(alignment: .topLeading) {
                 if currentEmailDraft != nil || currentEventDraft != nil {
                     Image(systemName: "globe")
@@ -409,6 +447,22 @@ public struct NotchGlassIslandView: View {
         .onAppear {
             appState.dynamicNotchSize = CGSize(width: currentWidth, height: currentHeight)
             liveTelemetry = LiveHostTelemetrySnapshot.capture()
+
+            ShelfDragDetector.shared.onDragNearNotch = { [weak appState] _ in
+                DispatchQueue.main.async {
+                    guard let appState = appState else { return }
+                    if ShelfStore.shared.settings.isEnabled && ShelfStore.shared.settings.autoOpenOnDragNearNotch {
+                        withAnimation(NotchAnimations.openSpring) {
+                            appState.activeNotchTab = .shelf
+                            appState.setHoverExpanded(true)
+                        }
+                    }
+                }
+            }
+            ShelfDragDetector.shared.startMonitoring()
+        }
+        .onDisappear {
+            ShelfDragDetector.shared.stopMonitoring()
         }
         .onReceive(Timer.publish(every: 3.0, on: .main, in: .common).autoconnect()) { _ in
             if isOpen || isHovering {
@@ -452,6 +506,19 @@ public struct NotchGlassIslandView: View {
         }
         .onChange(of: appState.activeEventDraft) { _, newDraft in
             if newDraft != nil {
+                isCompactMode = false
+                appState.isCompactResponseMode = false
+            }
+        }
+        .onChange(of: appState.isShelfDragTargetHovered) { _, hovered in
+            if hovered {
+                isCompactMode = false
+                appState.isCompactResponseMode = false
+                appState.activeNotchTab = .shelf
+            }
+        }
+        .onChange(of: appState.activeNotchTab) { _, newTab in
+            if newTab == .shelf {
                 isCompactMode = false
                 appState.isCompactResponseMode = false
             }
@@ -534,6 +601,21 @@ public struct NotchGlassIslandView: View {
                 Text(AppBrand.name)
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(Color.white.opacity(0.85))
+
+                let shelfCount = ShelfStore.shared.count
+                if shelfCount > 0 && ShelfStore.shared.settings.showCountBadgeOnCollapsedNotch {
+                    HStack(spacing: 3) {
+                        Image(systemName: "tray.2.fill")
+                            .font(.system(size: 8))
+                        Text("\(shelfCount)")
+                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(Color.white.opacity(0.9))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1.5)
+                    .background(Color.white.opacity(0.18))
+                    .clipShape(Capsule())
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
@@ -638,20 +720,32 @@ public struct NotchGlassIslandView: View {
             }
         }) {
             HStack(spacing: 0) {
-                // Left Wing: Source Icon (placed safely to the left of the MacBook camera notch)
+                // Left Wing: Source Icon / Compact Thumbnail
                 HStack(spacing: 4) {
                     if media.source == .spotify {
                         SpotifyBrandIconView(size: 18)
                     } else if media.source == .youtube {
                         ZStack {
-                            Circle()
-                                .fill(Color.red)
-                                .frame(width: 17, height: 17)
-                                .shadow(color: Color.red.opacity(0.4), radius: 3)
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(.white)
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color(red: 0.18, green: 0.03, blue: 0.03))
+                                .frame(width: 26, height: 18)
+                            if !media.artworkUrl.isEmpty, let artUrl = URL(string: media.artworkUrl) {
+                                AsyncImage(url: artUrl) { phase in
+                                    switch phase {
+                                    case .success(let img):
+                                        img.resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 26, height: 18)
+                                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                                    default:
+                                        YouTubeIconView(size: 14)
+                                    }
+                                }
+                            } else {
+                                YouTubeIconView(size: 14)
+                            }
                         }
+                        .frame(width: 26, height: 18)
                     } else {
                         ZStack {
                             Circle()
@@ -714,33 +808,39 @@ public struct NotchGlassIslandView: View {
     
     // MARK: - Aesthetic Dark Glass Media Control Panel (YouTube & Spotify)
     private func aestheticMediaPanel(media: NowPlayingItem) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             // Top notch avoidance padding: ensure all controls and text begin safely below the MacBook camera notch!
             Spacer()
                 .frame(height: max(physicalNotchHeight + 6.0, 38.0))
             
-            // Header Bar: Source Badge + EQ + Close
+            // Header Bar: Source Badge + EQ Visualizer + Dismiss/Collapse
             HStack(alignment: .center) {
                 // Source Pill
                 HStack(spacing: 5) {
-                    Circle()
-                        .fill(media.source == .spotify ? Color(red: 0.11, green: 0.73, blue: 0.33) : (media.source == .youtube ? Color.red : Color.pink))
-                        .frame(width: 7, height: 7)
+                    if media.source == .spotify {
+                        SpotifyBrandIconView(size: 11)
+                    } else if media.source == .youtube {
+                        YouTubeIconView(size: 11)
+                    } else {
+                        Circle()
+                            .fill(Color.pink)
+                            .frame(width: 7, height: 7)
+                    }
                     Text(media.source.rawValue.uppercased())
-                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3.5)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
                 .background(Color.white.opacity(0.08))
-                .cornerRadius(6)
+                .cornerRadius(7)
                 
                 Spacer()
                 
                 // Real-Time EQ Visualizer
                 TimelineView(.animation(minimumInterval: 0.18, paused: !media.isPlaying)) { timeline in
                     let step = Int(timeline.date.timeIntervalSinceReferenceDate * 5.0)
-                    HStack(spacing: 2) {
+                    HStack(spacing: 2.5) {
                         ForEach(0..<5, id: \.self) { idx in
                             let wave = 5 + ((step + idx * 2) % 10)
                             RoundedRectangle(cornerRadius: 1)
@@ -749,7 +849,7 @@ public struct NotchGlassIslandView: View {
                         }
                     }
                 }
-                .padding(.trailing, 8)
+                .padding(.trailing, 10)
                 
                 HStack(spacing: 8) {
                     // Dismiss / Clear Media Button
@@ -781,13 +881,13 @@ public struct NotchGlassIslandView: View {
                     .help("Collapse media panel")
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 30)
             
-            // Middle Row: Album Artwork + Title & Scrubber
-            HStack(spacing: 12) {
-                // Real Song Album Art / Video Thumbnail Container
+            // Middle Row: Bigger Album Artwork (64x64) + Track Name, Creator Name & Scrubber
+            HStack(spacing: 14) {
+                // Real Song Album Art / Video Thumbnail Container (Larger 64x64)
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
@@ -798,18 +898,17 @@ public struct NotchGlassIslandView: View {
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: 48, height: 48)
+                        .frame(width: 64, height: 64)
 
                     if !media.artworkUrl.isEmpty {
-                        // Handle file:// paths (Spotify sometimes returns local temp art) vs https:// URLs
                         let artStr = media.artworkUrl
                         if artStr.hasPrefix("file://") || artStr.hasPrefix("/"),
                            let nsImg = resolveLocalArtwork(artStr) {
                             Image(nsImage: nsImg)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: 48, height: 48)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .frame(width: 64, height: 64)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         } else if let artUrl = URL(string: artStr) {
                             AsyncImage(url: artUrl) { phase in
                                 switch phase {
@@ -817,8 +916,8 @@ public struct NotchGlassIslandView: View {
                                     img
                                         .resizable()
                                         .aspectRatio(contentMode: .fill)
-                                        .frame(width: 48, height: 48)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                        .frame(width: 64, height: 64)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 case .failure, .empty:
                                     mediaArtworkPlaceholder(media: media)
                                 @unknown default:
@@ -832,57 +931,70 @@ public struct NotchGlassIslandView: View {
                         mediaArtworkPlaceholder(media: media)
                     }
                 }
-                .frame(width: 48, height: 48)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .frame(width: 64, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
                 )
+                .shadow(color: Color.black.opacity(0.45), radius: 6, x: 0, y: 3)
                 
-                // Track Info & Progress Bar
+                // Track Info & Progress Scrubber Line
                 VStack(alignment: .leading, spacing: 3) {
                     Text(media.title)
-                        .font(.system(size: 12.5, weight: .bold))
+                        .font(.system(size: 14.5, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     
                     Text(media.artistOrChannel.isEmpty ? media.source.rawValue : media.artistOrChannel)
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.6))
+                        .font(.system(size: 12.0, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.72))
                         .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     
-                    // Scrubber Bar
-                    VStack(spacing: 2) {
+                    // Scrubber Bar Container with safe insets so play line NEVER goes outside the pill
+                    VStack(spacing: 3) {
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
                                 Capsule()
-                                    .fill(Color.white.opacity(0.15))
-                                    .frame(height: 3)
+                                    .fill(Color.white.opacity(0.16))
+                                    .frame(height: 3.5)
                                 Capsule()
-                                    .fill(media.source == .spotify ? Color(red: 0.11, green: 0.85, blue: 0.4) : Color.white)
-                                    .frame(width: max(4.0, geo.size.width * CGFloat(media.progress)), height: 3)
+                                    .fill(
+                                        media.source == .spotify
+                                            ? LinearGradient(colors: [Color(red: 0.11, green: 0.85, blue: 0.4), Color(red: 0.2, green: 1.0, blue: 0.5)], startPoint: .leading, endPoint: .trailing)
+                                            : LinearGradient(colors: [Color(red: 1.0, green: 0.25, blue: 0.25), Color(red: 1.0, green: 0.45, blue: 0.45)], startPoint: .leading, endPoint: .trailing)
+                                    )
+                                    .frame(width: max(4.0, min(geo.size.width, geo.size.width * CGFloat(media.progress))), height: 3.5)
                             }
                         }
-                        .frame(height: 3)
+                        .frame(height: 3.5)
+                        .frame(maxWidth: .infinity)
                         
-                        HStack {
+                        HStack(spacing: 0) {
                             Text(String(format: "%d:%02d", media.positionSeconds / 60, media.positionSeconds % 60))
-                                .font(.system(size: 8.5, design: .monospaced))
-                                .foregroundColor(Color.white.opacity(0.5))
-                            Spacer()
+                                .font(.system(size: 8.5, weight: .medium, design: .monospaced))
+                                .foregroundColor(Color.white.opacity(0.60))
+                                .lineLimit(1)
+                            Spacer(minLength: 4)
                             if media.durationSeconds > 0 {
                                 Text(String(format: "%d:%02d", media.durationSeconds / 60, media.durationSeconds % 60))
-                                    .font(.system(size: 8.5, design: .monospaced))
-                                    .foregroundColor(Color.white.opacity(0.5))
+                                    .font(.system(size: 8.5, weight: .medium, design: .monospaced))
+                                    .foregroundColor(Color.white.opacity(0.60))
+                                    .lineLimit(1)
                             }
                         }
+                        .frame(maxWidth: .infinity)
                     }
+                    .padding(.top, 2)
+                    .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 30)
             
             // Bottom Controls Bar: Previous | Play/Pause | Next
-            HStack(spacing: 28) {
+            HStack(spacing: 30) {
                 Spacer()
                 
                 // Previous Button
@@ -893,7 +1005,7 @@ public struct NotchGlassIslandView: View {
                     Image(systemName: "backward.fill")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(Color.white.opacity(0.85))
-                        .frame(width: 32, height: 32)
+                        .frame(width: 34, height: 34)
                         .background(Color.white.opacity(0.08))
                         .clipShape(Circle())
                 }
@@ -908,10 +1020,10 @@ public struct NotchGlassIslandView: View {
                     ZStack {
                         Circle()
                             .fill(Color.white)
-                            .frame(width: 36, height: 36)
-                            .shadow(color: Color.white.opacity(0.25), radius: 5)
+                            .frame(width: 40, height: 40)
+                            .shadow(color: Color.white.opacity(0.30), radius: 6)
                         Image(systemName: media.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundColor(.black)
                     }
                 }
@@ -926,7 +1038,7 @@ public struct NotchGlassIslandView: View {
                     Image(systemName: "forward.fill")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(Color.white.opacity(0.85))
-                        .frame(width: 32, height: 32)
+                        .frame(width: 34, height: 34)
                         .background(Color.white.opacity(0.08))
                         .clipShape(Circle())
                 }
@@ -935,38 +1047,21 @@ public struct NotchGlassIslandView: View {
                 
                 Spacer()
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, 14)
         }
-        .frame(width: 460, height: 185)
-        .background(
-            ZStack {
-                VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-                Color.black.opacity(0.96)
-            }
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.22), Color.white.opacity(0.06)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 0.8
-                )
-        )
-        .shadow(color: Color.black.opacity(0.7), radius: 16, x: 0, y: 8)
+        .frame(width: 480, height: 215)
     }
     
     @ViewBuilder
     private func mediaArtworkPlaceholder(media: NowPlayingItem) -> some View {
         if media.source == .spotify {
-            SpotifyBrandIconView(size: 26)
+            AnyView(SpotifyBrandIconView(size: 26))
+        } else if media.source == .youtube {
+            AnyView(YouTubeIconView(size: 28))
         } else {
-            Image(systemName: media.source == .youtube ? "play.rectangle.fill" : "music.note")
+            AnyView(Image(systemName: "music.note")
                 .font(.system(size: 20, weight: .bold))
-                .foregroundColor(media.source == .youtube ? Color.red : Color(red: 0.11, green: 0.85, blue: 0.4))
+                .foregroundColor(Color(red: 0.11, green: 0.85, blue: 0.4)))
         }
     }
     
@@ -1346,8 +1441,8 @@ public struct NotchGlassIslandView: View {
                 triptychHeader
                     .frame(height: 32)
 
-            // 2. Now Playing Mini Bar (if playing Spotify, YouTube, or Apple Music)
-            if appState.isNotchMediaDisplayEnabled, let media = appState.currentMedia {
+            // 2. Now Playing Mini Bar (if playing Spotify, YouTube, or Apple Music and not actively dragging onto shelf)
+            if appState.isNotchMediaDisplayEnabled && !appState.isShelfDragTargetHovered, let media = appState.currentMedia {
                 nowPlayingBar(media: media)
             }
             
@@ -1356,6 +1451,8 @@ public struct NotchGlassIslandView: View {
                 switch appState.activeNotchTab {
                 case .ask:
                     askTabView
+                case .shelf:
+                    ShelfView(appState: appState)
                 case .apps:
                     AppIntegrationsGridView(appState: appState)
                 case .tasks:
@@ -2643,5 +2740,36 @@ public struct SpotifyBrandIconView: View {
                 .frame(width: size, height: size)
             }
         }
+    }
+}
+
+// MARK: - YouTube Brand Icon View
+public struct YouTubeIconView: View {
+    public let size: CGFloat
+
+    public init(size: CGFloat = 18) {
+        self.size = size
+    }
+
+    public var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.22)
+                .fill(Color(red: 1.0, green: 0.0, blue: 0.0))
+                .frame(width: size, height: size * 0.72)
+            Canvas { context, sz in
+                let tw = sz.width * 0.38
+                let th = sz.height * 0.52
+                let cx = sz.width / 2
+                let cy = sz.height / 2
+                var tri = Path()
+                tri.move(to: CGPoint(x: cx - tw * 0.4, y: cy - th * 0.5))
+                tri.addLine(to: CGPoint(x: cx + tw * 0.6, y: cy))
+                tri.addLine(to: CGPoint(x: cx - tw * 0.4, y: cy + th * 0.5))
+                tri.closeSubpath()
+                context.fill(tri, with: .color(.white))
+            }
+            .frame(width: size, height: size * 0.72)
+        }
+        .frame(width: size, height: size)
     }
 }

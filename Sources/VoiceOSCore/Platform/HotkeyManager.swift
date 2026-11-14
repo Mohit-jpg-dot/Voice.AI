@@ -67,6 +67,8 @@ public final class HotkeyManager: @unchecked Sendable {
     private var localMonitor: Any?
     private var globalKeyMonitor: Any?
     private var localKeyMonitor: Any?
+    private var globalSystemMonitor: Any?
+    private var localSystemMonitor: Any?
     private var holdTimer: DispatchWorkItem?
     private var ctrlHoldTimer: DispatchWorkItem?
     private var isFunctionKeyPressed = false
@@ -80,6 +82,7 @@ public final class HotkeyManager: @unchecked Sendable {
     public var onClipboardDictationTriggered: (@Sendable () -> Void)?
     public var onHistorySidebarToggleTriggered: (@Sendable () -> Void)?
     public var onEscapeStopTriggered: (@Sendable () -> Void)?
+    public var onMediaPlaybackKeyTriggered: (@Sendable (NowPlayingMediaManager.MediaPlaybackAction) -> Void)?
 
     public init() {}
 
@@ -205,6 +208,76 @@ public final class HotkeyManager: @unchecked Sendable {
                 }
                 return true
             }
+
+            // Keyboard media playback keys (F8 / F7 / F9 or Option+Space)
+            let isOptionSpace = (flags == [.option] && event.keyCode == 49) ||
+                                (flags == [.shift, .option] && event.keyCode == 49)
+            if isOptionSpace || (event.keyCode == 100 && (hasFn || flags.isEmpty)) { // F8 / Option+Space: Play/Pause
+                DispatchQueue.main.async {
+                    NowPlayingMediaManager.shared.handlePlaybackAction(.playPause)
+                    self.onMediaPlaybackKeyTriggered?(.playPause)
+                }
+                return true
+            }
+            if event.keyCode == 98 && (hasFn || flags.isEmpty) { // F7: Previous
+                DispatchQueue.main.async {
+                    NowPlayingMediaManager.shared.handlePlaybackAction(.previous)
+                    self.onMediaPlaybackKeyTriggered?(.previous)
+                }
+                return true
+            }
+            if event.keyCode == 101 && (hasFn || flags.isEmpty) { // F9: Next
+                DispatchQueue.main.async {
+                    NowPlayingMediaManager.shared.handlePlaybackAction(.next)
+                    self.onMediaPlaybackKeyTriggered?(.next)
+                }
+                return true
+            }
+
+            return false
+        }
+
+        // Handle macOS System Media Keys (Subtype 8)
+        let handleSystemDefinedEvent: (NSEvent) -> Bool = { [weak self] event in
+            guard let self = self else { return false }
+            if event.subtype.rawValue == 8 {
+                let data1 = event.data1
+                let keyCode = Int((data1 & 0xFFFF0000) >> 16)
+                let keyFlags = Int(data1 & 0x0000FFFF)
+                let keyState = Int(((keyFlags & 0xFF00) >> 8))
+                let isKeyDown = (keyState == 0xA)
+                
+                if isKeyDown {
+                    switch keyCode {
+                    case 16: // NX_KEYTYPE_PLAY (Play/Pause)
+                        DispatchQueue.main.async {
+                            NowPlayingMediaManager.shared.handlePlaybackAction(.playPause)
+                            self.onMediaPlaybackKeyTriggered?(.playPause)
+                        }
+                        return true
+                    case 17, 19: // NX_KEYTYPE_NEXT, NX_KEYTYPE_FAST
+                        DispatchQueue.main.async {
+                            NowPlayingMediaManager.shared.handlePlaybackAction(.next)
+                            self.onMediaPlaybackKeyTriggered?(.next)
+                        }
+                        return true
+                    case 18, 20: // NX_KEYTYPE_PREVIOUS, NX_KEYTYPE_REWIND
+                        DispatchQueue.main.async {
+                            NowPlayingMediaManager.shared.handlePlaybackAction(.previous)
+                            self.onMediaPlaybackKeyTriggered?(.previous)
+                        }
+                        return true
+                    case 7: // NX_KEYTYPE_MUTE
+                        DispatchQueue.main.async {
+                            NowPlayingMediaManager.shared.handlePlaybackAction(.mute)
+                            self.onMediaPlaybackKeyTriggered?(.mute)
+                        }
+                        return true
+                    default:
+                        break
+                    }
+                }
+            }
             return false
         }
 
@@ -212,6 +285,9 @@ public final class HotkeyManager: @unchecked Sendable {
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, handler: flagsHandler)
         globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
             _ = handleKeyDownEvent(event)
+        }
+        globalSystemMonitor = NSEvent.addGlobalMonitorForEvents(matching: .systemDefined) { event in
+            _ = handleSystemDefinedEvent(event)
         }
         
         // Local monitor catches events when VoiceOS windows have focus
@@ -221,6 +297,10 @@ public final class HotkeyManager: @unchecked Sendable {
         }
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let consumed = handleKeyDownEvent(event)
+            return consumed ? nil : event
+        }
+        localSystemMonitor = NSEvent.addLocalMonitorForEvents(matching: .systemDefined) { event in
+            let consumed = handleSystemDefinedEvent(event)
             return consumed ? nil : event
         }
     }
@@ -258,6 +338,14 @@ public final class HotkeyManager: @unchecked Sendable {
         if let lk = localKeyMonitor {
             NSEvent.removeMonitor(lk)
             localKeyMonitor = nil
+        }
+        if let gs = globalSystemMonitor {
+            NSEvent.removeMonitor(gs)
+            globalSystemMonitor = nil
+        }
+        if let ls = localSystemMonitor {
+            NSEvent.removeMonitor(ls)
+            localSystemMonitor = nil
         }
         holdTimer?.cancel()
         holdTimer = nil

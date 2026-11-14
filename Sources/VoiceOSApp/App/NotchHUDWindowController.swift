@@ -51,9 +51,76 @@ public final class NotchHUDWindowController: NSWindowController {
         
         super.init(window: panel)
         
+        setupShelfDragCallbacks(panel: panel)
+        updateDragHotZoneBounds()
         positionUnderNotch()
         bindStateTransitions()
         observeScreenChanges()
+    }
+
+    private func setupShelfDragCallbacks(panel: NotchPanel) {
+        panel.onDragEnterHotZone = { [weak self] in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.appState.isMediaExpanded = false
+                self.appState.isShelfDragTargetHovered = true
+                self.appState.isCompactResponseMode = false
+                withAnimation(NotchAnimations.openSpring) {
+                    self.appState.activeNotchTab = .shelf
+                    self.appState.islandState = .hoverExpanded
+                    self.appState.setHoverExpanded(true)
+                }
+
+                // Immediately expand visible bounds to shelf dimensions so drops hit the whole shelf
+                let count = ShelfStore.shared.count
+                let width: CGFloat = count > 3 ? 640.0 : (count > 0 ? 560.0 : 500.0)
+                let height: CGFloat = 215.0
+                let visibleX = (Self.panelWindowWidth - width) / 2.0
+                let visibleY = Self.panelWindowHeight - height
+                panel.visibleNotchBounds = NSRect(x: visibleX, y: visibleY, width: width, height: height)
+            }
+        }
+
+        panel.onDragExitHotZone = { [weak self] in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.appState.isShelfDragTargetHovered = false
+                // If not pinned and user drags away without dropping, collapse back to resting
+                if !self.appState.isPinned && self.appState.islandState == .hoverExpanded {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        guard !self.appState.isShelfDragTargetHovered else { return }
+                        withAnimation(NotchAnimations.closeSpring) {
+                            self.appState.setHoverExpanded(false)
+                        }
+                    }
+                }
+            }
+        }
+
+        panel.onPerformDrop = { [weak self] pasteboard in
+            guard let self = self else { return false }
+            self.appState.isShelfDragTargetHovered = false
+
+            Task {
+                let results = await ShelfDropController.shared.processPasteboard(pasteboard, sourceAppName: "NotchDrop")
+                await MainActor.run {
+                    if !results.isEmpty {
+                        BoringSoundEngine.shared.playNotchOpen()
+                        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                        NotificationCenter.default.post(name: NSNotification.Name("VoiceOS.ShelfItemsUpdated"), object: nil)
+
+                        if ShelfStore.shared.settings.closeAfterDrop {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                withAnimation(NotchAnimations.closeSpring) {
+                                    self.appState.setHoverExpanded(false)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return true
+        }
     }
     
     required init?(coder: NSCoder) {
@@ -99,8 +166,8 @@ public final class NotchHUDWindowController: NSWindowController {
                 case .resting:
                     isClosed = !self.appState.isMediaExpanded
                     if self.appState.isNotchMediaDisplayEnabled && self.appState.isMediaExpanded {
-                        visibleWidth = 460.0
-                        visibleHeight = 195.0
+                        visibleWidth = 480.0
+                        visibleHeight = 215.0
                     } else if self.appState.isNotchMediaDisplayEnabled, let m = self.appState.currentMedia, m.isPlaying {
                         visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
                         visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0
@@ -113,10 +180,19 @@ public final class NotchHUDWindowController: NSWindowController {
                     let count = self.appState.currentTranscript.count
                     visibleWidth = count > 60 ? 560.0 : 480.0
                     visibleHeight = count > 60 ? 125.0 : 96.0
+                case .emailDraftExpanded:
+                    isClosed = false
+                    visibleWidth = 550.0
+                    visibleHeight = 420.0
+                    panel.allowsKeyFocus = true
+                    panel.makeKey()
                 default:
                     isClosed = false
-                    // Dynamic size takes precedence if available
-                    if self.appState.dynamicNotchSize.width > 0 && self.appState.dynamicNotchSize.height > 0 {
+                    if self.appState.activeEmailDraft != nil {
+                        visibleWidth = 550.0
+                        visibleHeight = 420.0
+                        panel.allowsKeyFocus = true
+                    } else if self.appState.dynamicNotchSize.width > 0 && self.appState.dynamicNotchSize.height > 0 {
                         visibleWidth = self.appState.dynamicNotchSize.width
                         visibleHeight = self.appState.dynamicNotchSize.height
                     } else {
@@ -153,8 +229,8 @@ public final class NotchHUDWindowController: NSWindowController {
                 let visibleWidth: CGFloat
                 let visibleHeight: CGFloat
                 if expanded && self.appState.isNotchMediaDisplayEnabled {
-                    visibleWidth = 460.0
-                    visibleHeight = 195.0
+                    visibleWidth = 480.0
+                    visibleHeight = 215.0
                     NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
                 } else if self.appState.islandState == .resting {
                     if self.appState.isNotchMediaDisplayEnabled, let m = self.appState.currentMedia, m.isPlaying {
@@ -172,6 +248,22 @@ public final class NotchHUDWindowController: NSWindowController {
                 panel.visibleNotchBounds = NSRect(x: visibleX, y: visibleY, width: visibleWidth, height: visibleHeight)
             }
             .store(in: &cancellables)
+
+        // 2c. Observe Shelf Drag Hover and Tab Changes
+        Publishers.CombineLatest(appState.$activeNotchTab, appState.$isShelfDragTargetHovered)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] tab, hovered in
+                guard let self = self, let panel = self.window as? NotchPanel else { return }
+                if (tab == .shelf && self.appState.islandState != .resting) || hovered {
+                    let count = ShelfStore.shared.count
+                    let width: CGFloat = count > 3 ? 640.0 : (count > 0 ? 560.0 : 500.0)
+                    let height: CGFloat = 215.0
+                    let visibleX = (Self.panelWindowWidth - width) / 2.0
+                    let visibleY = Self.panelWindowHeight - height
+                    panel.visibleNotchBounds = NSRect(x: visibleX, y: visibleY, width: width, height: height)
+                }
+            }
+            .store(in: &cancellables)
             
         // 3. Observe Current Media to adapt resting notch wings size
         appState.$currentMedia
@@ -185,8 +277,8 @@ public final class NotchHUDWindowController: NSWindowController {
                 let visibleWidth: CGFloat
                 let visibleHeight: CGFloat
                 if self.appState.isNotchMediaDisplayEnabled && self.appState.isMediaExpanded {
-                    visibleWidth = 460.0
-                    visibleHeight = 195.0
+                    visibleWidth = 480.0
+                    visibleHeight = 215.0
                 } else if self.appState.isNotchMediaDisplayEnabled, let m = media, m.isPlaying {
                     visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
                     visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0
@@ -253,6 +345,28 @@ public final class NotchHUDWindowController: NSWindowController {
                 }
             }
             .store(in: &cancellables)
+
+        // Observe Active Email Draft for interactive compose sizing and key focus
+        appState.$activeEmailDraft
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] draft in
+                guard let self = self, let panel = self.window as? NotchPanel else { return }
+                if draft != nil {
+                    let windowWidth = Self.panelWindowWidth
+                    let windowHeight = Self.panelWindowHeight
+                    let visibleWidth: CGFloat = 550.0
+                    let visibleHeight: CGFloat = 420.0
+                    let visibleX = (windowWidth - visibleWidth) / 2.0
+                    let visibleY = windowHeight - visibleHeight
+                    panel.visibleNotchBounds = NSRect(x: visibleX, y: visibleY, width: visibleWidth, height: visibleHeight)
+                    panel.allowsKeyFocus = true
+                    panel.makeKey()
+                } else if self.appState.islandState == .resting {
+                    panel.allowsKeyFocus = false
+                    panel.resignKey()
+                }
+            }
+            .store(in: &cancellables)
     }
     
     private func observeScreenChanges() {
@@ -276,6 +390,25 @@ public final class NotchHUDWindowController: NSWindowController {
         let targetY = screenFrame.origin.y + screenFrame.height - windowHeight
         
         window.setFrameOrigin(NSPoint(x: targetX, y: targetY))
+        updateDragHotZoneBounds()
+    }
+
+    public func updateDragHotZoneBounds() {
+        let screen = Self.targetNotchScreen()
+        let notchWidth = Self.calculateClosedNotchWidth(for: screen)
+        let notchHeight = Self.calculateClosedNotchHeight(for: screen)
+        let windowWidth = Self.panelWindowWidth
+        let windowHeight = Self.panelWindowHeight
+
+        // Generous, smooth hot-zone around notch: 70pt left/right, 50pt downwards
+        let hotZoneWidth = notchWidth + 140.0
+        let hotZoneHeight = notchHeight + 50.0
+        let hotZoneX = (windowWidth - hotZoneWidth) / 2.0
+        let hotZoneY = windowHeight - hotZoneHeight
+
+        if let panel = self.window as? NotchPanel {
+            panel.dragHotZoneBounds = NSRect(x: hotZoneX, y: hotZoneY, width: hotZoneWidth, height: hotZoneHeight)
+        }
     }
     
     public static func calculateClosedNotchWidth(for screen: NSScreen = targetNotchScreen()) -> CGFloat {

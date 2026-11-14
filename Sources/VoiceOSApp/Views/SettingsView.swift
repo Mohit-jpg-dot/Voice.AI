@@ -54,6 +54,18 @@ public struct SettingsView: View {
     @State private var emailWatchPollSec: Double = EmailSecuritySettings.watchPollIntervalSeconds
     @State private var emailQuietHoursEnabled: Bool = EmailSecuritySettings.isQuietHoursEnabled
     @State private var emailCapabilitySummary: String = "Tap Check Capability to test Mail.app / Gmail."
+
+    // Notch Shelf Settings
+    @State private var isShelfEnabled: Bool = ShelfStore.shared.settings.isEnabled
+    @State private var shelfAutoOpenOnDrag: Bool = ShelfStore.shared.settings.autoOpenOnDragNearNotch
+    @State private var shelfCloseAfterDrop: Bool = ShelfStore.shared.settings.closeAfterDrop
+    @State private var shelfDefaultDragOutAction: ShelfDragOutAction = ShelfStore.shared.settings.defaultDragOutAction
+    @State private var shelfRemoveAfterDragOut: Bool = ShelfStore.shared.settings.removeAfterDragOut
+    @State private var shelfKeepItemsAfterRelaunch: Bool = ShelfStore.shared.settings.keepItemsAfterRelaunch
+    @State private var shelfClearOnQuit: Bool = ShelfStore.shared.settings.clearOnQuit
+    @State private var shelfAutoExpireDays: Int = ShelfStore.shared.settings.autoExpireDays
+    @State private var shelfMaxItemCount: Double = Double(ShelfStore.shared.settings.maxItemCount)
+    @State private var shelfShowCountBadge: Bool = ShelfStore.shared.settings.showCountBadgeOnCollapsedNotch
     
     // Messaging Connectors State
     @State private var slackTokenInput: String = KeychainService.shared.get(.slackUserToken) ?? ""
@@ -732,6 +744,198 @@ public struct SettingsView: View {
                                 .cornerRadius(6)
                         }
                         .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            // Notch Shelf Tray Settings Card
+            settingsCard(title: "Notch Shelf & Temporary Tray", icon: "tray.2.fill") {
+                VStack(spacing: 14) {
+                    Toggle(isOn: $isShelfEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Enable Notch Shelf")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text("Temporary holding tray inside the MacBook notch for dragging files, text, and links")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                    }
+                    .toggleStyle(.switch)
+                    .onChange(of: isShelfEnabled) { _, val in
+                        ShelfStore.shared.settings.isEnabled = val
+                    }
+
+                    if isShelfEnabled {
+                        Divider()
+
+                        Toggle(isOn: $shelfAutoOpenOnDrag) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Open Automatically on Drag to Notch")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                Text("Expands the shelf when dragging files or items toward the top of the display")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .onChange(of: shelfAutoOpenOnDrag) { _, val in
+                            ShelfStore.shared.settings.autoOpenOnDragNearNotch = val
+                        }
+
+                        Divider()
+
+                        Toggle(isOn: $shelfCloseAfterDrop) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Close Shelf After Drop")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                Text("Automatically collapses the notch after adding dropped items")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .onChange(of: shelfCloseAfterDrop) { _, val in
+                            ShelfStore.shared.settings.closeAfterDrop = val
+                        }
+
+                        Divider()
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Default Drag-Out Action")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                Text("Hold Option while dragging to perform the opposite action")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+                            Spacer()
+                            Picker("", selection: $shelfDefaultDragOutAction) {
+                                ForEach(ShelfDragOutAction.allCases, id: \.self) { act in
+                                    Text(act.rawValue).tag(act)
+                                }
+                            }
+                            .frame(width: 130)
+                            .onChange(of: shelfDefaultDragOutAction) { _, val in
+                                ShelfStore.shared.settings.defaultDragOutAction = val
+                            }
+                        }
+
+                        Divider()
+
+                        Toggle(isOn: $shelfRemoveAfterDragOut) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Remove Item After Drag-Out")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                Text("Removes the tile from shelf once successfully dragged into another application")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .onChange(of: shelfRemoveAfterDragOut) { _, val in
+                            ShelfStore.shared.settings.removeAfterDragOut = val
+                        }
+
+                        Divider()
+
+                        Toggle(isOn: $shelfKeepItemsAfterRelaunch) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Keep Items Across Relaunches")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                Text("Saves references and encrypted snippets so shelf survives app restarts")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .onChange(of: shelfKeepItemsAfterRelaunch) { _, val in
+                            ShelfStore.shared.settings.keepItemsAfterRelaunch = val
+                        }
+
+                        Divider()
+
+                        Toggle(isOn: $shelfClearOnQuit) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Clear Shelf on Quit")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                Text("Empties all items whenever Voice.AI terminates")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .onChange(of: shelfClearOnQuit) { _, val in
+                            ShelfStore.shared.settings.clearOnQuit = val
+                        }
+
+                        Divider()
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Auto-Expire Items")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                Text("Automatically removes items older than the specified duration")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+                            Spacer()
+                            Picker("", selection: $shelfAutoExpireDays) {
+                                Text("Never").tag(0)
+                                Text("1 Day").tag(1)
+                                Text("3 Days").tag(3)
+                                Text("7 Days").tag(7)
+                                Text("14 Days").tag(14)
+                                Text("30 Days").tag(30)
+                            }
+                            .frame(width: 120)
+                            .onChange(of: shelfAutoExpireDays) { _, val in
+                                ShelfStore.shared.settings.autoExpireDays = val
+                            }
+                        }
+
+                        Divider()
+
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Maximum Item Count: \(Int(shelfMaxItemCount))")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                Text("Oldest items are automatically pruned when tray exceeds this limit")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+                            Spacer()
+                            Slider(value: $shelfMaxItemCount, in: 10...200, step: 5)
+                                .frame(width: 140)
+                                .onChange(of: shelfMaxItemCount) { _, val in
+                                    ShelfStore.shared.settings.maxItemCount = Int(val)
+                                }
+                        }
+
+                        Divider()
+
+                        Toggle(isOn: $shelfShowCountBadge) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Show Item Count Badge on Collapsed Notch")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                                Text("Displays a subtle tray pill with the number of saved items on the resting notch")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            }
+                        }
+                        .toggleStyle(.switch)
+                        .onChange(of: shelfShowCountBadge) { _, val in
+                            ShelfStore.shared.settings.showCountBadgeOnCollapsedNotch = val
+                        }
                     }
                 }
             }

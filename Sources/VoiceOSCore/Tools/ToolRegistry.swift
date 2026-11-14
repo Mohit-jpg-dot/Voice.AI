@@ -356,6 +356,66 @@ public final class ToolRegistry: ToolRegistryProtocol, @unchecked Sendable {
     // MARK: - Built-In Capabilities
 
     public func registerBuiltInTools() {
+        // MARK: - Notch Shelf Tools
+        registerIntegrationTool(
+            name: "shelf_list", appName: "Shelf",
+            description: "List items currently saved on the Notch Shelf tray.",
+            tier: .readOnly, appId: "shelf", operation: "list",
+            props: [:]
+        )
+        registerIntegrationTool(
+            name: "shelf_add", appName: "Shelf",
+            description: "Add a file, folder, text snippet, or URL to the Shelf tray.",
+            tier: .reversible, appId: "shelf", operation: "add",
+            props: ["path": ToolSchemaProperty(description: "Path or URL of the file to add")],
+            required: ["path"]
+        )
+        registerIntegrationTool(
+            name: "shelf_remove", appName: "Shelf",
+            description: "Remove a file tile from the Shelf tray (does not delete file).",
+            tier: .reversible, appId: "shelf", operation: "remove",
+            props: ["target": ToolSchemaProperty(description: "Name or index of item to remove")],
+            required: ["target"]
+        )
+        registerIntegrationTool(
+            name: "shelf_clear", appName: "Shelf",
+            description: "Clear all items from the Shelf tray. Requires user approval.",
+            tier: .consequential, appId: "shelf", operation: "clear",
+            props: [:]
+        )
+        registerIntegrationTool(
+            name: "shelf_airdrop", appName: "Shelf",
+            description: "AirDrop shelf items to a nearby Apple device. Requires user approval.",
+            tier: .consequential, appId: "shelf", operation: "airdrop",
+            props: ["target": ToolSchemaProperty(description: "Items to AirDrop")]
+        )
+        registerIntegrationTool(
+            name: "shelf_move", appName: "Shelf",
+            description: "Move shelf files to a destination folder. Requires user approval.",
+            tier: .consequential, appId: "shelf", operation: "move",
+            props: [
+                "destination": ToolSchemaProperty(description: "Destination folder path")
+            ],
+            required: ["destination"]
+        )
+        registerIntegrationTool(
+            name: "shelf_trash", appName: "Shelf",
+            description: "Move a shelf file to the macOS Trash. Requires user approval.",
+            tier: .consequential, appId: "shelf", operation: "trash",
+            props: [
+                "path": ToolSchemaProperty(description: "File to trash")
+            ],
+            required: ["path"]
+        )
+        registerIntegrationTool(
+            name: "shelf_summarize", appName: "Shelf",
+            description: "Summarize a text document on the Shelf tray safely.",
+            tier: .readOnly, appId: "shelf", operation: "summarize",
+            props: [
+                "target": ToolSchemaProperty(description: "Name of the file on shelf")
+            ]
+        )
+
         registerIntegrationTool(
             name: "mail_check_inbox", appName: "Apple Mail",
             description: "Read unread count and latest messages from Mail or Gmail inbox.",

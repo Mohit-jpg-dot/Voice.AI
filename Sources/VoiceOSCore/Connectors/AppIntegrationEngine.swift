@@ -850,6 +850,24 @@ public final class AppIntegrationEngine: @unchecked Sendable {
             }
         }
 
+        if operation == "close" || operation == "close_tab" {
+            if isDryRun {
+                return IntegrationActionResult(
+                    success: true,
+                    summary: "Closed YouTube video tab.",
+                    appName: "YouTube",
+                    steps: ["Closed YouTube tab"]
+                )
+            }
+            let closed = AccessibilityControlEngine.shared.closeYouTubePlaybackTab()
+            return IntegrationActionResult(
+                success: closed,
+                summary: closed ? "Closed YouTube video tab." : "Could not find an open YouTube tab to close.",
+                appName: "YouTube",
+                steps: ["Closed YouTube tab"]
+            )
+        }
+
         // Player Transport & Actions (play, pause, next, previous, mute, unmute, forward, rewind, fullscreen, like, subscribe)
         let jsAction: String?
         let description: String

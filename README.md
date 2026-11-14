@@ -32,10 +32,9 @@ You remain in complete control of your data and computing resources: run 100% of
 ## Live Interface & Highlights
 
 <div align="center">
-  <a href="https://github.com/Mohit-jpg-dot/Voice.AI/raw/release/1.1.0/docs/assets/demo.mp4">
-    <img src="docs/assets/social-preview.png" alt="Voice.AI Demo Video" width="840" />
-  </a>
-  <p><em>▶️ <b><a href="https://github.com/Mohit-jpg-dot/Voice.AI/raw/release/1.1.0/docs/assets/demo.mp4">Click to Watch Full Demo Video (1080p MP4)</a></b></em></p>
+
+https://github.com/user-attachments/assets/340ae0fa-a0fb-44ea-bfde-abf2239c7e23
+
 </div>
 
 <details open>

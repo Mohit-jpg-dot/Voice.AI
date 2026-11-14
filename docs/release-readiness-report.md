@@ -80,3 +80,4 @@
 ### 14. Licensing Compliance: PASS
 - **MIT License**: Voice.AI is MIT licensed.
 - **Third-Party Notices**: `THIRD_PARTY_NOTICES.md` documents all ported components (islandcn, boring.notch, Sparkle) with full copyright statements and commit hashes.
+

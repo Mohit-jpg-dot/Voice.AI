@@ -16,3 +16,4 @@ When capturing live screenshots from the running macOS application, use `Cmd+Shi
 | `email-composer.png` | ~520 × 275 | Liquid obsidian email compose card showing Gmail/Mail recipient capsule chip, subject line, body preview, and blue Send pill. |
 
 > **Note**: In headless test environments or until live Retina display captures are taken, README and web docs use structured SVG/CSS native UI previews and verified text tables to ensure zero fabricated or misleading imagery is presented to users.
+

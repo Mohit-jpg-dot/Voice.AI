@@ -64,3 +64,4 @@ else
   echo "❌ ${FAILURES} version consistency check(s) FAILED"
   exit 1
 fi
+

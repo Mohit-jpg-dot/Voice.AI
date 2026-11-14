@@ -33,7 +33,11 @@ You remain in complete control of your data and computing resources: run 100% of
 
 <div align="center">
   <video src="docs/assets/demo.mp4" width="840" controls autoplay loop muted playsinline poster="docs/assets/social-preview.png">
-    <a href="docs/assets/demo.mp4">Watch demo video</a>
+    <a href="https://github.com/user-attachments/assets/340ae0fa-a0fb-44ea-bfde-abf2239c7e23">Watch demo video</a>
+
+https://github.com/user-attachments/assets/340ae0fa-a0fb-44ea-bfde-abf2239c7e23
+
+
   </video>
 </div>
 

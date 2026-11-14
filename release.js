@@ -43,17 +43,17 @@
     const isMac = platform.includes('mac');
     const isDownloadPage = window.location.pathname.includes('download.html') || window.location.pathname.endsWith('/download');
 
-    const downloadUrl = data.downloadUrl || 'downloads/Voice.AI-1.0.0.dmg';
+    const downloadUrl = data.downloadUrl || 'downloads/Voice.AI-1.1.0.dmg';
 
     // 1. Update download buttons
     if (isDownloadPage) {
       document.querySelectorAll('.btn-mac-download-pill').forEach(btn => {
         btn.setAttribute('href', downloadUrl);
-        btn.setAttribute('download', data.fileName || 'Voice.AI-1.0.0.dmg');
+        btn.setAttribute('download', data.fileName || 'Voice.AI-1.1.0.dmg');
       });
       document.querySelectorAll('.btn-nav-download, #headerDownloadBtn').forEach(btn => {
         btn.setAttribute('href', downloadUrl);
-        btn.setAttribute('download', data.fileName || 'Voice.AI-1.0.0.dmg');
+        btn.setAttribute('download', data.fileName || 'Voice.AI-1.1.0.dmg');
       });
     } else {
       document.querySelectorAll('.btn-mac-download-pill, .btn-nav-download, #headerDownloadBtn').forEach(btn => {

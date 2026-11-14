@@ -25,9 +25,14 @@ echo "================================================================="
 # 1. Read Release Configuration
 APP_NAME=$(node -p "require('${RELEASE_CONFIG}').appName")
 BUNDLE_ID=$(node -p "require('${RELEASE_CONFIG}').bundleIdentifier")
-VERSION=$(node -p "require('${RELEASE_CONFIG}').version")
+if [ -f "${ROOT_DIR}/VERSION" ]; then
+  VERSION=$(cat "${ROOT_DIR}/VERSION" | tr -d '[:space:]')
+else
+  VERSION=$(node -p "require('${RELEASE_CONFIG}').version")
+fi
 BUILD_NUM=$(node -p "require('${RELEASE_CONFIG}').buildNumber")
 MIN_MACOS=$(node -p "require('${RELEASE_CONFIG}').minMacOSVersion")
+COPYRIGHT=$(node -p "require('${RELEASE_CONFIG}').copyright || 'Copyright © 2026 Voice.AI Team. All rights reserved.'")
 COMMIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "release")
 
 echo "App Name:         ${APP_NAME}"
@@ -104,6 +109,10 @@ cat <<EOF > "${CONTENTS_DIR}/Info.plist"
     <string>${BUILD_NUM}</string>
     <key>LSMinimumSystemVersion</key>
     <string>${MIN_MACOS}</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>${COPYRIGHT}</string>
     <key>LSUIElement</key>
     <false/>
     <key>NSHighResolutionCapable</key>
@@ -116,6 +125,10 @@ cat <<EOF > "${CONTENTS_DIR}/Info.plist"
     <string>Voice.AI automates applications via Apple Events and native shortcuts.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>Voice.AI uses local Whisper models to transcribe speech on device.</string>
+    <key>NSContactsUsageDescription</key>
+    <string>Voice.AI accesses contacts locally to resolve names when sending emails or messages upon your command.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Voice.AI uses the camera only if you explicitly turn on hand gesture controls in Settings.</string>
     <key>SUFeedURL</key>
     <string>https://voice.ai/appcast.xml</string>
     <key>VoiceAIGitCommit</key>

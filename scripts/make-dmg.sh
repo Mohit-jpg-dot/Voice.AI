@@ -20,10 +20,14 @@ echo "================================================================="
 
 # 1. Read Release Configuration
 APP_NAME=$(node -p "require('${RELEASE_CONFIG}').appName")
-VERSION=$(node -p "require('${RELEASE_CONFIG}').version")
+if [ -f "${ROOT_DIR}/VERSION" ]; then
+  VERSION=$(cat "${ROOT_DIR}/VERSION" | tr -d '[:space:]')
+else
+  VERSION=$(node -p "require('${RELEASE_CONFIG}').version")
+fi
 BUILD_NUM=$(node -p "require('${RELEASE_CONFIG}').buildNumber")
 MIN_MACOS=$(node -p "require('${RELEASE_CONFIG}').minMacOSVersion")
-DMG_NAME=$(node -p "require('${RELEASE_CONFIG}').dmgName")
+DMG_NAME="Voice.AI-${VERSION}.dmg"
 INSTALLER_DMG_NAME=$(node -p "require('${RELEASE_CONFIG}').installerDmgName")
 SIGNING_IDENTITY=$(node -p "require('${RELEASE_CONFIG}').signingIdentity || ''")
 

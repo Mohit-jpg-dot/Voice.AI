@@ -80,3 +80,52 @@
 53. Voice shelf operations: Natural English/Hindi/Hinglish voice intent handling ("What's on my shelf?", "shelf saaf karo", "Put report.pdf on shelf", "AirDrop these") with safe path resolution, strict protection of sensitive files (.ssh, .env, keys), and .consequential approval for destructive/sending actions.
 54. Content safety & untrusted wrapping: File reading for AI summarization strictly redacts secrets, checks cloud consent/privacy badge, caps payload size, and wraps file text in <UNTRUSTED_FILE_DATA> tags to prevent indirect prompt injection.
 
+## islandcn Engine Port Architecture Notes (Step 0 Summary)
+1. Activity Model: Encapsulates dynamic tasks via unique id, screen-reader label, priority, order, group, revision, and presentation slots -> mapped to `Activity` struct and `ActivityContent`.
+2. Activity Content: Defines compact (leading/trailing), minimal (attached/detached fallback), and expanded (leading, trailing, center, bottom) slot representations -> mapped to `CompactContent`, `ExpandedContent`, and `ActivityContent`.
+3. Activity Stack & Priority Rules: Activities are sorted by priority (higher priority first) with arrival order breaking ties (`b.priority - a.priority || a.order - b.order`) -> mapped to `ActivityStack` inside `ActivityCenter`.
+4. Grouped Activities: Live activities sharing a group show one at a time; hidden activities yield to alerts via handoff departure -> mapped to `Activity.group: String?` and `front: [String: String]`.
+5. Four Presentations: `idle` (empty notch), `compact` (single activity), `split` / `minimal` (two concurrent activities), and `expanded` (active detailed card) -> mapped to `IslandPresentationKind` enum.
+6. Presentation Choice Rules: 0 activities -> idle; 1 activity -> compact (or expanded if expanded flag active); 2 activities -> split/minimal; 3+ activities -> top 2 shown in split, rest wait in priority stack.
+7. Start Operation: Registers new activity or updates existing id, appends to priority queue, increments order, and triggers alert expansion if requested -> mapped to `ActivityCenter.start(_:) -> ActivityHandle`.
+8. Update Operation: In-place slot updates (`transition: .update`) or layer crossfades (`transition: .crossfade`), delaying alert content replacement until expanded card arrives -> mapped to `ActivityCenter.update(id:with:)`.
+9. End Operation: Removes activity from stack, cancels active alert and pending timers, and smoothly returns to next highest activity or idle -> mapped to `ActivityCenter.end(id:)`.
+10. Alert Expansion: Alerts temporarily expand the notch to full card; idle-origin alerts hold for 5.969s, active-origin alerts hold for 5.975s before auto-collapsing -> mapped to `ExpandReason.alert` and `alertHold` timer.
+11. Alert Content Timing: Alerting content update expands with old content first, then applies new content after 160ms (`alertContentDelay`) -> mapped to `Task.sleep` / mock clock delay in `ActivityCenter`.
+12. Group Handoff Timing: Hidden grouped activity alert triggers departure of front activity (1.445s handoff), expands alerting activity, and enforces 6.014s group window -> mapped to `group.handoff` and `group.window` timers.
+13. Long-Press Behavior: Touch/click down triggers swelling; holding past decision threshold expands the activity; tap releases before threshold invoke `onPress` -> mapped to `.onLongPressGesture` and `ActivityCenter.press/release`.
+14. Expand / Collapse Operations: Manual user expansion (`reason: .user`) stays expanded until click outside, Esc, or swipe; collapses return to deriveScene presentation -> mapped to `ActivityCenter.expand(id:)` and `collapse()`.
+15. Shape Springs: Edge expansion uses `response: 0.517, dampingFraction: 0.824`; long-press uses `0.387 / 0.792`; split uses `0.505 / 0.815`; dismiss uses `0.432 / 1.019` -> mapped to `NotchAnimations.islandShapeSprings`.
+16. Body Height Springs: Height transitions use `response: 0.497, dampingFraction: 0.825`; swap uses `0.492 / 0.832` with delay; collapse uses `0.453 / 0.928` -> mapped to `NotchAnimations.islandBodySprings`.
+17. Corner Radius Springs: Continuous squircle corner transitions track independent spring curves (`expand: 0.448 / 0.87`, `press: 0.32 / 0.831`, `collapse: 0.449 / 0.94`) -> mapped to `NotchAnimations.islandCornerSprings`.
+18. Reduced Motion Handling: When system `prefers-reduced-motion` is active, all dynamic physics springs and blur skirts are bypassed in favor of a clean 0.2s crossfade -> mapped to `isReduceMotionEnabled` in `NotchAnimations`.
+19. Increase Contrast Handling: Keyline borders, backdrop dimming, and text contrast adjust dynamically against background luma -> mapped to `DesignTokens.HighContrast` and `keylineAlphaFor`.
+20. Consequential Safety Lane: Voice.AI approval cards take absolute priority (lane 9999), locking out auto-dismissal, timer popups, and alert interruptions -> mapped to `ActivityPriority.consequentialApproval`.
+21. Quiet Hours & DND: When active, intrusive audio/expanded alerts are demoted to silent compact badges in trailing wing -> mapped to `ActivityCenter.applyQuietPolicy`.
+22. Privacy Sensitivity: Activities with `isSensitive: true` mask preview content in compact mode, revealing full text only on expanded user interaction -> mapped to `Activity.isSensitive` and `showSensitivePreviewsInNotch` setting.
+23. Codable Persistence: Activities marked `persistsAcrossRestarts: true` (such as active timers) serialize into encrypted Keychain/AppSupport storage on quit and resume on launch -> mapped to `Codable` conformance on `PersistentActivityRecord`.
+24. Thread-Safe Main Actor Center: The engine operates entirely in VoiceOSCore with no UI dependencies, publishing state via Combine `@Published var scene: IslandScene` -> mapped to `@MainActor public final class ActivityCenter`.
+25. Existing Notch Code Architecture: `NotchHUDWindowController` manages the 700x560 non-activating overlay window with `NotchPanel` hit-testing clipped to `visibleNotchBounds`; `NotchGlassIslandView` renders the liquid obsidian shape, camera cutout avoidance spacer, and dynamic triptych; `IslandState` and `AppState` track listening/answering/media/shelf states; `NotchAnimations` and `DesignTokens` specify springs and palette; `ToolApprovalCoordinator` gates `.consequential` tasks; `NowPlayingMediaManager` monitors Spotify/browser media; `EventBus` broadcasts system events; `LLMIntentOrchestrator` routes voice commands.
+
+## Release & Build Pipeline Summary (Step 0)
+1. Build Architecture: `scripts/build-app.sh` compiles `VoiceOSCore` into `libVoiceOSCore.dylib` (arm64, macOS 14+) and links `VoiceOSApp` executable into `build/Voice.AI.app/Contents/MacOS/Voice.AI`.
+2. Dynamic Bundling: Generates `Contents/Info.plist` and `Contents/Frameworks/` dynamically; embeds `AppIcon.icns` and configures rpath `@rpath/libVoiceOSCore.dylib`.
+3. Entitlements & Hardened Runtime: Generates `Entitlements.plist` enabling JIT, unsigned executable memory, disabled library validation, audio-input, and apple-events automation.
+4. Code Signing: If `signingIdentity` is present in `release/config.json`, signs with Developer ID + timestamp; otherwise signs ad-hoc (`codesign -s -`) with hardened runtime.
+5. Verification of Signatures: Runs `codesign --verify --deep --strict build/Voice.AI.app` to guarantee bundle integrity.
+6. Unified Test Harness: `scripts/run-tests.sh` executes modular suites (`core`, `brain`, `auth`, `google`, `hindi`, `all`) by compiling standalone test runners linked to `libVoiceOSCore.dylib`.
+7. Windows Core Parity: `windows/VoiceAI.Core` (.NET Core) implements core logic and is verified via `windows/tests/VoiceAI.Core.Tests/TestRunner.cs`.
+8. Centralized Version Source: `release/config.json` holds `appName`, `version` ("1.0.0"), `buildNumber` ("42"), `minMacOSVersion` ("14.0"), and DMG naming.
+9. Version Scattering: Version strings currently appear in `release/config.json`, `website/latest.json`, `website/downloads/latest.json`, `README.md`, `README.hi.md`, and C# assemblies.
+10. DMG Packaging: `scripts/make-dmg.sh` stages `Voice.AI.app` and `/Applications` symlink, creates Tahoe glass background via `generate-dmg-assets.py`, and bundles volume icon.
+11. DMG Compression: Uses `hdiutil create -format UDZO` to generate compressed disk image `build/Voice.AI-<version>.dmg`.
+12. Checksum Calculation: `scripts/make-dmg.sh` calculates SHA-256 via `shasum -a 256` and writes `.sha256` files to `build/` and `website/downloads/`.
+13. Metadata Generation: Writes release metadata (`releaseDate`, `fileSizeBytes`, `sha256`, `statusLabel`) to `release/latest.json` and copies to `website/` and `website/downloads/`.
+14. DMG Distribution: Copies DMG binary directly into `website/downloads/Voice.AI-<version>.dmg` (tracking ~10MB binary in git).
+15. Website Docs Builder: `scripts/build-website-docs.py` parses Markdown docs into `website/docs-data.js` for interactive offline and online search.
+16. Download Verification: `scripts/verify-website-download.js` validates `latest.json` fields, verifies disk file presence, checks exact byte size, and confirms SHA-256 hash match.
+17. CI/CD Workflow: `scripts/ci-release-workflow.yml` triggers on version tags (`v*`), setting up Node 20, verifying Swift, building app, packaging DMG, and creating GitHub Release draft.
+18. Notarization Pipeline: CI workflow checks for `NOTARY_API_KEY`, `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID` to invoke `xcrun notarytool submit` and `stapler staple`.
+19. GitHub Pages Deployment: `scripts/deploy-gh-pages.sh` syncs CSS tokens, copies `app/` companion, splits `website/` subtree to `gh-pages` branch, and force pushes to origin.
+20. Live Web Distribution: The website serves from `https://mohit-jpg-dot.github.io/Voice.AI/` linking directly to downloads in `website/downloads/`.
+

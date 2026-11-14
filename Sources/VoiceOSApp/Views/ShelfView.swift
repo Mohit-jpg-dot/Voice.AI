@@ -476,18 +476,13 @@ public struct ShelfView: View {
 
     // MARK: - Drag Providers & Drop Destination
     private func createItemProvider(for item: ShelfItem) -> NSItemProvider {
-        let isOptionDown = NSEvent.modifierFlags.contains(.option)
-        let isMoveDefault = ShelfStore.shared.settings.defaultDragOutAction == .move
-        let shouldMove = isOptionDown ? !isMoveDefault : isMoveDefault
-        let shouldRemove = shouldMove || ShelfStore.shared.settings.removeAfterDragOut
-
+        // Automatically remove the item from the Shelf tray after dragging it out
         let scheduleRemoval = {
-            if shouldRemove {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                        ShelfStore.shared.removeItem(byId: item.id)
-                        self.refreshItems()
-                    }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    ShelfStore.shared.removeItem(byId: item.id)
+                    self.refreshItems()
+                    NotificationCenter.default.post(name: NSNotification.Name("VoiceOS.ShelfItemsUpdated"), object: nil)
                 }
             }
         }

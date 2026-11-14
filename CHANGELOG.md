@@ -6,6 +6,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2026-11-14
+
+### Added
+- **Native Swift & SwiftUI Dynamic Island Engine (`Sources/VoiceOSCore/Island/`)**:
+  - Ported engine logic faithfully from the MIT-licensed open-source [islandcn](https://github.com/opencoredev/islandcn) project (pinned commit `0011a41ea4882f3818caf35c98f3ee46b80c4a2c`, Copyright (c) 2026 Leo) without embedding web views or shipping JavaScript.
+  - `ActivityCenter`: Main-actor observable activity scheduler managing priority stack (`b.priority - a.priority || a.order - b.order`), presentation selection (`idle`, `compact`, `split`, `expanded`), alert scheduling with auto-collapse (`alertHold: 5.975s`, `alertHoldIdle: 5.969s`), group handoffs (`groupHandoff: 1.445s`), and Codable restart persistence.
+  - `IslandMotionTokens`: Fitted physics spring constants mapped directly into native tokens (`shapeAppear`, `shapeExpand`, `shapeCollapse`, `contentFade`, `reducedMotionDuration: 0.200s`).
+  - **Consequential Approval Safety Lane**: Special priority 9999 lane ensuring consequential Tool Approval Cards ALWAYS take highest priority and can never be pushed down, covered by lower activities, or auto-dismissed by timers.
+  - **Quiet Rules & Privacy**: Alerts are suppressed during active dictation, approval, or DND; sensitive items (`isSensitive`) hide previews by default on compact view (`•••`) and reveal only when `showSensitivePreviewsInNotch` is enabled.
+- **Dynamic Activity Presets**:
+  - `TimerActivityManager`: Multi-timer manager supporting voice queries ("set a timer for 10 minutes", pause, resume, cancel, remaining), persistent storage, and completion alerts.
+  - `NowPlayingActivityBridge`: Bridges `NowPlayingMediaManager` updates with `ActivityCenter` for track playback, scrub progress, equalizer, and source icons.
+  - `RecordingActivityBridge`: Priority 50 mic indicator active whenever microphone is open; cannot be hidden; stop button.
+  - `BatteryActivityMonitor`: IOKit power source monitor; low-battery (<20%) alert, charging start alert, voice status query ("battery kitna hai?").
+  - `StepProgressActivityManager`: Computer-use step progress ("Step 4 of 15", budget countdown, stop task).
+  - `UploadProgressActivityManager`: Generic progress states (in-progress, completed, failed with retry).
+  - `ShelfNearbyActivityBridge`: Shelf item count badge and AirDrop share bridge.
+  - `CommunicationActivityBridge`: Watched contact messages and companion approval alerts.
+- **Voice Routing & Fast-Path Parsers**:
+  - Added 52 English, Hindi, and Hinglish natural language voice intents in `AgentToolParser` and `AppIntegrationEngine` for timers, notch activities, battery status, message previews, and quiet hours.
+- **Windows .NET Core Parity (`windows/VoiceAI.Core/Island/`)**:
+  - Full C# implementation of `ActivityModels.cs` and `ActivityCenter.cs` with matching priority stacks, presentations, consequential safety lane, alert timing, quiet rules, and privacy masking.
+- **Interactive Debug Harness**:
+  - `IslandGalleryView.swift`: Dynamic test harness for testing all presets, presentations (idle, compact, split, expanded), long text, stacked activities, reduce motion, and no-notch display fallbacks.
+- **Automated Verification**:
+  - Added `[Suite 60]` in `Tests/core/test_core.swift` with 14 comprehensive test sub-suites (949 total tests passing with 0 failures).
+  - Added `[Suite 19]` in `windows/tests/VoiceAI.Core.Tests/TestRunner.cs` (200 total tests passing with 0 failures).
+- **Licensing & Documentation**:
+  - Full MIT license and copyright attribution added to `THIRD_PARTY_NOTICES.md` and `README.md`.
+  - Header notice added to all ported Swift and C# source files.
+  - 25-line architectural engine mapping documented in `AGENT_NOTES.md`.
+
+---
+
 ## [Notch Shelf (Temporary Staging Tray & Voice Agent Integration)] - 2026-11-14
 
 ### Added

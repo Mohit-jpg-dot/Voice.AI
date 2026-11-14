@@ -42,6 +42,17 @@ public final class AppState: ObservableObject, ToolApprovalPresenting, @unchecke
     @Published public var isAppBuilderOpen: Bool = false
     @Published public var activeEmailDraft: EmailDraft? = nil
     @Published public var activeEventDraft: CalendarEventDraft? = nil
+
+    #if DEBUG
+    private static let defaultNewNotchEngine = true
+    #else
+    private static let defaultNewNotchEngine = false
+    #endif
+    @Published public var isNewNotchEngineEnabled: Bool = (UserDefaults.standard.object(forKey: "VoiceAI_NewNotchEngine") as? Bool) ?? AppState.defaultNewNotchEngine {
+        didSet {
+            UserDefaults.standard.set(isNewNotchEngineEnabled, forKey: "VoiceAI_NewNotchEngine")
+        }
+    }
     
     public var isCurrentlyListening: Bool {
         if case .listening = executionState { return true }

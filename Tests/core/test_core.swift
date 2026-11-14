@@ -3113,6 +3113,382 @@ assertEqual(activeSettings59.showCountBadgeOnCollapsedNotch, false, "Collapsed b
 // Cleanup temporary directories
 try? fm59.removeItem(at: testBaseDir59)
 
+// =================================================================
+// [Suite 60] islandcn Dynamic-Island Engine and Presets (Pure Logic, Priority Queue, Safety Lanes, Presets, Voice Routing, Reduced Motion)
+// =================================================================
+print("\n[Suite 60] islandcn Dynamic-Island Engine and Presets Port")
+
+let mockClock60 = MockIslandClock(initialTime: 1000.0)
+let center60 = ActivityCenter(clock: mockClock60)
+await center60.reset()
+
+// 1. Ported islandcn Engine Tests: Presentation Selection (Idle, Compact, Split, Expanded)
+assertEqual(center60.currentScene.presentation, IslandPresentation.idle, "Zero activities produces idle presentation")
+assertEqual(center60.currentScene.contentKey, "idle", "Idle contentKey is 'idle'")
+
+// Start single activity A -> compact
+let handleA = await center60.start(ActivityOptions(
+    id: "activity_a",
+    label: "Timer A",
+    priority: ActivityPriority.standard,
+    content: ActivityContent(
+        compact: ActivityCompactSlots(leading: .symbol(name: "timer"), trailing: .text("10:00")),
+        minimal: .symbol(name: "timer"),
+        expanded: ActivityExpandedSlots(center: .text("Timer A Running"))
+    )
+))
+assertEqual(center60.activities.count, 1, "Activity A added to engine stack")
+if case .compact(let lead, let trail) = center60.currentScene.presentation {
+    assertEqual(lead?.displayText, "timer", "Compact leading displays timer symbol")
+    assertEqual(trail?.displayText, "10:00", "Compact trailing displays 10:00")
+} else {
+    assertTrue(false, "Expected compact presentation for single activity")
+}
+assertEqual(center60.currentScene.primaryId, "activity_a", "Primary activity is activity_a")
+
+// Start second activity B -> split / minimal
+let handleB = await center60.start(ActivityOptions(
+    id: "activity_b",
+    label: "Spotify B",
+    priority: ActivityPriority.media, // priority 10 > priority 0
+    content: ActivityContent(
+        compact: ActivityCompactSlots(leading: .symbol(name: "spotify"), trailing: .text("Music")),
+        minimal: .symbol(name: "spotify"),
+        expanded: ActivityExpandedSlots(center: .text("Song B"))
+    )
+))
+assertEqual(center60.activities.count, 2, "Engine now holds 2 activities")
+if case .minimal(let attached, let detached, let split) = center60.currentScene.presentation {
+    assertEqual(attached?.displayText, "spotify", "Split attached side shows higher priority activity_b")
+    assertEqual(detached?.displayText, "timer", "Split detached side shows activity_a")
+    assertTrue(split != nil, "Split slots are provided for dual wings")
+} else {
+    assertTrue(false, "Expected minimal/split presentation for two concurrent activities")
+}
+assertEqual(center60.currentScene.primaryId, "activity_b", "Primary slot taken by higher priority activity_b")
+assertEqual(center60.currentScene.detachedId, "activity_a", "Detached slot taken by activity_a")
+
+// Start third activity C -> top 2 shown in split, third remains queued
+let handleC = await center60.start(ActivityOptions(
+    id: "activity_c",
+    label: "Download C",
+    priority: ActivityPriority.background, // priority -10
+    content: ActivityContent(compact: ActivityCompactSlots(leading: .symbol(name: "arrow.down"), trailing: .text("45%")))
+))
+assertEqual(center60.activities.count, 3, "Engine holds 3 activities")
+assertEqual(center60.currentScene.primaryId, "activity_b", "Split still shows top activity_b")
+assertEqual(center60.currentScene.detachedId, "activity_a", "Split still shows second activity_a")
+
+// 2. In-Place Update and Crossfade Revisions
+await center60.update(id: "activity_a", with: ActivityUpdate(
+    compact: ActivityCompactSlots(leading: .symbol(name: "timer"), trailing: .text("09:59"))
+))
+assertEqual(center60.activities.first(where: { $0.id == "activity_a" })?.content.compact?.trailing?.displayText, "09:59", "Activity updated in place")
+
+await center60.update(id: "activity_b", with: ActivityUpdate(
+    label: "Spotify Updated",
+    transition: "crossfade"
+))
+assertEqual(center60.activities.first(where: { $0.id == "activity_b" })?.revision, 1, "Crossfade update bumps revision number")
+assertTrue(center60.currentScene.contentKey.contains("#1"), "ContentKey includes revision #1 for layer crossfade")
+
+// 3. User Expansion and Collapse
+await center60.expand(id: "activity_a")
+assertTrue(center60.isExpanded, "isExpanded is true after expand()")
+assertEqual(center60.expandedActivityId, "activity_a", "Expanded activity is activity_a")
+if case .expanded(_, _, let center, _) = center60.currentScene.presentation {
+    assertEqual(center?.displayText, "Timer A Running", "Expanded view shows detailed center slot")
+} else {
+    assertTrue(false, "Expected expanded presentation")
+}
+
+await center60.collapse()
+assertEqual(center60.isExpanded, false, "isExpanded is false after collapse()")
+
+// 4. Consequential Approval Safety Lane
+await center60.start(ActivityOptions(
+    id: "approval_card",
+    label: "Approval: Delete 10 Files",
+    priority: ActivityPriority.consequentialApproval, // 9999
+    content: ActivityContent(
+        expanded: ActivityExpandedSlots(center: .text("Confirm Deletion"))
+    )
+))
+center60.isApprovalCardActive = true
+await center60.expand(id: "approval_card")
+
+assertEqual(center60.currentScene.primaryId, "approval_card", "Approval card takes highest priority slot")
+
+// Verify other activity CANNOT push down or cover approval card
+await center60.expand(id: "activity_a")
+assertEqual(center60.expandedActivityId, "approval_card", "Consequential approval card CANNOT be covered or superseded by lower activity")
+
+// Verify collapse() CANNOT dismiss active approval card
+await center60.collapse()
+assertTrue(center60.isExpanded, "Consequential approval card CANNOT be dismissed by collapse()")
+assertEqual(center60.expandedActivityId, "approval_card", "Approval card remains firmly expanded")
+
+// End approval card
+center60.isApprovalCardActive = false
+await center60.end(id: "approval_card")
+assertEqual(center60.activities.contains(where: { $0.id == "approval_card" }), false, "Approval card ended")
+
+// 5. Alert Auto-Dismiss Timing via MockIslandClock
+await center60.reset()
+await center60.start(ActivityOptions(
+    id: "alert_test",
+    label: "Notification Alert",
+    priority: ActivityPriority.alert,
+    alert: true,
+    content: ActivityContent(
+        compact: ActivityCompactSlots(leading: .symbol(name: "bell"), trailing: .text("New")),
+        expanded: ActivityExpandedSlots(center: .text("Notification Title"))
+    )
+))
+assertTrue(center60.isExpanded, "Alert immediately expands the notch")
+assertEqual(center60.expandReason, ExpandReason.alert, "Expand reason is alert")
+
+// Advance clock by 3 seconds: should still be expanded
+mockClock60.advance(by: 3.0)
+assertTrue(center60.isExpanded, "Alert is still expanded at +3s (hold time is 5.969s from idle)")
+
+// Advance clock past 6.0 seconds: auto-collapses
+mockClock60.advance(by: 3.5)
+await Task.yield()
+assertEqual(center60.isExpanded, false, "Alert auto-collapses after alertHold expires")
+
+// 6. Quiet Rules: Suppression During Dictation, Approval, DND
+await center60.reset()
+center60.isDictationActive = true
+await center60.start(ActivityOptions(
+    id: "quiet_alert",
+    label: "Muted Alert",
+    priority: ActivityPriority.alert,
+    alert: true,
+    content: ActivityContent(compact: ActivityCompactSlots(leading: .text("Msg")))
+))
+assertEqual(center60.isExpanded, false, "Alert is suppressed from expanding during active dictation")
+center60.isDictationActive = false
+
+center60.isDNDActive = true
+await center60.start(ActivityOptions(
+    id: "dnd_alert",
+    label: "DND Alert",
+    priority: ActivityPriority.alert,
+    alert: true,
+    content: ActivityContent(compact: ActivityCompactSlots(leading: .text("DND")))
+))
+assertEqual(center60.isExpanded, false, "Alert is suppressed from expanding during DND / quiet hours")
+center60.isDNDActive = false
+
+// 7. Privacy Sensitivity Masking
+await center60.reset()
+center60.showSensitivePreviewsInNotch = false
+await center60.start(ActivityOptions(
+    id: "secret_msg",
+    label: "Secret Email",
+    isSensitive: true,
+    content: ActivityContent(
+        compact: ActivityCompactSlots(leading: .text("Confidential subject"), trailing: .text("Sarah")),
+        expanded: ActivityExpandedSlots(center: .text("Full confidential message body"))
+    )
+))
+if case .compact(let lead, let trail) = center60.currentScene.presentation {
+    assertEqual(lead?.displayText, "Private", "Sensitive leading text masked to 'Private' in compact mode")
+    assertEqual(trail?.displayText, "••••", "Sensitive trailing text masked to '••••' in compact mode")
+} else {
+    assertTrue(false, "Expected compact view for single secret message")
+}
+
+center60.showSensitivePreviewsInNotch = true
+await center60.recomputeScene()
+if case .compact(let lead, let trail) = center60.currentScene.presentation {
+    assertEqual(lead?.displayText, "Confidential subject", "Enabling preview setting reveals sensitive leading text")
+    assertEqual(trail?.displayText, "Sarah", "Enabling preview setting reveals sensitive trailing text")
+}
+
+// 8. Timers Preset & Persistence
+let timerMgr60 = TimerActivityManager.shared
+let createdTimer60 = await timerMgr60.createTimer(durationSeconds: 120, label: "Boil Eggs")
+assertEqual(createdTimer60.label, "Boil Eggs", "Timer created with label 'Boil Eggs'")
+assertEqual(createdTimer60.durationSeconds, 120.0, "Timer duration is 120s")
+
+let paused60 = await timerMgr60.pauseTimer(id: createdTimer60.id)
+assertEqual(paused60, true, "Timer paused successfully")
+let remainingInfo60 = await timerMgr60.getRemainingTime(id: createdTimer60.id)
+assertTrue(remainingInfo60 != nil, "Remaining time queried successfully")
+
+let resumed60 = await timerMgr60.resumeTimer(id: createdTimer60.id)
+assertEqual(resumed60, true, "Timer resumed successfully")
+
+let cancelled60 = await timerMgr60.cancelTimer(id: createdTimer60.id)
+assertEqual(cancelled60, true, "Timer cancelled successfully")
+
+// 9. Battery Thresholds & Charging
+let battNormal = BatteryStatus(level: 80, isCharging: false, isPluggedIn: false)
+assertEqual(battNormal.isLow, false, "80% battery is not low")
+assertEqual(battNormal.isFull, false, "80% battery is not full")
+
+let battLow = BatteryStatus(level: 15, isCharging: false, isPluggedIn: false)
+assertEqual(battLow.isLow, true, "15% unplugged battery correctly detected as low (<20%)")
+
+let battCharging = BatteryStatus(level: 15, isCharging: true, isPluggedIn: true)
+assertEqual(battCharging.isLow, false, "15% charging battery is not low")
+assertEqual(battCharging.isCharging, true, "Charging state detected")
+
+// 10. Step Progress ETA (Computer Use Mode)
+let stepMgr60 = StepProgressActivityManager.shared
+await stepMgr60.startTask(totalSteps: 15, budgetSeconds: 90.0, initialDescription: "Clicking search button")
+assertEqual(stepMgr60.currentState?.currentStep, 1, "Task starts at step 1")
+assertEqual(stepMgr60.currentState?.totalSteps, 15, "Task total steps is 15")
+
+await stepMgr60.updateStep(step: 4, description: "Typing query", budgetRemaining: 72.0)
+assertEqual(stepMgr60.currentState?.currentStep, 4, "Task step updated to 4")
+assertEqual(stepMgr60.currentState?.budgetSecondsRemaining, 72.0, "Task budget remaining is 72s")
+
+await stepMgr60.stopTask()
+assertEqual(stepMgr60.currentState, nil, "Task stopped and state cleared")
+
+// 11. Upload Progress Activity States
+let uploadMgr60 = UploadProgressActivityManager.shared
+let upId60 = await uploadMgr60.startProgress(id: "upload_suite60", title: "Document.pdf")
+await uploadMgr60.updateProgress(id: upId60, progress: 0.60, subtitle: "Uploading 6 of 10 MB")
+assertEqual(uploadMgr60.activeTasks.first(where: { $0.id == upId60 })?.status, ProgressTaskStatus.inProgress(progress: 0.60, subtitle: "Uploading 6 of 10 MB"), "Upload progress updated to 60%")
+
+await uploadMgr60.fail(id: upId60, error: "Network timeout", onRetry: {})
+if case .failed(let err, let retry) = uploadMgr60.activeTasks.first(where: { $0.id == upId60 })?.status {
+    assertEqual(err, "Network timeout", "Failed status captures error")
+    assertEqual(retry, true, "Retry is available")
+} else {
+    assertTrue(false, "Expected failed progress state")
+}
+
+await uploadMgr60.complete(id: upId60, successTitle: "Uploaded to Drive")
+if case .completed(let title) = uploadMgr60.activeTasks.first(where: { $0.id == upId60 })?.status {
+    assertEqual(title, "Uploaded to Drive", "Completed status captures success title")
+} else {
+    assertTrue(false, "Expected completed progress state")
+}
+
+// 12. Voice Intents Routing (42 Phrases English/Hindi/Hinglish + 15 Unrelated Negative Controls)
+let voiceIntentTests60: [(phrase: String, expectedApp: String, expectedOp: String)] = [
+    // Timers - English
+    ("set a timer for 10 minutes", "timer", "start"),
+    ("set a timer for 5 minutes", "timer", "start"),
+    ("set timer for 30 seconds", "timer", "start"),
+    ("pause the timer", "timer", "pause"),
+    ("pause timer", "timer", "pause"),
+    ("resume the timer", "timer", "resume"),
+    ("resume timer", "timer", "resume"),
+    ("cancel the timer", "timer", "cancel"),
+    ("cancel timer", "timer", "cancel"),
+    ("stop timer", "timer", "cancel"),
+    ("how much time is left?", "timer", "remaining"),
+    ("how much time left on timer", "timer", "remaining"),
+    // Timers - Hindi & Hinglish
+    ("10 minute ka timer lagao", "timer", "start"),
+    ("5 minute ka timer lagao", "timer", "start"),
+    ("timer lagao 15 minute ka", "timer", "start"),
+    ("timer pause karo", "timer", "pause"),
+    ("timer roko", "timer", "pause"),
+    ("timer resume karo", "timer", "resume"),
+    ("timer chalao", "timer", "resume"),
+    ("timer cancel karo", "timer", "cancel"),
+    ("timer band karo", "timer", "cancel"),
+    ("timer hatao", "timer", "cancel"),
+    ("timer kitna bacha hai?", "timer", "remaining"),
+    ("kitna time bacha hai", "timer", "remaining"),
+    ("timer mein kitna samay bacha hai", "timer", "remaining"),
+    // Notch & Island Controls
+    ("what's running in the notch?", "notch", "what_is_running"),
+    ("what is running in the notch", "notch", "what_is_running"),
+    ("whats running in the notch", "notch", "what_is_running"),
+    ("notch mein kya chal raha hai", "notch", "what_is_running"),
+    ("what's on the notch", "notch", "what_is_running"),
+    ("show notch activities", "notch", "what_is_running"),
+    ("dismiss that", "notch", "dismiss"),
+    ("dismiss notch", "notch", "dismiss"),
+    ("dismiss alert", "notch", "dismiss"),
+    ("notch hatao", "notch", "dismiss"),
+    ("isse hatao", "notch", "dismiss"),
+    ("show the battery", "notch", "show_battery"),
+    ("show battery", "notch", "show_battery"),
+    ("battery status", "notch", "show_battery"),
+    ("battery kitna hai", "notch", "show_battery"),
+    ("battery kitna hai?", "notch", "show_battery"),
+    ("what's my battery", "notch", "show_battery"),
+    ("what is my battery", "notch", "show_battery"),
+    ("kitni battery hai", "notch", "show_battery"),
+    ("stop recording", "notch", "stop_recording"),
+    ("recording band karo", "notch", "stop_recording"),
+    ("mic band karo", "notch", "stop_recording"),
+    ("mute notch alerts for an hour", "notch", "mute_alerts"),
+    ("mute notch alerts", "notch", "mute_alerts"),
+    ("show message previews", "notch", "show_previews"),
+    ("notch mein message dikhao", "notch", "show_previews"),
+    ("hide message previews", "notch", "hide_previews"),
+    ("notch mein message chhupao", "notch", "hide_previews")
+]
+
+for testCase in voiceIntentTests60 {
+    let parsed = AgentToolParser.parse(query: testCase.phrase)
+    if case .appIntegration(let app, let op, _) = parsed {
+        assertEqual(app, testCase.expectedApp, "Voice intent '\(testCase.phrase)' maps to app '\(testCase.expectedApp)'")
+        assertEqual(op, testCase.expectedOp, "Voice intent '\(testCase.phrase)' maps to op '\(testCase.expectedOp)'")
+    } else {
+        assertTrue(false, "Failed to parse voice intent '\(testCase.phrase)' to appIntegration")
+    }
+}
+
+// 15 Unrelated Phrases (Negative Controls)
+let unrelatedNegativeControls60: [String] = [
+    "what is the weather today",
+    "tell me a joke",
+    "open safari",
+    "open chrome",
+    "volume up",
+    "increase brightness",
+    "lock my screen",
+    "take a screenshot",
+    "create note buy apples",
+    "search the web for Swift",
+    "who is the prime minister",
+    "shutdown my mac",
+    "empty trash",
+    "how are you today",
+    "play music on spotify"
+]
+
+for phrase in unrelatedNegativeControls60 {
+    let parsed = AgentToolParser.parse(query: phrase)
+    if case .appIntegration(let app, _, _) = parsed {
+        assertTrue(app != "timer" && app != "notch", "Unrelated phrase '\(phrase)' must NOT map to timer or notch")
+    } else {
+        assertTrue(true, "Unrelated phrase '\(phrase)' correctly bypassed timer/notch")
+    }
+}
+
+// 13. Reduced Motion Tokens & Spring Specs Validation
+assertEqual(IslandMotionTokens.reducedMotionDuration, 0.200, "Reduced motion duration is 0.200 seconds")
+assertEqual(IslandMotionTokens.alertHold, 5.975, "alertHold timing is 5.975s")
+assertEqual(IslandMotionTokens.alertHoldIdle, 5.969, "alertHoldIdle timing is 5.969s")
+assertEqual(IslandMotionTokens.groupHandoff, 1.445, "groupHandoff timing is 1.445s")
+assertEqual(IslandMotionTokens.groupWindow, 6.014, "groupWindow timing is 6.014s")
+assertEqual(IslandMotionTokens.alertContentDelay, 0.160, "alertContentDelay is 0.160s")
+
+assertEqual(IslandMotionTokens.shapeExpand.response, 0.517, "shapeExpand response is 0.517")
+assertEqual(IslandMotionTokens.shapeExpand.dampingFraction, 0.824, "shapeExpand damping is 0.824")
+assertEqual(IslandMotionTokens.shapeCollapse.response, 0.479, "shapeCollapse response is 0.479")
+assertEqual(IslandMotionTokens.shapeCollapse.dampingFraction, 0.894, "shapeCollapse damping is 0.894")
+
+// 14. Feature Flag & Migration Toggle
+var appState60 = AppState()
+assertTrue(appState60.isNewNotchEngineEnabled != nil, "isNewNotchEngineEnabled feature flag is present on AppState")
+appState60.isNewNotchEngineEnabled = true
+assertEqual(appState60.isNewNotchEngineEnabled, true, "New notch engine feature flag can be enabled")
+appState60.isNewNotchEngineEnabled = false
+assertEqual(appState60.isNewNotchEngineEnabled, false, "New notch engine feature flag can be disabled")
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

@@ -1,7 +1,13 @@
 # GitHub Repository Metadata & Right-Sidebar Setup
 
 ### Short Description (< 350 characters)
-Voice-first AI computer agent for macOS and Windows. Speaks Hindi, English, and Hinglish. Controls apps, terminal, and browser; supports Cloud LLMs, 100% private offline local models (Ollama/Whisper), or zero-key Google Search mode.
+Free and open-source voice agent that actually controls your Mac and Windows PC. Speaks Hindi, English, and Hinglish. 100% private offline local models (Ollama/Whisper), Cloud LLMs, and real computer control.
+
+### Tagline
+The open-source voice agent that actually controls your computer.
+
+### Social Preview Image
+Found at `docs/assets/social-preview.png` (1280 × 640 clean obsidian theme). Upload this under **Settings → General → Social preview**.
 
 ### Website URL (To paste into the "Website" field on the right sidebar)
 ```
@@ -12,20 +18,19 @@ https://mohit-jpg-dot.github.io/Voice.AI/
 - `voice-assistant`
 - `ai-agent`
 - `macos`
-- `windows`
 - `swift`
 - `swiftui`
 - `appkit`
-- `winui3`
+- `dynamic-island`
+- `local-ai`
 - `ollama`
 - `whisper`
 - `speech-to-text`
 - `hindi`
 - `hinglish`
-- `accessibility`
-- `boring-notch`
-- `local-ai`
+- `computer-use`
 - `autonomous-agent`
+- `accessibility`
 
 ---
 

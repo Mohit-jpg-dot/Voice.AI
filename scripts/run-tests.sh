@@ -45,7 +45,7 @@ run_suite() {
         swiftc "${SWIFT_FLAGS[@]}" "${source}" -o "${TMP_RUNNER}"
     fi
     
-    "${TMP_RUNNER}"
+    VOICE_AI_TEST_MODE=1 "${TMP_RUNNER}"
     rm -f "${TMP_RUNNER}"
     echo ""
 }

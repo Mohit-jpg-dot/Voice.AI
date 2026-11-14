@@ -98,5 +98,25 @@ This document tracks verification scenarios for the **Control-key (`⌃`) Comput
 | 11 | **Voice agent integration**<br>English, Hindi, Hinglish commands | Accurate intent classification for 45+ phrases; safe search inside allowed roots; strict refusal of `.ssh`/`.env`; `.consequential` approval for Clear/Trash/AirDrop; prompt-injection wrapper | Automated in `[Suite 59]` & Windows `[Suite 18]`; live mic pending manual QA |
 | 12 | **Settings toggles**<br>Settings -> Shelf | Toggles for auto-open on drag near notch, close after drop, default drag-out action (Copy/Move), auto-clear (1/3/7/14/30 days), max capacity (10/25/50/100) apply immediately | Implemented in `SettingsView.swift`; verified in `[Suite 59]` |
 
+---
+
+## islandcn Dynamic Island Engine & Presets (Native Swift & .NET Parity)
+
+| # | Scenario / Preset | Expected Result | Verification Status |
+|---|---|---|---|
+| 1 | **ActivityCenter Priority Queue** | Multiple activities sort by priority desc (`b.priority - a.priority \|\| a.order - b.order`). Dynamic presentations: 0 -> Idle, 1 -> Compact, 2 -> Split, active expand -> Expanded | Automated in Swift `[Suite 60]` & Windows `[Suite 19]` |
+| 2 | **Consequential Approval Safety Lane** | Approval card has priority 9999. It CANNOT be pushed down, covered by lower activity expand, or dismissed by `collapse()` or timer expiration while active | Automated in `[Suite 60]` & Windows `[Suite 19]` |
+| 3 | **Alert Timing & Auto-Collapse** | Alerts expand immediately; hold for `alertHoldIdle` (5.969s) or `alertHold` (5.975s) and auto-collapse cleanly | Automated in `[Suite 60]` & Windows `[Suite 19]` |
+| 4 | **Quiet Rules & DND** | Alert expansion is suppressed during dictation, active approval, or DND (silent compact badge shown instead) | Automated in `[Suite 60]` & Windows `[Suite 19]` |
+| 5 | **Privacy Masking** | `isSensitive` items display masked `•••` in compact view; unmasked when `showSensitivePreviewsInNotch` is enabled | Automated in `[Suite 60]` & Windows `[Suite 19]` |
+| 6 | **Voice Timers Preset** | "set a timer for 10 minutes", pause, resume, cancel, remaining; survives restarts via encrypted store; completion alert | Automated in `[Suite 60]`; live voice pending manual QA |
+| 7 | **Now Playing Preset** | Connects to `NowPlayingMediaManager`; seamless play, pause, next, previous, track title, equalizer, source icon | Automated in `[Suite 60]`; live Spotify/Music pending manual QA |
+| 8 | **Recording / Mic Indicator Preset** | Priority 50 indicator active whenever mic is open; cannot be hidden; stop recording button | Automated in `[Suite 60]`; live mic pending manual QA |
+| 9 | **Battery & Power Monitor Preset** | IOKit power source monitor; low-battery (<20%) alert, charging start alert; voice query ("battery kitna hai?") | Automated in `[Suite 60]`; live hardware power check pending manual QA |
+| 10 | **Computer-Use Step Progress Preset** | "Step 4 of 15", budget countdown, stop task action in expanded island | Automated in `[Suite 60]`; live agent loop pending manual QA |
+| 11 | **Generic Progress / Upload Preset** | In-progress, completed, failed with retry states | Automated in `[Suite 60]` |
+| 12 | **Island Gallery Debug Window** | Interactive debug harness for testing all presets, presentations, stacked activities, reduce motion, no-notch toggles | Implemented in `IslandGalleryView.swift` |
+
+
 
 

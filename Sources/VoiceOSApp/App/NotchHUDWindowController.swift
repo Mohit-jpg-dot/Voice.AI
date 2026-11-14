@@ -62,13 +62,22 @@ public final class NotchHUDWindowController: NSWindowController {
         panel.onDragEnterHotZone = { [weak self] in
             guard let self = self else { return }
             DispatchQueue.main.async {
+                self.appState.isMediaExpanded = false
                 self.appState.isShelfDragTargetHovered = true
-                if self.appState.activeNotchTab != .shelf || self.appState.islandState == .resting {
-                    withAnimation(NotchAnimations.openSpring) {
-                        self.appState.activeNotchTab = .shelf
-                        self.appState.setHoverExpanded(true)
-                    }
+                self.appState.isCompactResponseMode = false
+                withAnimation(NotchAnimations.openSpring) {
+                    self.appState.activeNotchTab = .shelf
+                    self.appState.islandState = .hoverExpanded
+                    self.appState.setHoverExpanded(true)
                 }
+
+                // Immediately expand visible bounds to shelf dimensions so drops hit the whole shelf
+                let count = ShelfStore.shared.count
+                let width: CGFloat = count > 3 ? 640.0 : (count > 0 ? 560.0 : 500.0)
+                let height: CGFloat = 215.0
+                let visibleX = (Self.panelWindowWidth - width) / 2.0
+                let visibleY = Self.panelWindowHeight - height
+                panel.visibleNotchBounds = NSRect(x: visibleX, y: visibleY, width: width, height: height)
             }
         }
 
@@ -76,6 +85,15 @@ public final class NotchHUDWindowController: NSWindowController {
             guard let self = self else { return }
             DispatchQueue.main.async {
                 self.appState.isShelfDragTargetHovered = false
+                // If not pinned and user drags away without dropping, collapse back to resting
+                if !self.appState.isPinned && self.appState.islandState == .hoverExpanded {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        guard !self.appState.isShelfDragTargetHovered else { return }
+                        withAnimation(NotchAnimations.closeSpring) {
+                            self.appState.setHoverExpanded(false)
+                        }
+                    }
+                }
             }
         }
 
@@ -228,6 +246,22 @@ public final class NotchHUDWindowController: NSWindowController {
                 let visibleX = (windowWidth - visibleWidth) / 2.0
                 let visibleY = windowHeight - visibleHeight
                 panel.visibleNotchBounds = NSRect(x: visibleX, y: visibleY, width: visibleWidth, height: visibleHeight)
+            }
+            .store(in: &cancellables)
+
+        // 2c. Observe Shelf Drag Hover and Tab Changes
+        Publishers.CombineLatest(appState.$activeNotchTab, appState.$isShelfDragTargetHovered)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] tab, hovered in
+                guard let self = self, let panel = self.window as? NotchPanel else { return }
+                if (tab == .shelf && self.appState.islandState != .resting) || hovered {
+                    let count = ShelfStore.shared.count
+                    let width: CGFloat = count > 3 ? 640.0 : (count > 0 ? 560.0 : 500.0)
+                    let height: CGFloat = 215.0
+                    let visibleX = (Self.panelWindowWidth - width) / 2.0
+                    let visibleY = Self.panelWindowHeight - height
+                    panel.visibleNotchBounds = NSRect(x: visibleX, y: visibleY, width: width, height: height)
+                }
             }
             .store(in: &cancellables)
             

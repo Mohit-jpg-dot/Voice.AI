@@ -40,7 +40,7 @@ public struct ShelfSettings: Codable, Sendable, Equatable {
         autoOpenOnDragNearNotch: Bool = true,
         closeAfterDrop: Bool = false,
         defaultDragOutAction: ShelfDragOutAction = .copy,
-        removeAfterDragOut: Bool = false,
+        removeAfterDragOut: Bool = true,
         keepItemsAfterRelaunch: Bool = true,
         clearOnQuit: Bool = false,
         autoExpireDays: Int = 7,

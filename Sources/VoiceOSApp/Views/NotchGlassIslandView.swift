@@ -92,6 +92,8 @@ public struct NotchGlassIslandView: View {
     }
 
     private var isOpen: Bool {
+        if appState.isShelfDragTargetHovered { return true }
+        if appState.activeNotchTab == .shelf && appState.islandState != .resting { return true }
         if appState.isMediaExpanded { return true }
         if currentEmailDraft != nil || currentEventDraft != nil { return true }
         switch appState.islandState {
@@ -118,7 +120,7 @@ public struct NotchGlassIslandView: View {
     // MARK: - Dynamic Response-Adaptive Sizing Engine
     // Automatically calculates opening width and height based on current response length or view mode
     private var dynamicDimensions: (width: CGFloat, height: CGFloat) {
-        if appState.isMediaExpanded {
+        if appState.isMediaExpanded && !appState.isShelfDragTargetHovered && appState.activeNotchTab != .shelf {
             return (480.0, 215.0)
         }
         if !isOpen {
@@ -143,11 +145,12 @@ public struct NotchGlassIslandView: View {
         }
 
         // Compact Pill Mode (matches reference Image 1 & 10)
-        if isCompactMode || appState.isCompactResponseMode {
+        // Never hijack when user is dragging a file toward the notch or when Shelf tab is active!
+        if (isCompactMode || appState.isCompactResponseMode) && !appState.isShelfDragTargetHovered && appState.activeNotchTab != .shelf {
             return calculateAdaptiveNotchSize(for: compactDisplayText)
         }
         
-        let mediaOffset: CGFloat = (appState.currentMedia != nil) ? 38.0 : 0.0
+        let mediaOffset: CGFloat = (appState.currentMedia != nil && !appState.isShelfDragTargetHovered && appState.activeNotchTab != .shelf) ? 38.0 : 0.0
         
         // Full Opened States based on Tab & Response Length
         switch appState.activeNotchTab {
@@ -263,7 +266,7 @@ public struct NotchGlassIslandView: View {
         ZStack(alignment: .top) {
             // Main Animated Notch Body (Liquid Translucent Black Glass)
             VStack(spacing: 0) {
-                if appState.isNotchMediaDisplayEnabled && appState.isMediaExpanded, let media = appState.currentMedia {
+                if appState.isNotchMediaDisplayEnabled && appState.isMediaExpanded && !appState.isShelfDragTargetHovered && appState.activeNotchTab != .shelf, let media = appState.currentMedia {
                     aestheticMediaPanel(media: media)
                 } else if isOpen {
                     if let draft = currentEmailDraft {
@@ -300,7 +303,7 @@ public struct NotchGlassIslandView: View {
                         .padding(.top, max(physicalNotchHeight + 4.0, 36.0))
                         .padding(.bottom, 12)
                         .transition(.opacity)
-                    } else if isCompactMode || appState.isCompactResponseMode {
+                    } else if (isCompactMode || appState.isCompactResponseMode) && !appState.isShelfDragTargetHovered && appState.activeNotchTab != .shelf {
                         compactResponsePillView
                     } else {
                         openNotchContent
@@ -503,6 +506,19 @@ public struct NotchGlassIslandView: View {
         }
         .onChange(of: appState.activeEventDraft) { _, newDraft in
             if newDraft != nil {
+                isCompactMode = false
+                appState.isCompactResponseMode = false
+            }
+        }
+        .onChange(of: appState.isShelfDragTargetHovered) { _, hovered in
+            if hovered {
+                isCompactMode = false
+                appState.isCompactResponseMode = false
+                appState.activeNotchTab = .shelf
+            }
+        }
+        .onChange(of: appState.activeNotchTab) { _, newTab in
+            if newTab == .shelf {
                 isCompactMode = false
                 appState.isCompactResponseMode = false
             }
@@ -1425,8 +1441,8 @@ public struct NotchGlassIslandView: View {
                 triptychHeader
                     .frame(height: 32)
 
-            // 2. Now Playing Mini Bar (if playing Spotify, YouTube, or Apple Music)
-            if appState.isNotchMediaDisplayEnabled, let media = appState.currentMedia {
+            // 2. Now Playing Mini Bar (if playing Spotify, YouTube, or Apple Music and not actively dragging onto shelf)
+            if appState.isNotchMediaDisplayEnabled && !appState.isShelfDragTargetHovered, let media = appState.currentMedia {
                 nowPlayingBar(media: media)
             }
             

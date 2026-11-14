@@ -479,27 +479,30 @@ public struct ShelfView: View {
         let isOptionDown = NSEvent.modifierFlags.contains(.option)
         let isMoveDefault = ShelfStore.shared.settings.defaultDragOutAction == .move
         let shouldMove = isOptionDown ? !isMoveDefault : isMoveDefault
+        let shouldRemove = shouldMove || ShelfStore.shared.settings.removeAfterDragOut
+
+        let scheduleRemoval = {
+            if shouldRemove {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        ShelfStore.shared.removeItem(byId: item.id)
+                        self.refreshItems()
+                    }
+                }
+            }
+        }
 
         if let url = ShelfStore.shared.resolveURL(for: item) {
             let provider = NSItemProvider(contentsOf: url) ?? NSItemProvider()
-            if shouldMove || ShelfStore.shared.settings.removeAfterDragOut {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    ShelfStore.shared.removeItem(byId: item.id)
-                    self.refreshItems()
-                }
-            }
+            scheduleRemoval()
             return provider
         } else if let text = item.textContent {
             let provider = NSItemProvider(object: text as NSString)
-            if shouldMove || ShelfStore.shared.settings.removeAfterDragOut {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    ShelfStore.shared.removeItem(byId: item.id)
-                    self.refreshItems()
-                }
-            }
+            scheduleRemoval()
             return provider
         } else if let u = item.urlString, let web = URL(string: u) {
             let provider = NSItemProvider(object: web as NSURL)
+            scheduleRemoval()
             return provider
         }
         return NSItemProvider()

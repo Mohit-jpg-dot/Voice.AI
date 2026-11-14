@@ -524,90 +524,153 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         )
     }
     
-    // MARK: - Media Controls
+    // MARK: - Media Controls & Keyboard Playback Actions
+
+    public enum MediaPlaybackAction: String, Sendable {
+        case playPause = "playpause"
+        case play = "play"
+        case pause = "pause"
+        case next = "next"
+        case previous = "previous"
+        case mute = "mute"
+        case unmute = "unmute"
+        case close = "close"
+    }
+    
+    @discardableResult
+    public func handlePlaybackAction(_ action: MediaPlaybackAction) -> Bool {
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        let frontName = (frontApp?.localizedName ?? "").lowercased()
+        let frontBundle = (frontApp?.bundleIdentifier ?? "").lowercased()
+        
+        let isBrowserFrontmost = frontName.contains("chrome") || frontName.contains("safari") ||
+                                 frontName.contains("arc") || frontName.contains("brave") ||
+                                 frontName.contains("edge") || frontBundle.contains("browser")
+        let isSpotifyFrontmost = frontName.contains("spotify") || frontBundle.contains("spotify")
+        
+        // Priority 1: If Spotify window is currently focused/frontmost
+        if isSpotifyFrontmost {
+            return controlSpotifyAction(action)
+        }
+        
+        // Priority 2: If a browser is frontmost, control the active YouTube tab
+        if isBrowserFrontmost {
+            let res = AccessibilityControlEngine.shared.controlYouTubePlayback(action: action.rawValue)
+            if res {
+                pollMediaState()
+                return true
+            }
+        }
+        
+        // Priority 3: Check currently detected media in the notch
+        if let current = currentMedia {
+            switch current.source {
+            case .youtube:
+                let res = AccessibilityControlEngine.shared.controlYouTubePlayback(action: action.rawValue)
+                if res { pollMediaState(); return true }
+            case .spotify:
+                return controlSpotifyAction(action)
+            case .appleMusic:
+                return controlAppleMusicAction(action)
+            }
+        }
+        
+        // Priority 4: If no media was detected as actively playing, try controlling any open YouTube tab first
+        let ytRes = AccessibilityControlEngine.shared.controlYouTubePlayback(action: action.rawValue)
+        if ytRes {
+            pollMediaState()
+            return true
+        }
+        
+        let runningApps = NSWorkspace.shared.runningApplications
+        let isSpotifyRunning = runningApps.contains { $0.bundleIdentifier == "com.spotify.client" || $0.localizedName?.lowercased() == "spotify" }
+        if isSpotifyRunning {
+            return controlSpotifyAction(action)
+        }
+        
+        return false
+    }
+
+    private func controlSpotifyAction(_ action: MediaPlaybackAction) -> Bool {
+        switch action {
+        case .playPause:
+            _ = runAppleScript("tell application \"Spotify\" to playpause")
+        case .play:
+            _ = runAppleScript("tell application \"Spotify\" to play")
+        case .pause:
+            _ = runAppleScript("tell application \"Spotify\" to pause")
+        case .next:
+            _ = runAppleScript("tell application \"Spotify\" to next track")
+        case .previous:
+            _ = runAppleScript("tell application \"Spotify\" to previous track")
+        case .mute:
+            _ = runAppleScript("tell application \"Spotify\" to set sound volume to 0")
+        case .unmute:
+            _ = runAppleScript("tell application \"Spotify\" to set sound volume to 75")
+        case .close:
+            _ = AccessibilityControlEngine.shared.closeApplication(named: "Spotify")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.pollMediaState()
+        }
+        return true
+    }
+
+    private func controlAppleMusicAction(_ action: MediaPlaybackAction) -> Bool {
+        switch action {
+        case .playPause:
+            _ = runAppleScript("tell application \"Music\" to playpause")
+        case .play:
+            _ = runAppleScript("tell application \"Music\" to play")
+        case .pause:
+            _ = runAppleScript("tell application \"Music\" to pause")
+        case .next:
+            _ = runAppleScript("tell application \"Music\" to next track")
+        case .previous:
+            _ = runAppleScript("tell application \"Music\" to previous track")
+        case .mute:
+            _ = runAppleScript("tell application \"Music\" to set sound volume to 0")
+        case .unmute:
+            _ = runAppleScript("tell application \"Music\" to set sound volume to 75")
+        case .close:
+            _ = AccessibilityControlEngine.shared.closeApplication(named: "Music")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.pollMediaState()
+        }
+        return true
+    }
     
     public func togglePlayPause() {
-        guard let source = currentMedia?.source else { return }
-        switch source {
-        case .spotify:
-            _ = runAppleScript("tell application \"Spotify\" to playpause")
-        case .appleMusic:
-            _ = runAppleScript("tell application \"Music\" to playpause")
-        case .youtube:
-            let script = """
-            tell application "System Events"
-                if exists (process "Google Chrome") then
-                    tell process "Google Chrome" to keystroke "k"
-                else if exists (process "Safari") then
-                    tell process "Safari" to keystroke "k"
-                else
-                    key code 49
-                end if
-            end tell
-            """
-            _ = runAppleScript(script)
-        }
-        pollMediaState()
+        handlePlaybackAction(.playPause)
+    }
+    
+    public func play() {
+        handlePlaybackAction(.play)
+    }
+    
+    public func pause() {
+        handlePlaybackAction(.pause)
     }
     
     public func nextTrack() {
-        let isSpotifyRunning = NSWorkspace.shared.runningApplications.contains(where: {
-            $0.bundleIdentifier == "com.spotify.client" || $0.localizedName?.lowercased() == "spotify"
-        })
-        let source = currentMedia?.source ?? (isSpotifyRunning ? .spotify : nil)
-        guard let s = source else { return }
-        switch s {
-        case .spotify:
-            _ = runAppleScript("tell application \"Spotify\" to next track")
-        case .appleMusic:
-            _ = runAppleScript("tell application \"Music\" to next track")
-        case .youtube:
-            let script = """
-            tell application "System Events"
-                if exists (process "Google Chrome") then
-                    tell process "Google Chrome" to keystroke "N" using {shift down}
-                else if exists (process "Safari") then
-                    tell process "Safari" to keystroke "N" using {shift down}
-                else
-                    key code 124 using {shift down}
-                end if
-            end tell
-            """
-            _ = runAppleScript(script)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.pollMediaState()
-        }
+        handlePlaybackAction(.next)
     }
     
     public func previousTrack() {
-        let isSpotifyRunning = NSWorkspace.shared.runningApplications.contains(where: {
-            $0.bundleIdentifier == "com.spotify.client" || $0.localizedName?.lowercased() == "spotify"
-        })
-        let source = currentMedia?.source ?? (isSpotifyRunning ? .spotify : nil)
-        guard let s = source else { return }
-        switch s {
-        case .spotify:
-            _ = runAppleScript("tell application \"Spotify\" to previous track")
-        case .appleMusic:
-            _ = runAppleScript("tell application \"Music\" to previous track")
-        case .youtube:
-            let script = """
-            tell application "System Events"
-                if exists (process "Google Chrome") then
-                    tell process "Google Chrome" to keystroke "P" using {shift down}
-                else if exists (process "Safari") then
-                    tell process "Safari" to keystroke "P" using {shift down}
-                else
-                    key code 123 using {shift down}
-                end if
-            end tell
-            """
-            _ = runAppleScript(script)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.pollMediaState()
-        }
+        handlePlaybackAction(.previous)
+    }
+    
+    public func mute() {
+        handlePlaybackAction(.mute)
+    }
+    
+    public func unmute() {
+        handlePlaybackAction(.unmute)
+    }
+    
+    public func closeMedia() {
+        handlePlaybackAction(.close)
     }
     
     private func runAppleScript(_ source: String) -> String {

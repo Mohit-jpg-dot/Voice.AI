@@ -155,6 +155,51 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                     }
                 }
 
+                if action == "close" {
+                    if targetApp.lowercased().contains("youtube") || targetApp.lowercased().contains("video") {
+                        let res = AccessibilityControlEngine.shared.closeYouTubePlaybackTab()
+                        return DispatchedActionResult(
+                            success: res,
+                            summary: res ? "Closed YouTube video tab." : "Could not find an open YouTube tab to close.",
+                            appName: "YouTube"
+                        )
+                    } else {
+                        let res = AccessibilityControlEngine.shared.closeApplication(named: targetApp)
+                        return DispatchedActionResult(
+                            success: res.success,
+                            summary: res.summary,
+                            appName: targetApp
+                        )
+                    }
+                }
+
+                if action == "mute" {
+                    let res = AccessibilityControlEngine.shared.controlYouTubePlayback(action: "mute")
+                    return DispatchedActionResult(
+                        success: res,
+                        summary: res ? "Muted video playback." : "Could not mute video.",
+                        appName: targetApp
+                    )
+                }
+
+                if action == "unmute" {
+                    let res = AccessibilityControlEngine.shared.controlYouTubePlayback(action: "unmute")
+                    return DispatchedActionResult(
+                        success: res,
+                        summary: res ? "Unmuted video playback." : "Could not unmute video.",
+                        appName: targetApp
+                    )
+                }
+
+                if action == "toggle" || action == "playpause" {
+                    NowPlayingMediaManager.shared.handlePlaybackAction(.playPause)
+                    return DispatchedActionResult(
+                        success: true,
+                        summary: "Toggled playback on \(targetApp).",
+                        appName: targetApp
+                    )
+                }
+
                 let success = AccessibilityControlEngine.shared.controlMedia(app: targetApp, action: action, query: query)
                 let trackInfo = AccessibilityControlEngine.shared.verifyMediaPlaybackState(app: targetApp)
                 let trackSummary: String

@@ -1806,6 +1806,15 @@ assertEqual(AgentToolParser.parse(query: "show hidden windows"), .windowAction(a
 assertEqual(AgentToolParser.parse(query: "play the current video or song"), .mediaPlay(app: nil, query: nil, action: "play"), "Parses 'play the current video or song' for screen-context play without opening a new tab")
 assertEqual(AgentToolParser.parse(query: "play this video on screen"), .mediaPlay(app: "YouTube", query: nil, action: "play"), "Parses 'play this video on screen' for YouTube on-screen play")
 assertEqual(AgentToolParser.parse(query: "play this song on spotify"), .mediaPlay(app: "Spotify", query: nil, action: "play"), "Parses 'play this song on spotify' for Spotify play without search")
+assertEqual(AgentToolParser.parse(query: "play the video which is likely a youtube tab opened up"), .mediaPlay(app: "YouTube", query: nil, action: "play"), "Parses contextual YouTube video tab play query")
+assertEqual(AgentToolParser.parse(query: "play the video"), .mediaPlay(app: "YouTube", query: nil, action: "play"), "Parses 'play the video' to YouTube mediaPlay")
+assertEqual(AgentToolParser.parse(query: "pause the video"), .mediaPlay(app: "YouTube", query: nil, action: "pause"), "Parses 'pause the video' to YouTube mediaPlay")
+assertEqual(AgentToolParser.parse(query: "close the video"), .mediaPlay(app: "YouTube", query: nil, action: "close"), "Parses 'close the video' to YouTube mediaPlay close")
+assertEqual(AgentToolParser.parse(query: "close the youtube tab"), .mediaPlay(app: "YouTube", query: nil, action: "close"), "Parses 'close the youtube tab' to YouTube mediaPlay close")
+assertEqual(AgentToolParser.parse(query: "mute the video"), .mediaPlay(app: "YouTube", query: nil, action: "mute"), "Parses 'mute the video' to YouTube mediaPlay mute")
+assertEqual(AgentToolParser.parse(query: "unmute the video"), .mediaPlay(app: "YouTube", query: nil, action: "unmute"), "Parses 'unmute the video' to YouTube mediaPlay unmute")
+assertTrue(NowPlayingMediaManager.MediaPlaybackAction.playPause.rawValue == "playpause", "MediaPlaybackAction.playPause defined")
+assertTrue(NowPlayingMediaManager.MediaPlaybackAction.close.rawValue == "close", "MediaPlaybackAction.close defined")
 
 // MARK: - 49. Real-Time Statement Terminator ('dot' / '.') Detection
 let t1 = TheVoiceAmbientListener.stripStatementTerminator("open chrome dot")

@@ -338,7 +338,7 @@ public enum AgentToolParser {
         }
         
         // 2. Volume & Audio Mute Control (avoid hijacking geometry/physics questions or YouTube player mute/unmute)
-        let isYouTubeAudioCommand = lower.contains("youtube") || lower == "mute video" || lower == "unmute video"
+        let isYouTubeAudioCommand = lower.contains("youtube") || lower.contains("mute video") || lower.contains("unmute video") || lower.contains("video mute") || lower.contains("video unmute") || (lower.contains("video") && (lower.contains("mute") || lower.contains("unmute")))
         let isVolumeQuery = !isConceptualAudioQuery(lower) && !isYouTubeAudioCommand &&
                             !lower.contains("sounds good") && !lower.contains("sound good") &&
                             (lower.contains("volume") || lower.contains("aawaz") ||
@@ -617,12 +617,35 @@ public enum AgentToolParser {
             return .mediaPlay(app: targetMediaApp, query: nil, action: "previous")
         }
         
+        // Close Video / Tab ("close the video", "close video", "close this video", "close the youtube tab", "close youtube tab", "video band karo", "youtube tab band karo")
+        let isCloseVideo = lower == "close the video" || lower == "close video" || lower == "close this video" ||
+                           lower == "close youtube" || lower == "close the youtube video" || lower == "close youtube video" ||
+                           lower == "close youtube tab" || lower == "close the youtube tab" || lower == "close video tab" ||
+                           lower == "close the video tab" || lower.contains("close the video") || lower.contains("close video tab") ||
+                           lower.contains("close youtube tab") || lower == "video band karo" || lower == "youtube band karo" ||
+                           lower == "youtube tab band karo"
+        if isCloseVideo {
+            return .mediaPlay(app: "YouTube", query: nil, action: "close")
+        }
+
+        // Mute / Unmute Video
+        let isMuteVideo = lower == "mute video" || lower == "mute the video" || lower == "mute youtube" || lower == "video mute karo"
+        if isMuteVideo {
+            return .mediaPlay(app: "YouTube", query: nil, action: "mute")
+        }
+        let isUnmuteVideo = lower == "unmute video" || lower == "unmute the video" || lower == "unmute youtube" || lower == "video unmute karo"
+        if isUnmuteVideo {
+            return .mediaPlay(app: "YouTube", query: nil, action: "unmute")
+        }
+
         // Pause / Stop Playback ("pause", "pause it", "pause the video", "pause video", "gana band karo", "video rok do")
         let isPauseMedia = lower == "pause" || lower == "pause it" || lower == "pause the video" || lower == "pause video" ||
                            lower == "pause current video" || lower == "pause the current video" || lower == "pause song" ||
                            lower == "pause the song" || lower == "pause music" || lower == "stop music" || lower == "stop video" ||
                            lower == "music pause" || lower == "video pause" || lower.contains("pause kar do") ||
                            lower.contains("pause karo") || lower.contains("video rok do") || lower.contains("video band karo") ||
+                           lower.contains("pause the video") || lower.contains("pause video") || lower.contains("stop the video") ||
+                           lower.contains("stop video") || lower.contains("pause youtube") ||
                            lower == "music rok do" || lower == "gana rok do" || lower == "gaana rok do" || lower == "band karo gana" ||
                            lower == "gana band karo" || lower == "gaana band karo" || lower == "music band karo" ||
                            lower == "stop playback" || lower == "pause playback"
@@ -630,6 +653,17 @@ public enum AgentToolParser {
             return .mediaPlay(app: targetMediaApp, query: nil, action: "pause")
         }
         
+        // Contextual Video Play / Resume on Opened Tab or Screen
+        let isContextualVideoPlay = (lower.contains("play") || lower.contains("resume") || lower.contains("chalao")) &&
+                                    lower.contains("video") && !lower.contains("song") &&
+                                    (lower.contains("youtube") || lower.contains("tab") || lower.contains("opened") ||
+                                     lower.contains("displayed") || lower.contains("likely") || lower.contains("screen") ||
+                                     lower.contains("focused") || lower.contains("frontmost") || lower.contains("browser") ||
+                                     (lower.contains("current") && !lower.contains("video or song")))
+        if isContextualVideoPlay {
+            return .mediaPlay(app: "YouTube", query: nil, action: "play")
+        }
+
         // Play / Resume Playback ("play the current video", "play this song", "play the current video or song", "resume")
         let normalizedPlayPhrase = lower
             .replacingOccurrences(of: #"\s+(?:on\s+screen|on\s+my\s+screen|visible|right\s+now|please)\b"#, with: "", options: .regularExpression)
@@ -962,6 +996,13 @@ public enum AgentToolParser {
         if lower.contains("search") || lower.contains("dhoondo") || lower.contains("pata karo") {
             return nil
         }
+
+        // Do not intercept media transport control commands (close, pause, mute, or controlling currently open video tabs)
+        if lower.contains("close") || lower.contains("band") || lower.contains("pause") || lower.contains("rok") ||
+           lower.contains("mute") || lower.contains("unmute") || lower.contains("opened up") || lower.contains("likely") ||
+           (lower.contains("video") && (lower.contains("this video") || lower.contains("the video") || lower.contains("current"))) {
+            return nil
+        }
         
         // Special case: YouTube Video Play & Search ("play doraemon new episodes in hindi on youtube", "youtube pe doraemon chalao")
         if lower.contains("youtube") || lower.contains("youtune") {
@@ -1202,9 +1243,10 @@ public enum AgentToolParser {
             return nil
         }
         
-        // Exclude music/media playback stop ("gana band karo", "song band karo", "music band karo", "video band karo")
+        // Exclude music/media playback stop ("gana band karo", "song band karo", "music band karo", "video band karo", "close the video")
         if lower.contains("gana") || lower.contains("gaana") || lower.contains("music") ||
-           lower.contains("song") || lower.contains("audio") || lower.contains("playback") {
+           lower.contains("song") || lower.contains("audio") || lower.contains("playback") ||
+           lower.contains("video") {
             return nil
         }
         

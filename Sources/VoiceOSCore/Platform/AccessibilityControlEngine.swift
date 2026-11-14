@@ -324,12 +324,27 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                         repeat with t in tabs of w
                             if URL of t contains "youtube.com" then
                                 tell t
-                                    if "\(action)" is "pause" then
+                                    if "\(action)" is "close" then
+                                        close t
+                                        return "success"
+                                    else if "\(action)" is "pause" then
                                         execute javascript "const v = document.querySelector('video'); if (v) v.pause();"
+                                    else if "\(action)" is "toggle" or "\(action)" is "playpause" then
+                                        execute javascript "const v = document.querySelector('video'); const btn = document.querySelector('.ytp-play-button'); if (v) { if (v.paused) { v.play().catch(() => { if (btn) btn.click(); }); } else { v.pause(); } } else if (btn) { btn.click(); }"
                                     else if "\(action)" is "next" then
                                         execute javascript "const nextBtn = document.querySelector('.ytp-next-button') || document.querySelector('a.ytd-compact-video-renderer'); if (nextBtn) nextBtn.click();"
                                     else if "\(action)" is "previous" then
                                         execute javascript "window.history.back();"
+                                    else if "\(action)" is "mute" then
+                                        execute javascript "const v = document.querySelector('video'); if (v) v.muted = true;"
+                                    else if "\(action)" is "unmute" then
+                                        execute javascript "const v = document.querySelector('video'); if (v) v.muted = false;"
+                                    else if "\(action)" is "forward" then
+                                        execute javascript "const v = document.querySelector('video'); if (v) v.currentTime += 10;"
+                                    else if "\(action)" is "rewind" then
+                                        execute javascript "const v = document.querySelector('video'); if (v) v.currentTime = Math.max(0, v.currentTime - 10);"
+                                    else if "\(action)" is "fullscreen" then
+                                        execute javascript "const b = document.querySelector('.ytp-fullscreen-button'); if (b) b.click();"
                                     else
                                         execute javascript "const v = document.querySelector('video'); const btn = document.querySelector('.ytp-play-button, .ytp-large-play-button'); if (v && v.paused) { v.play().catch(() => { if (btn) btn.click(); }); } else if (v) { v.play(); } else if (btn) { btn.click(); }"
                                     end if
@@ -360,12 +375,27 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                     repeat with t in tabs of w
                         if URL of t contains "youtube.com" then
                             tell t
-                                if "\(action)" is "pause" then
+                                if "\(action)" is "close" then
+                                    close t
+                                    return "success"
+                                else if "\(action)" is "pause" then
                                     do JavaScript "const v = document.querySelector('video'); if (v) v.pause();"
+                                else if "\(action)" is "toggle" or "\(action)" is "playpause" then
+                                    do JavaScript "const v = document.querySelector('video'); const btn = document.querySelector('.ytp-play-button'); if (v) { if (v.paused) { v.play().catch(() => { if (btn) btn.click(); }); } else { v.pause(); } } else if (btn) { btn.click(); }"
                                 else if "\(action)" is "next" then
                                     do JavaScript "const nextBtn = document.querySelector('.ytp-next-button') || document.querySelector('a.ytd-compact-video-renderer'); if (nextBtn) nextBtn.click();"
                                 else if "\(action)" is "previous" then
                                     do JavaScript "window.history.back();"
+                                else if "\(action)" is "mute" then
+                                    do JavaScript "const v = document.querySelector('video'); if (v) v.muted = true;"
+                                else if "\(action)" is "unmute" then
+                                    do JavaScript "const v = document.querySelector('video'); if (v) v.muted = false;"
+                                else if "\(action)" is "forward" then
+                                    do JavaScript "const v = document.querySelector('video'); if (v) v.currentTime += 10;"
+                                else if "\(action)" is "rewind" then
+                                    do JavaScript "const v = document.querySelector('video'); if (v) v.currentTime = Math.max(0, v.currentTime - 10);"
+                                else if "\(action)" is "fullscreen" then
+                                    do JavaScript "const b = document.querySelector('.ytp-fullscreen-button'); if (b) b.click();"
                                 else
                                     do JavaScript "const v = document.querySelector('video'); const btn = document.querySelector('.ytp-play-button, .ytp-large-play-button'); if (v && v.paused) { v.play().catch(() => { if (btn) btn.click(); }); } else if (v) { v.play(); } else if (btn) { btn.click(); }"
                                 end if
@@ -388,18 +418,28 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
         _ = focusExternalTargetAppIfNeeded()
         let keyScript: String
         switch action {
-        case "pause", "play":
+        case "pause", "play", "toggle", "playpause":
             keyScript = "tell application \"System Events\" to keystroke \"k\""
         case "next":
             keyScript = "tell application \"System Events\" to keystroke \"N\" using {shift down}" // Shift+N
         case "previous":
             keyScript = "tell application \"System Events\" to keystroke \"P\" using {shift down}" // Shift+P
+        case "mute", "unmute":
+            keyScript = "tell application \"System Events\" to keystroke \"m\""
+        case "fullscreen":
+            keyScript = "tell application \"System Events\" to keystroke \"f\""
+        case "close":
+            keyScript = "tell application \"System Events\" to keystroke \"w\" using {command down}"
         default:
             keyScript = "tell application \"System Events\" to key code 49"
         }
         let fallbackRes = executeAppleScript(keyScript)
         NowPlayingMediaManager.shared.pollMediaState()
         return fallbackRes.success
+    }
+
+    public func closeYouTubePlaybackTab() -> Bool {
+        return controlYouTubePlayback(action: "close")
     }
     
     // MARK: - Window & System Actions

@@ -643,15 +643,28 @@ public struct NotchGlassIslandView: View {
                     if media.source == .spotify {
                         SpotifyBrandIconView(size: 18)
                     } else if media.source == .youtube {
+                        // Show real video thumbnail if available, else YouTube icon
                         ZStack {
-                            Circle()
-                                .fill(Color.red)
-                                .frame(width: 17, height: 17)
-                                .shadow(color: Color.red.opacity(0.4), radius: 3)
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(.white)
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color(red: 0.18, green: 0.03, blue: 0.03))
+                                .frame(width: 26, height: 18)
+                            if !media.artworkUrl.isEmpty, let artUrl = URL(string: media.artworkUrl) {
+                                AsyncImage(url: artUrl) { phase in
+                                    switch phase {
+                                    case .success(let img):
+                                        img.resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 26, height: 18)
+                                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                                    default:
+                                        YouTubeIconView(size: 14)
+                                    }
+                                }
+                            } else {
+                                YouTubeIconView(size: 14)
+                            }
                         }
+                        .frame(width: 26, height: 18)
                     } else {
                         ZStack {
                             Circle()
@@ -723,9 +736,15 @@ public struct NotchGlassIslandView: View {
             HStack(alignment: .center) {
                 // Source Pill
                 HStack(spacing: 5) {
-                    Circle()
-                        .fill(media.source == .spotify ? Color(red: 0.11, green: 0.73, blue: 0.33) : (media.source == .youtube ? Color.red : Color.pink))
-                        .frame(width: 7, height: 7)
+                    if media.source == .spotify {
+                        SpotifyBrandIconView(size: 10)
+                    } else if media.source == .youtube {
+                        YouTubeIconView(size: 10)
+                    } else {
+                        Circle()
+                            .fill(Color.pink)
+                            .frame(width: 7, height: 7)
+                    }
                     Text(media.source.rawValue.uppercased())
                         .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                         .foregroundColor(.white)
@@ -845,11 +864,13 @@ public struct NotchGlassIslandView: View {
                         .font(.system(size: 12.5, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     
                     Text(media.artistOrChannel.isEmpty ? media.source.rawValue : media.artistOrChannel)
                         .font(.system(size: 10.5, weight: .medium))
                         .foregroundColor(Color.white.opacity(0.6))
                         .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     
                     // Scrubber Bar
                     VStack(spacing: 2) {
@@ -864,19 +885,25 @@ public struct NotchGlassIslandView: View {
                             }
                         }
                         .frame(height: 3)
+                        .frame(maxWidth: .infinity)
                         
-                        HStack {
+                        HStack(spacing: 0) {
                             Text(String(format: "%d:%02d", media.positionSeconds / 60, media.positionSeconds % 60))
-                                .font(.system(size: 8.5, design: .monospaced))
+                                .font(.system(size: 8, design: .monospaced))
                                 .foregroundColor(Color.white.opacity(0.5))
-                            Spacer()
+                                .lineLimit(1)
+                            Spacer(minLength: 4)
                             if media.durationSeconds > 0 {
                                 Text(String(format: "%d:%02d", media.durationSeconds / 60, media.durationSeconds % 60))
-                                    .font(.system(size: 8.5, design: .monospaced))
+                                    .font(.system(size: 8, design: .monospaced))
                                     .foregroundColor(Color.white.opacity(0.5))
+                                    .lineLimit(1)
                             }
                         }
+                        .frame(maxWidth: .infinity)
                     }
+                    .frame(maxWidth: .infinity)
+                    .clipped()
                 }
             }
             .padding(.horizontal, 16)
@@ -962,11 +989,13 @@ public struct NotchGlassIslandView: View {
     @ViewBuilder
     private func mediaArtworkPlaceholder(media: NowPlayingItem) -> some View {
         if media.source == .spotify {
-            SpotifyBrandIconView(size: 26)
+            AnyView(SpotifyBrandIconView(size: 26))
+        } else if media.source == .youtube {
+            AnyView(YouTubeIconView(size: 28))
         } else {
-            Image(systemName: media.source == .youtube ? "play.rectangle.fill" : "music.note")
+            AnyView(Image(systemName: "music.note")
                 .font(.system(size: 20, weight: .bold))
-                .foregroundColor(media.source == .youtube ? Color.red : Color(red: 0.11, green: 0.85, blue: 0.4))
+                .foregroundColor(Color(red: 0.11, green: 0.85, blue: 0.4)))
         }
     }
     
@@ -2643,5 +2672,36 @@ public struct SpotifyBrandIconView: View {
                 .frame(width: size, height: size)
             }
         }
+    }
+}
+
+// MARK: - YouTube Brand Icon View
+public struct YouTubeIconView: View {
+    public let size: CGFloat
+
+    public init(size: CGFloat = 18) {
+        self.size = size
+    }
+
+    public var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.22)
+                .fill(Color(red: 1.0, green: 0.0, blue: 0.0))
+                .frame(width: size, height: size * 0.72)
+            Canvas { context, sz in
+                let tw = sz.width * 0.38
+                let th = sz.height * 0.52
+                let cx = sz.width / 2
+                let cy = sz.height / 2
+                var tri = Path()
+                tri.move(to: CGPoint(x: cx - tw * 0.4, y: cy - th * 0.5))
+                tri.addLine(to: CGPoint(x: cx + tw * 0.6, y: cy))
+                tri.addLine(to: CGPoint(x: cx - tw * 0.4, y: cy + th * 0.5))
+                tri.closeSubpath()
+                context.fill(tri, with: .color(.white))
+            }
+            .frame(width: size, height: size * 0.72)
+        }
+        .frame(width: size, height: size)
     }
 }

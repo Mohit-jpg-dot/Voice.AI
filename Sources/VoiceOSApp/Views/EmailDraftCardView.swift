@@ -415,9 +415,23 @@ public struct EmailDraftCardView: View {
             return
         }
 
-        viewModel.updateDraftModel()
-        viewModel.status = .sending
-        onSend(viewModel.draft)
+        // Use the ViewModel send pipeline (runs off main thread via Task)
+        viewModel.startSendPipeline(immediate: true) { success, message in
+            DispatchQueue.main.async {
+                if success {
+                    BoringSoundEngine.shared.playDone()
+                    // Notify AppState so it can clear activeEmailDraft and collapse
+                    self.onSend(self.viewModel.draft)
+                    // Auto-dismiss pill after a short success pause
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        self.onDismiss()
+                    }
+                } else {
+                    BoringSoundEngine.shared.playError()
+                    // Status is already set to .failed by the pipeline
+                }
+            }
+        }
     }
 
     private func presentAttachmentPicker() {

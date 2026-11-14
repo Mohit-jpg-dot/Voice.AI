@@ -262,7 +262,14 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             "apne aap ko band karo",
             "tum band ho jao",
             "voice ai band kar do",
-            "voiceai band kar do"
+            "voiceai band kar do",
+            "die",
+            "just die",
+            "please die",
+            "app ko maar do",
+            "mar jao",
+            "mar ja",
+            "khud ko khatam karo"
         ]
         return phrases.contains(where: { lower.contains($0) })
     }

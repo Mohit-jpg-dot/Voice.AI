@@ -133,6 +133,8 @@ public final class AppIntegrationEngine: @unchecked Sendable {
         if lower.contains("calendar") { return "calendar" }
         if lower.contains("reminder") { return "reminders" }
         if lower.contains("code") || lower.contains("vscode") { return "vscode" }
+        if lower.contains("timer") { return "timer" }
+        if lower.contains("notch") || lower.contains("island") { return "notch" }
         return lower
     }
 
@@ -225,6 +227,10 @@ public final class AppIntegrationEngine: @unchecked Sendable {
             return await handleNotes(operation: operation, params: params)
         case "terminal":
             return await handleTerminal(operation: operation, params: params)
+        case "timer":
+            return await handleTimer(operation: operation, params: params)
+        case "notch":
+            return await handleNotch(operation: operation, params: params)
         default:
             return IntegrationActionResult(
                 success: false,
@@ -1608,6 +1614,133 @@ public final class AppIntegrationEngine: @unchecked Sendable {
             return nil
         }
         return URL(string: pageUrlStr)
+    }
+
+    // MARK: - 9. Timer Integration (islandcn preset port)
+
+    private func handleTimer(operation: String, params: [String: String]) async -> IntegrationActionResult {
+        switch operation {
+        case "start":
+            let duration = Double(params["duration"] ?? "600") ?? 600.0
+            let label = params["label"] ?? "Timer"
+            let timer = await MainActor.run {
+                TimerActivityManager.shared.createTimer(durationSeconds: duration, label: label)
+            }
+            let mins = Int(duration / 60)
+            let secs = Int(duration) % 60
+            let timeStr = mins > 0 ? "\(mins) minute\(mins == 1 ? "" : "s")" : "\(secs) seconds"
+            return IntegrationActionResult(
+                success: true,
+                summary: "Started a \(timeStr) timer for \(label).",
+                appName: "Timer",
+                steps: ["Created timer: \(timer.id)"]
+            )
+        case "pause":
+            let ok = await MainActor.run {
+                TimerActivityManager.shared.pauseTimer()
+            }
+            return IntegrationActionResult(
+                success: ok,
+                summary: ok ? "Timer paused." : "No running timer to pause.",
+                appName: "Timer"
+            )
+        case "resume":
+            let ok = await MainActor.run {
+                TimerActivityManager.shared.resumeTimer()
+            }
+            return IntegrationActionResult(
+                success: ok,
+                summary: ok ? "Timer resumed." : "No paused timer to resume.",
+                appName: "Timer"
+            )
+        case "cancel":
+            let ok = await MainActor.run {
+                TimerActivityManager.shared.cancelTimer()
+            }
+            return IntegrationActionResult(
+                success: ok,
+                summary: ok ? "Timer cancelled." : "No active timer to cancel.",
+                appName: "Timer"
+            )
+        case "remaining":
+            let info = await MainActor.run {
+                TimerActivityManager.shared.getRemainingTime()
+            }
+            if let (label, rem) = info {
+                let s = Int(rem)
+                let timeStr = String(format: "%d:%02d", s / 60, s % 60)
+                return IntegrationActionResult(
+                    success: true,
+                    summary: "\(label) has \(timeStr) remaining.",
+                    appName: "Timer"
+                )
+            } else {
+                return IntegrationActionResult(
+                    success: false,
+                    summary: "No timer is currently running.",
+                    appName: "Timer"
+                )
+            }
+        default:
+            return IntegrationActionResult(success: false, summary: "Unknown timer action '\(operation)'.", appName: "Timer")
+        }
+    }
+
+    // MARK: - 10. Notch Island Integration
+
+    private func handleNotch(operation: String, params: [String: String]) async -> IntegrationActionResult {
+        switch operation {
+        case "what_is_running":
+            let summary = await MainActor.run { () -> String in
+                let acts = ActivityCenter.shared.activities
+                if acts.isEmpty {
+                    return "The notch is currently idle with no active activities."
+                }
+                let names = acts.map { $0.label }.joined(separator: ", ")
+                return "The notch currently has: \(names)."
+            }
+            return IntegrationActionResult(success: true, summary: summary, appName: "Notch")
+
+        case "dismiss":
+            await MainActor.run {
+                ActivityCenter.shared.collapse()
+            }
+            return IntegrationActionResult(success: true, summary: "Dismissed.", appName: "Notch")
+
+        case "show_battery":
+            let summary = await MainActor.run { () -> String in
+                BatteryActivityMonitor.shared.triggerManualBatteryDisplay()
+                return BatteryActivityMonitor.shared.getVoiceBatterySummary()
+            }
+            return IntegrationActionResult(success: true, summary: summary, appName: "Notch")
+
+        case "stop_recording":
+            await MainActor.run {
+                RecordingActivityBridge.shared.stopRecording()
+            }
+            return IntegrationActionResult(success: true, summary: "Stopped recording.", appName: "Notch")
+
+        case "mute_alerts":
+            await MainActor.run {
+                ActivityCenter.shared.isDNDActive = true
+            }
+            return IntegrationActionResult(success: true, summary: "Notch alerts muted.", appName: "Notch")
+
+        case "show_previews":
+            await MainActor.run {
+                ActivityCenter.shared.showSensitivePreviewsInNotch = true
+            }
+            return IntegrationActionResult(success: true, summary: "Message previews will be shown in the notch.", appName: "Notch")
+
+        case "hide_previews":
+            await MainActor.run {
+                ActivityCenter.shared.showSensitivePreviewsInNotch = false
+            }
+            return IntegrationActionResult(success: true, summary: "Message previews are now hidden in the compact notch.", appName: "Notch")
+
+        default:
+            return IntegrationActionResult(success: false, summary: "Unknown notch action '\(operation)'.", appName: "Notch")
+        }
     }
 }
 

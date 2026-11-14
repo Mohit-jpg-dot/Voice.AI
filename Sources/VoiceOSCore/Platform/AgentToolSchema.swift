@@ -236,6 +236,74 @@ public enum AgentToolParser {
         let lower = normalized.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !lower.isEmpty else { return nil }
         
+        // 0.0. Timer Voice Commands (islandcn preset port)
+        let isTimerQuery = lower.contains("timer") ||
+                           lower.contains("time bacha") ||
+                           lower.contains("time is left") ||
+                           lower.contains("time left") ||
+                           lower.contains("how much time") ||
+                           lower.contains("kitna time")
+        if isTimerQuery {
+            if lower.contains("pause") || lower.contains("roko") {
+                return .appIntegration(app: "timer", operation: "pause", params: [:])
+            }
+            if lower.contains("cancel") || lower.contains("stop") || lower.contains("band karo") || lower.contains("hatao") || lower.contains("delete") {
+                return .appIntegration(app: "timer", operation: "cancel", params: [:])
+            }
+            if lower.contains("left") || lower.contains("remaining") || lower.contains("bacha") || lower.contains("how much") || lower.contains("kitna time") {
+                return .appIntegration(app: "timer", operation: "remaining", params: [:])
+            }
+            let hasDuration = lower.contains("minute") || lower.contains("second") || lower.contains("hour") || lower.contains("sec") || lower.contains("min") || lower.contains("ghante") || lower.range(of: #"\d+"#, options: .regularExpression) != nil
+            if hasDuration || lower.contains("set") || lower.contains("start") || lower.contains("create") || lower.contains("lagao") {
+                let seconds = extractTimerSeconds(from: lower)
+                return .appIntegration(app: "timer", operation: "start", params: ["duration": "\(seconds)", "label": "Timer"])
+            }
+            if lower.contains("resume") || lower.contains("continue") || lower.contains("chalao") || lower.contains("start again") {
+                return .appIntegration(app: "timer", operation: "resume", params: [:])
+            }
+        }
+        if lower.contains("minute ka timer") || lower.contains("second ka timer") || lower.contains("ghante ka timer") {
+            let seconds = extractTimerSeconds(from: lower)
+            return .appIntegration(app: "timer", operation: "start", params: ["duration": "\(seconds)", "label": "Timer"])
+        }
+
+        // 0.0.1. Notch Island Commands (what's running, battery, previews, mute alerts, recording)
+        if lower.contains("mute notch alerts") || lower.contains("quiet hours on") ||
+           lower.contains("mute alerts for an hour") || lower.contains("mute notch") {
+            return .appIntegration(app: "notch", operation: "mute_alerts", params: ["duration": "3600"])
+        }
+
+        if lower.contains("show message previews") || lower.contains("notch mein message dikhao") || lower == "enable message previews" {
+            return .appIntegration(app: "notch", operation: "show_previews", params: [:])
+        }
+
+        if lower.contains("hide message previews") || lower.contains("notch mein message chhupao") || lower == "disable message previews" {
+            return .appIntegration(app: "notch", operation: "hide_previews", params: [:])
+        }
+
+        if lower == "stop recording" || lower == "recording band karo" ||
+           lower == "stop the recording" || lower == "mic band karo" || lower == "stop mic" {
+            return .appIntegration(app: "notch", operation: "stop_recording", params: [:])
+        }
+
+        if lower.contains("what's running in the notch") || lower.contains("what is running in the notch") ||
+           lower.contains("whats running in the notch") || lower.contains("notch mein kya chal raha hai") ||
+           lower == "what's on the notch" || lower == "show notch activities" {
+            return .appIntegration(app: "notch", operation: "what_is_running", params: [:])
+        }
+
+        if lower == "dismiss that" || lower == "dismiss notch" || lower == "dismiss alert" ||
+           lower == "notch hatao" || lower == "isse hatao" || lower == "notch band karo" {
+            return .appIntegration(app: "notch", operation: "dismiss", params: [:])
+        }
+
+        if lower.contains("show the battery") || lower.contains("show battery") ||
+           lower.contains("battery status") || lower.contains("battery kitna hai") ||
+           lower.contains("what's my battery") || lower.contains("what is my battery") ||
+           lower.contains("kitni battery hai") {
+            return .appIntegration(app: "notch", operation: "show_battery", params: [:])
+        }
+
         // 0. Application Closure & Quitting ("close the app", "close this app", "close the application named Spotify on my Mac", "quit Spotify", "close Spotify", "app band karo", "spotify band karo")
         if !query.lowercased().contains("pause") && !lower.contains("pause") {
             if !AutonomousAgentExecutor.isSelfQuitCommand(query) {
@@ -453,6 +521,8 @@ public enum AgentToolParser {
                 return .windowAction(action: "hide_app:\(appTarget)")
             }
         }
+
+
 
         // 4.5 Editor & Typing Commands (Section 4)
         if lower == "new line" || lower == "next line" {
@@ -770,6 +840,30 @@ public enum AgentToolParser {
             return "Music"
         }
         return "Spotify"
+    }
+
+    private static func extractTimerSeconds(from text: String) -> Int {
+        let pattern = #"(\d+)\s*(hour|hr|ghante|minute|min|second|sec)"#
+        if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let numRange = Range(match.range(at: 1), in: text),
+           let unitRange = Range(match.range(at: 2), in: text),
+           let val = Int(text[numRange]) {
+            let unit = text[unitRange].lowercased()
+            if unit.hasPrefix("h") || unit.contains("ghante") { return val * 3600 }
+            if unit.hasPrefix("m") || unit.contains("min") { return val * 60 }
+            if unit.hasPrefix("s") || unit.contains("sec") { return val }
+        }
+        let fallbackPattern = #"(\d+)"#
+        if let regex = try? NSRegularExpression(pattern: fallbackPattern),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let numRange = Range(match.range(at: 1), in: text),
+           let val = Int(text[numRange]) {
+            if text.contains("sec") { return val }
+            if text.contains("ghant") || text.contains("hour") { return val * 3600 }
+            return val * 60
+        }
+        return 600
     }
     
     private static func extractAppToOpen(from text: String) -> String? {

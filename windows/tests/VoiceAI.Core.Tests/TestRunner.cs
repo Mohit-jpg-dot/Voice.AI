@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using VoiceAI.Core.Agents;
 using VoiceAI.Core.Brain;
@@ -10,6 +11,7 @@ using VoiceAI.Core.Engineering;
 using VoiceAI.Core.Events;
 using VoiceAI.Core.Grammar;
 using VoiceAI.Core.Health;
+using VoiceAI.Core.Island;
 using VoiceAI.Core.Knowledge;
 using VoiceAI.Core.Marketplace;
 using VoiceAI.Core.Math;
@@ -81,6 +83,7 @@ namespace VoiceAI.Core.Tests
             TestVoiceEmailLogic();
             await TestMessagingConnectors();
             TestNotchShelfLogic();
+            TestDynamicIslandEngine();
 
             Console.WriteLine("\n=================================================================");
             Console.WriteLine($"Test Run Completed: {_passed} PASSED, {_failed} FAILED");
@@ -852,6 +855,153 @@ namespace VoiceAI.Core.Tests
             AssertTrue(hostile.Contains("[REDACTED_API_KEY]"), "Redacts sk- API keys before model presentation");
 
             try { File.Delete(tempFile); } catch { }
+        }
+
+        // -------------------------------------------------------------
+        // Suite 19: islandcn Dynamic Island Engine (.NET Core Parity)
+        // -------------------------------------------------------------
+        private static void TestDynamicIslandEngine()
+        {
+            Console.WriteLine("\n[Suite 19] islandcn Dynamic Island Engine (.NET Core Parity)");
+
+            var mockClock = new MockIslandClock();
+            var center = new ActivityCenter(mockClock);
+
+            // 1. Initial State -> Idle
+            AssertEqual(center.CurrentScene.Presentation, IslandPresentationKind.Idle, "Initial presentation is Idle");
+            AssertEqual(center.Activities.Count, 0, "No activities active initially");
+
+            // 2. Add 1 Activity -> Compact
+            center.Start(new ActivityOptions
+            {
+                Id = "act_now_playing",
+                Label = "Now Playing",
+                Priority = ActivityPriority.Media,
+                Content = new ActivityContent
+                {
+                    Compact = new ActivityCompactSlots
+                    {
+                        Leading = ActivitySlotContent.FromSymbol("music.note"),
+                        Trailing = ActivitySlotContent.FromText("Starboy")
+                    }
+                }
+            });
+
+            AssertEqual(center.CurrentScene.Presentation, IslandPresentationKind.Compact, "Single activity yields Compact presentation");
+            AssertEqual(center.CurrentScene.PrimaryId, "act_now_playing", "Now playing is primary activity");
+
+            // 3. Add 2nd Activity -> Split
+            center.Start(new ActivityOptions
+            {
+                Id = "act_timer",
+                Label = "Timer",
+                Priority = ActivityPriority.Timer,
+                Content = new ActivityContent
+                {
+                    Compact = new ActivityCompactSlots
+                    {
+                        Leading = ActivitySlotContent.FromSymbol("timer"),
+                        Trailing = ActivitySlotContent.FromText("04:59")
+                    }
+                }
+            });
+
+            AssertEqual(center.CurrentScene.Presentation, IslandPresentationKind.Split, "Two activities yield Split presentation");
+            AssertEqual(center.CurrentScene.PrimaryId, "act_timer", "Timer (priority 20) takes leading split slot over media (priority 10)");
+            AssertEqual(center.CurrentScene.DetachedId, "act_now_playing", "Now playing takes trailing split slot");
+
+            // 4. Consequential Approval Safety Lane (Priority 9999)
+            center.IsApprovalCardActive = true;
+            center.Start(new ActivityOptions
+            {
+                Id = "approval_card",
+                Label = "Confirm Terminal Execution",
+                Priority = ActivityPriority.ConsequentialApproval,
+                Content = new ActivityContent
+                {
+                    Expanded = new ActivityExpandedSlots
+                    {
+                        Center = ActivitySlotContent.FromText("Execute 'rm -rf /tmp/scratch'?")
+                    }
+                }
+            });
+
+            AssertEqual(center.CurrentScene.PrimaryId, "approval_card", "Consequential approval takes priority 9999 slot");
+            AssertTrue(center.IsExpanded, "Consequential approval card expands immediately");
+
+            // Verify cannot be covered by lower activity expand
+            center.Expand("act_timer");
+            AssertEqual(center.ExpandedActivityId, "approval_card", "Approval card cannot be superseded by lower activity expand");
+
+            // Verify collapse() cannot dismiss approval card
+            center.Collapse();
+            AssertTrue(center.IsExpanded, "Approval card cannot be dismissed by collapse() while active");
+
+            // End approval card
+            center.IsApprovalCardActive = false;
+            center.End("approval_card");
+            AssertTrue(!center.Activities.Any(a => a.Id == "approval_card"), "Approval card ended");
+
+            // 5. Alert Auto-Dismissal Timing
+            center.Reset();
+            center.Start(new ActivityOptions
+            {
+                Id = "alert_notification",
+                Label = "New Message",
+                Priority = ActivityPriority.Alert,
+                Alert = true,
+                Content = new ActivityContent
+                {
+                    Expanded = new ActivityExpandedSlots
+                    {
+                        Center = ActivitySlotContent.FromText("Meeting starts in 5 minutes")
+                    }
+                }
+            });
+
+            AssertTrue(center.IsExpanded, "Alert immediately expands the island");
+            mockClock.Advance(3.0);
+            AssertTrue(center.IsExpanded, "Alert is still held expanded after 3 seconds");
+            mockClock.Advance(3.5);
+            AssertTrue(!center.IsExpanded, "Alert auto-collapses past 6.0 seconds hold time");
+
+            // 6. Quiet Rules: Suppression During Dictation & DND
+            center.Reset();
+            center.IsDictationActive = true;
+            center.Start(new ActivityOptions
+            {
+                Id = "quiet_alert",
+                Label = "Incoming Call",
+                Priority = ActivityPriority.Alert,
+                Alert = true
+            });
+            AssertTrue(!center.IsExpanded, "Alert expansion is suppressed during dictation");
+            center.IsDictationActive = false;
+
+            // 7. Privacy Masking: Sensitive Content Previews
+            center.Reset();
+            center.ShowSensitivePreviews = false;
+            center.Start(new ActivityOptions
+            {
+                Id = "sensitive_email",
+                Label = "Confidential",
+                IsSensitive = true,
+                Content = new ActivityContent
+                {
+                    Compact = new ActivityCompactSlots
+                    {
+                        Leading = ActivitySlotContent.FromText("Secret Contract"),
+                        Trailing = ActivitySlotContent.FromText("Acme Corp")
+                    }
+                }
+            });
+
+            AssertEqual(center.GetResolvedLeading(center.Activities[0])?.Text, "•••", "Sensitive leading content is masked to '•••' in compact view");
+            center.ShowSensitivePreviews = true;
+            center.RecomputeScene();
+            AssertEqual(center.GetResolvedLeading(center.Activities[0])?.Text, "Secret Contract", "Enabling preview setting unmasks sensitive content");
+
+            Console.WriteLine("  ✓ PASS: Dynamic Island Engine Priority, Safety Lanes, and Alert Timing");
         }
     }
 }

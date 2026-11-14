@@ -49,7 +49,7 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
     
     public func executeAppleScript(_ scriptText: String) -> (success: Bool, output: String?) {
         let wrappedScript = scriptText.contains("with timeout") ? scriptText : """
-        with timeout of 2 seconds
+        with timeout of 4 seconds
             \(scriptText)
         end timeout
         """
@@ -62,7 +62,7 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
         process.standardError = pipe
         do {
             try process.run()
-            let timeout = DispatchTime.now() + 1.5
+            let timeout = DispatchTime.now() + 4.5
             let sema = DispatchSemaphore(value: 0)
             DispatchQueue.global(qos: .utility).async {
                 process.waitUntilExit()

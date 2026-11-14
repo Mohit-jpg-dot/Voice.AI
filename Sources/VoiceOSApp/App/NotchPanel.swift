@@ -38,6 +38,10 @@ public final class NotchHostingView<Content: View>: NSHostingView<Content> {
         return nil
     }
 
+    public override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        return true
+    }
+
     // MARK: - Forward NSDraggingDestination to panel
     public override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         return notchPanel?.draggingEntered(sender) ?? []

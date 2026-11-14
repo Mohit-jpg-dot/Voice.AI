@@ -162,10 +162,19 @@ public final class NotchHUDWindowController: NSWindowController {
                     let count = self.appState.currentTranscript.count
                     visibleWidth = count > 60 ? 560.0 : 480.0
                     visibleHeight = count > 60 ? 125.0 : 96.0
+                case .emailDraftExpanded:
+                    isClosed = false
+                    visibleWidth = 550.0
+                    visibleHeight = 420.0
+                    panel.allowsKeyFocus = true
+                    panel.makeKey()
                 default:
                     isClosed = false
-                    // Dynamic size takes precedence if available
-                    if self.appState.dynamicNotchSize.width > 0 && self.appState.dynamicNotchSize.height > 0 {
+                    if self.appState.activeEmailDraft != nil {
+                        visibleWidth = 550.0
+                        visibleHeight = 420.0
+                        panel.allowsKeyFocus = true
+                    } else if self.appState.dynamicNotchSize.width > 0 && self.appState.dynamicNotchSize.height > 0 {
                         visibleWidth = self.appState.dynamicNotchSize.width
                         visibleHeight = self.appState.dynamicNotchSize.height
                     } else {
@@ -299,6 +308,28 @@ public final class NotchHUDWindowController: NSWindowController {
                 panel.allowsKeyFocus = focused
                 if focused {
                     panel.makeKey()
+                }
+            }
+            .store(in: &cancellables)
+
+        // Observe Active Email Draft for interactive compose sizing and key focus
+        appState.$activeEmailDraft
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] draft in
+                guard let self = self, let panel = self.window as? NotchPanel else { return }
+                if draft != nil {
+                    let windowWidth = Self.panelWindowWidth
+                    let windowHeight = Self.panelWindowHeight
+                    let visibleWidth: CGFloat = 550.0
+                    let visibleHeight: CGFloat = 420.0
+                    let visibleX = (windowWidth - visibleWidth) / 2.0
+                    let visibleY = windowHeight - visibleHeight
+                    panel.visibleNotchBounds = NSRect(x: visibleX, y: visibleY, width: visibleWidth, height: visibleHeight)
+                    panel.allowsKeyFocus = true
+                    panel.makeKey()
+                } else if self.appState.islandState == .resting {
+                    panel.allowsKeyFocus = false
+                    panel.resignKey()
                 }
             }
             .store(in: &cancellables)

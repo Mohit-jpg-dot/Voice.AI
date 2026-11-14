@@ -148,6 +148,8 @@ cat <<EOF > "${BUILD_DIR}/Entitlements.plist"
     <true/>
     <key>com.apple.security.device.audio-input</key>
     <true/>
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
 </dict>
 </plist>
 EOF

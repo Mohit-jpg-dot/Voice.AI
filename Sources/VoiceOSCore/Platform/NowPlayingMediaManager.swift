@@ -176,6 +176,11 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
                 return musicItem
             }
         }
+
+        // 5. Check macOS System MediaRemote (covers all media playback)
+        if let systemItem = querySystemNowPlaying() {
+            return systemItem
+        }
         
         return nil
     }
@@ -244,20 +249,19 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
                 repeat with w in windows
                     repeat with t in tabs of w
                         set tTitle to title of t
-                        if (tTitle contains " - YouTube") or (tTitle contains "YouTube" and tTitle is not "YouTube") then
+                        set tURL to URL of t
+                        if (tURL contains "youtube.com/watch") or (tURL contains "music.youtube.com") or (tTitle contains "YouTube") then
+                            set jsCheck to "NOT_PLAYING"
                             try
-                                set jsCheck to (execute t javascript "var v = document.querySelector('video'); (v && !v.paused && !v.ended && v.currentTime > 0 && v.readyState >= 2) ? (Math.floor(v.currentTime || 0) + '|||' + Math.floor(v.duration || 0) + '|||' + (new URLSearchParams(window.location.search).get('v') || '')) : 'NOT_PLAYING';")
-                                if jsCheck is not "NOT_PLAYING" and jsCheck contains "|||" then
-                                    return tTitle & "|||" & jsCheck
-                                end if
-                            on error
-                                try
-                                    set isPlaying to (audible of t)
-                                    if isPlaying then
-                                        return tTitle & "|||0|||0"
-                                    end if
-                                end try
+                                set jsCheck to (execute t javascript "var v = document.querySelector('video'); (v && !v.paused && !v.ended && v.currentTime > 0) ? (Math.floor(v.currentTime || 0) + '|||' + Math.floor(v.duration || 0) + '|||' + (new URLSearchParams(window.location.search).get('v') || '')) : 'NOT_PLAYING';")
                             end try
+                            if jsCheck is not "NOT_PLAYING" and jsCheck contains "|||" then
+                                return tTitle & "|||" & jsCheck & "|||" & tURL
+                            else
+                                if (tURL contains "youtube.com/watch") or (tURL contains "music.youtube.com") then
+                                    return tTitle & "|||0|||0||||||" & tURL
+                                end if
+                            end if
                         end if
                     end repeat
                 end repeat
@@ -274,17 +278,30 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         }
         let metaParts = rawPayload.components(separatedBy: "|||")
         let rawTitle = metaParts.first ?? rawPayload
-        guard rawTitle.contains("YouTube") || rawTitle.contains("- YouTube") else {
-            return nil
+        
+        var pos = metaParts.count > 1 ? (Int(metaParts[1]) ?? 0) : 0
+        var dur = metaParts.count > 2 ? (Int(metaParts[2]) ?? 0) : 0
+        var ytId = metaParts.count > 3 ? metaParts[3] : ""
+        let tabUrl = metaParts.count > 4 ? metaParts[4] : ""
+        
+        // Extract YouTube ID from URL if JS didn't return it
+        if ytId.isEmpty && !tabUrl.isEmpty {
+            if let urlComponents = URLComponents(string: tabUrl),
+               let vItem = urlComponents.queryItems?.first(where: { $0.name == "v" })?.value {
+                ytId = vItem
+            }
         }
-        let pos = metaParts.count > 1 ? (Int(metaParts[1]) ?? 0) : 0
-        let dur = metaParts.count > 2 ? (Int(metaParts[2]) ?? 0) : 0
-        let ytId = metaParts.count > 3 ? metaParts[3] : ""
+        
         let artUrl = ytId.isEmpty ? "" : "https://img.youtube.com/vi/\(ytId)/mqdefault.jpg"
         let progress = dur > 0 ? min(1.0, max(0.0, Double(pos) / Double(dur))) : 0.0
         
-        // Clean YouTube title: "Song Name - Artist - YouTube" -> "Song Name", "Artist"
-        let clean = rawTitle
+        // Clean notification counts from title: e.g. "(677) Video Title - YouTube" -> "Video Title"
+        var clean = rawTitle
+        if let regex = try? NSRegularExpression(pattern: "^\\(\\d+\\)\\s*") {
+            clean = regex.stringByReplacingMatches(in: clean, range: NSRange(location: 0, length: clean.utf16.count), withTemplate: "")
+        }
+        clean = clean
+            .replacingOccurrences(of: " - YouTube Music", with: "")
             .replacingOccurrences(of: " - YouTube", with: "")
             .replacingOccurrences(of: "YouTube", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
@@ -295,8 +312,8 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         var channel = "YouTube Video"
         if clean.contains(" - ") {
             let split = clean.components(separatedBy: " - ")
-            title = split[0]
-            channel = split.dropFirst().joined(separator: " - ")
+            title = split[0].trimmingCharacters(in: .whitespacesAndNewlines)
+            channel = split.dropFirst().joined(separator: " - ").trimmingCharacters(in: .whitespacesAndNewlines)
         }
         
         return NowPlayingItem(
@@ -321,15 +338,19 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
                 repeat with w in windows
                     repeat with t in tabs of w
                         set tName to name of t
-                        if (tName contains " - YouTube") or (tName contains "YouTube" and tName is not "YouTube") then
+                        set tURL to URL of t
+                        if (tURL contains "youtube.com/watch") or (tURL contains "music.youtube.com") or (tName contains "YouTube") then
+                            set jsOut to "NOT_PLAYING"
                             try
-                                set jsOut to do JavaScript "var v = document.querySelector('video'); (v && !v.paused && !v.ended && v.currentTime > 0 && v.readyState >= 2) ? (Math.floor(v.currentTime || 0) + '|||' + Math.floor(v.duration || 0) + '|||' + (new URLSearchParams(window.location.search).get('v') || '')) : 'NOT_PLAYING';" in t
-                                if jsOut is not "NOT_PLAYING" and jsOut contains "|||" then
-                                    return tName & "|||" & jsOut
-                                end if
-                            on error
-                                -- If JavaScript is not allowed, do not falsely report playing
+                                set jsOut to do JavaScript "var v = document.querySelector('video'); (v && !v.paused && !v.ended && v.currentTime > 0) ? (Math.floor(v.currentTime || 0) + '|||' + Math.floor(v.duration || 0) + '|||' + (new URLSearchParams(window.location.search).get('v') || '')) : 'NOT_PLAYING';" in t
                             end try
+                            if jsOut is not "NOT_PLAYING" and jsOut contains "|||" then
+                                return tName & "|||" & jsOut & "|||" & tURL
+                            else
+                                if (tURL contains "youtube.com/watch") or (tURL contains "music.youtube.com") then
+                                    return tName & "|||0|||0||||||" & tURL
+                                end if
+                            end if
                         end if
                     end repeat
                 end repeat
@@ -346,25 +367,45 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
         }
         let metaParts = rawPayload.components(separatedBy: "|||")
         let rawTitle = metaParts.first ?? rawPayload
-        guard rawTitle.contains("YouTube") else {
-            return nil
+        
+        var pos = metaParts.count > 1 ? (Int(metaParts[1]) ?? 0) : 0
+        var dur = metaParts.count > 2 ? (Int(metaParts[2]) ?? 0) : 0
+        var ytId = metaParts.count > 3 ? metaParts[3] : ""
+        let tabUrl = metaParts.count > 4 ? metaParts[4] : ""
+        
+        if ytId.isEmpty && !tabUrl.isEmpty {
+            if let urlComponents = URLComponents(string: tabUrl),
+               let vItem = urlComponents.queryItems?.first(where: { $0.name == "v" })?.value {
+                ytId = vItem
+            }
         }
-        let pos = metaParts.count > 1 ? (Int(metaParts[1]) ?? 0) : 0
-        let dur = metaParts.count > 2 ? (Int(metaParts[2]) ?? 0) : 0
-        let ytId = metaParts.count > 3 ? metaParts[3] : ""
+        
         let artUrl = ytId.isEmpty ? "" : "https://img.youtube.com/vi/\(ytId)/mqdefault.jpg"
         let progress = dur > 0 ? min(1.0, max(0.0, Double(pos) / Double(dur))) : 0.0
         
-        let clean = rawTitle
+        var clean = rawTitle
+        if let regex = try? NSRegularExpression(pattern: "^\\(\\d+\\)\\s*") {
+            clean = regex.stringByReplacingMatches(in: clean, range: NSRange(location: 0, length: clean.utf16.count), withTemplate: "")
+        }
+        clean = clean
+            .replacingOccurrences(of: " - YouTube Music", with: "")
             .replacingOccurrences(of: " - YouTube", with: "")
             .replacingOccurrences(of: "YouTube", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
         
         guard !clean.isEmpty else { return nil }
         
+        var title = clean
+        var channel = "YouTube on Safari"
+        if clean.contains(" - ") {
+            let split = clean.components(separatedBy: " - ")
+            title = split[0].trimmingCharacters(in: .whitespacesAndNewlines)
+            channel = split.dropFirst().joined(separator: " - ").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        
         return NowPlayingItem(
-            title: clean,
-            artistOrChannel: "YouTube on Safari",
+            title: title,
+            artistOrChannel: channel,
             albumOrContext: "Video Playback",
             source: .youtube,
             isPlaying: true,
@@ -373,6 +414,74 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
             durationSeconds: dur,
             artworkUrl: artUrl
         )
+    }
+
+    // MARK: - System MediaRemote Dynamic Query (Chrome, Safari, Spotify, YouTube, Podcasts)
+    private func querySystemNowPlaying() -> NowPlayingItem? {
+        guard let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_NOW) else {
+            return nil
+        }
+        defer { dlclose(handle) }
+
+        typealias GetNowPlayingInfo = @convention(c) (DispatchQueue, @escaping ([String: Any]?) -> Void) -> Void
+        guard let sym = dlsym(handle, "MRMediaRemoteGetNowPlayingInfo") else {
+            return nil
+        }
+        let getInfo = unsafeBitCast(sym, to: GetNowPlayingInfo.self)
+
+        let sema = DispatchSemaphore(value: 0)
+        var resultItem: NowPlayingItem?
+
+        getInfo(DispatchQueue.global(qos: .userInitiated)) { dict in
+            defer { sema.signal() }
+            guard let dict = dict else { return }
+            
+            let title = dict["kMRMediaRemoteNowPlayingInfoTitle"] as? String ?? ""
+            guard !title.isEmpty else { return }
+
+            let artist = dict["kMRMediaRemoteNowPlayingInfoArtist"] as? String ?? ""
+            let album = dict["kMRMediaRemoteNowPlayingInfoAlbum"] as? String ?? ""
+            let elapsed = dict["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? Double ?? 0.0
+            let duration = dict["kMRMediaRemoteNowPlayingInfoDuration"] as? Double ?? 0.0
+            let rate = dict["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? Double ?? 1.0
+
+            guard rate > 0 else { return }
+
+            let progress = duration > 0 ? min(1.0, max(0.0, elapsed / duration)) : 0.0
+
+            let source: MediaSource
+            let lowerTitle = title.lowercased()
+            let lowerArtist = artist.lowercased()
+            let lowerAlbum = album.lowercased()
+
+            if lowerTitle.contains("youtube") || lowerArtist.contains("youtube") || lowerAlbum.contains("youtube") {
+                source = .youtube
+            } else if lowerAlbum.contains("spotify") || lowerArtist.contains("spotify") {
+                source = .spotify
+            } else {
+                source = .youtube
+            }
+
+            var clean = title
+            if let regex = try? NSRegularExpression(pattern: "^\\(\\d+\\)\\s*") {
+                clean = regex.stringByReplacingMatches(in: clean, range: NSRange(location: 0, length: clean.utf16.count), withTemplate: "")
+            }
+
+            resultItem = NowPlayingItem(
+                title: clean,
+                artistOrChannel: artist.isEmpty ? "Now Playing" : artist,
+                albumOrContext: album,
+                source: source,
+                isPlaying: true,
+                progress: progress,
+                positionSeconds: Int(elapsed),
+                durationSeconds: Int(duration),
+                artworkUrl: ""
+            )
+        }
+
+        _ = sema.wait(timeout: .now() + 0.3)
+        return resultItem
     }
     
     // MARK: - Apple Music AppleScript

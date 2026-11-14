@@ -385,9 +385,11 @@ public struct EmailDraftCardView: View {
             }
         }
         .onAppear {
+            appState.isTypingFocused = true
             startAutoCollapseTimer()
         }
         .onDisappear {
+            appState.isTypingFocused = false
             cancelAutoCollapseTimer()
         }
     }
@@ -427,8 +429,18 @@ public struct EmailDraftCardView: View {
                         self.onDismiss()
                     }
                 } else {
-                    BoringSoundEngine.shared.playError()
-                    // Status is already set to .failed by the pipeline
+                    if message.lowercased().contains("mailto") || message.lowercased().contains("compose window") {
+                        // Successfully opened default Mail app with pre-filled draft
+                        self.viewModel.status = .sent(messageId: "mailto-opened")
+                        BoringSoundEngine.shared.playDone()
+                        self.onSend(self.viewModel.draft)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            self.onDismiss()
+                        }
+                    } else {
+                        BoringSoundEngine.shared.playError()
+                        // Status is already set to .failed by the pipeline
+                    }
                 }
             }
         }

@@ -257,10 +257,6 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
                             end try
                             if jsCheck is not "NOT_PLAYING" and jsCheck contains "|||" then
                                 return tTitle & "|||" & jsCheck & "|||" & tURL
-                            else
-                                if (tURL contains "youtube.com/watch") or (tURL contains "music.youtube.com") then
-                                    return tTitle & "|||0|||0||||||" & tURL
-                                end if
                             end if
                         end if
                     end repeat
@@ -346,10 +342,6 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
                             end try
                             if jsOut is not "NOT_PLAYING" and jsOut contains "|||" then
                                 return tName & "|||" & jsOut & "|||" & tURL
-                            else
-                                if (tURL contains "youtube.com/watch") or (tURL contains "music.youtube.com") then
-                                    return tName & "|||0|||0||||||" & tURL
-                                end if
                             end if
                         end if
                     end repeat
@@ -443,9 +435,8 @@ public final class NowPlayingMediaManager: @unchecked Sendable {
             let album = dict["kMRMediaRemoteNowPlayingInfoAlbum"] as? String ?? ""
             let elapsed = dict["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? Double ?? 0.0
             let duration = dict["kMRMediaRemoteNowPlayingInfoDuration"] as? Double ?? 0.0
-            let rate = dict["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? Double ?? 1.0
-
-            guard rate > 0 else { return }
+            let rate = dict["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? Double ?? 0.0
+            guard rate > 0.05 else { return }
 
             let progress = duration > 0 ? min(1.0, max(0.0, elapsed / duration)) : 0.0
 

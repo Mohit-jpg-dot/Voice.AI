@@ -119,7 +119,7 @@ public struct NotchGlassIslandView: View {
     // Automatically calculates opening width and height based on current response length or view mode
     private var dynamicDimensions: (width: CGFloat, height: CGFloat) {
         if appState.isMediaExpanded {
-            return (480.0, 205.0)
+            return (480.0, 215.0)
         }
         if !isOpen {
             if case .voiceCompact = appState.islandState {
@@ -129,7 +129,7 @@ public struct NotchGlassIslandView: View {
                 return (width, height)
             }
             if appState.isNotchMediaDisplayEnabled, let media = appState.currentMedia, media.isPlaying {
-                return (physicalNotchWidth + 260.0, physicalNotchHeight + 6.0)
+                return (physicalNotchWidth + 100.0, physicalNotchHeight + 6.0)
             }
             let shelfCount = ShelfStore.shared.count
             if shelfCount > 0 && ShelfStore.shared.settings.showCountBadgeOnCollapsedNotch {
@@ -704,43 +704,22 @@ public struct NotchGlassIslandView: View {
             }
         }) {
             HStack(spacing: 0) {
-                // Left Wing: Source / Artwork + Track & Creator Name
-                HStack(spacing: 7) {
+                // Left Wing: Source Icon / Compact Thumbnail
+                HStack(spacing: 4) {
                     if media.source == .spotify {
-                        if !media.artworkUrl.isEmpty, let img = resolveLocalArtwork(media.artworkUrl) {
-                            Image(nsImage: img)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 22, height: 22)
-                                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-                        } else if !media.artworkUrl.isEmpty, let url = URL(string: media.artworkUrl) {
-                            AsyncImage(url: url) { phase in
-                                switch phase {
-                                case .success(let img):
-                                    img.resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 22, height: 22)
-                                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-                                default:
-                                    SpotifyBrandIconView(size: 18)
-                                }
-                            }
-                            .frame(width: 22, height: 22)
-                        } else {
-                            SpotifyBrandIconView(size: 18)
-                        }
+                        SpotifyBrandIconView(size: 18)
                     } else if media.source == .youtube {
                         ZStack {
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .fill(Color(red: 0.18, green: 0.03, blue: 0.03))
-                                .frame(width: 26, height: 20)
+                                .frame(width: 26, height: 18)
                             if !media.artworkUrl.isEmpty, let artUrl = URL(string: media.artworkUrl) {
                                 AsyncImage(url: artUrl) { phase in
                                     switch phase {
                                     case .success(let img):
                                         img.resizable()
                                             .aspectRatio(contentMode: .fill)
-                                            .frame(width: 26, height: 20)
+                                            .frame(width: 26, height: 18)
                                             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                                     default:
                                         YouTubeIconView(size: 14)
@@ -750,50 +729,33 @@ public struct NotchGlassIslandView: View {
                                 YouTubeIconView(size: 14)
                             }
                         }
-                        .frame(width: 26, height: 20)
+                        .frame(width: 26, height: 18)
                     } else {
                         ZStack {
                             Circle()
                                 .fill(Color(red: 0.98, green: 0.14, blue: 0.24))
-                                .frame(width: 18, height: 18)
+                                .frame(width: 17, height: 17)
                                 .shadow(color: Color.red.opacity(0.4), radius: 3)
                             Image(systemName: media.source.iconName)
-                                .font(.system(size: 9, weight: .bold))
+                                .font(.system(size: 8.5, weight: .bold))
                                 .foregroundColor(.white)
                         }
                     }
-
-                    // Track & Creator Name alongside playback
-                    VStack(alignment: .leading, spacing: 0.5) {
-                        Text(media.title)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                        
-                        Text(media.artistOrChannel.isEmpty ? media.source.rawValue : media.artistOrChannel)
-                            .font(.system(size: 9.5, weight: .medium))
-                            .foregroundColor(Color.white.opacity(0.65))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                    .frame(maxWidth: 125, alignment: .leading)
                 }
-                .padding(.leading, 12)
-                .frame(width: 165, alignment: .leading)
+                .frame(width: 45, alignment: .center)
                 
                 // Center Spacer: Exact width of the physical MacBook Notch
                 // Ensures ZERO text or controls are placed behind the plastic camera!
                 Spacer(minLength: 0)
                     .frame(width: physicalNotchWidth)
                 
-                // Right Wing: EQ + Playback Elapsed Time + Play/Pause Button
-                HStack(spacing: 6) {
+                // Right Wing: Real-Time Animated EQ Bars + Play/Pause Button
+                HStack(spacing: 5) {
                     TimelineView(.animation(minimumInterval: 0.18, paused: !media.isPlaying)) { timeline in
                         let step = Int(timeline.date.timeIntervalSinceReferenceDate * 5.0)
                         HStack(spacing: 2) {
-                            ForEach(0..<3, id: \.self) { idx in
-                                let wave = 4 + ((step + idx * 3) % 8)
+                            ForEach(0..<4, id: \.self) { idx in
+                                let wave = 5 + ((step + idx * 3) % 9)
                                 RoundedRectangle(cornerRadius: 1)
                                     .fill(media.source == .spotify ? Color(red: 0.11, green: 0.85, blue: 0.4) : Color.red)
                                     .frame(width: 2, height: CGFloat(media.isPlaying ? wave : 3))
@@ -801,27 +763,20 @@ public struct NotchGlassIslandView: View {
                         }
                     }
                     
-                    if media.durationSeconds > 0 {
-                        Text(String(format: "%d:%02d", media.positionSeconds / 60, media.positionSeconds % 60))
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .foregroundColor(Color.white.opacity(0.75))
-                    }
-                    
                     Button(action: {
                         BoringSoundEngine.shared.playTap()
                         NowPlayingMediaManager.shared.togglePlayPause()
                     }) {
                         Image(systemName: media.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(size: 7.5, weight: .bold))
                             .foregroundColor(.white)
-                            .frame(width: 18, height: 18)
+                            .frame(width: 16, height: 16)
                             .background(Color.white.opacity(0.2))
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.trailing, 12)
-                .frame(width: 95, alignment: .trailing)
+                .frame(width: 50, alignment: .center)
             }
             .frame(width: currentWidth, height: currentHeight)
             .background(Color.black)
@@ -910,7 +865,7 @@ public struct NotchGlassIslandView: View {
                     .help("Collapse media panel")
                 }
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 30)
             
             // Middle Row: Bigger Album Artwork (64x64) + Track Name, Creator Name & Scrubber
             HStack(spacing: 14) {
@@ -1020,7 +975,7 @@ public struct NotchGlassIslandView: View {
                     .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 30)
             
             // Bottom Controls Bar: Previous | Play/Pause | Next
             HStack(spacing: 30) {
@@ -1076,28 +1031,9 @@ public struct NotchGlassIslandView: View {
                 
                 Spacer()
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, 14)
         }
-        .frame(width: 480, height: 205)
-        .background(
-            ZStack {
-                VisualEffectView(material: .hudWindow, blendingMode: .behindWindow)
-                Color.black.opacity(0.96)
-            }
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.22), Color.white.opacity(0.06)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 0.8
-                )
-        )
-        .shadow(color: Color.black.opacity(0.7), radius: 16, x: 0, y: 8)
+        .frame(width: 480, height: 215)
     }
     
     @ViewBuilder

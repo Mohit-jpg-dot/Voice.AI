@@ -149,9 +149,9 @@ public final class NotchHUDWindowController: NSWindowController {
                     isClosed = !self.appState.isMediaExpanded
                     if self.appState.isNotchMediaDisplayEnabled && self.appState.isMediaExpanded {
                         visibleWidth = 480.0
-                        visibleHeight = 205.0
+                        visibleHeight = 215.0
                     } else if self.appState.isNotchMediaDisplayEnabled, let m = self.appState.currentMedia, m.isPlaying {
-                        visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 260.0
+                        visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
                         visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0
                     } else {
                         visibleWidth = Self.calculateClosedNotchWidth(for: screen)
@@ -212,11 +212,11 @@ public final class NotchHUDWindowController: NSWindowController {
                 let visibleHeight: CGFloat
                 if expanded && self.appState.isNotchMediaDisplayEnabled {
                     visibleWidth = 480.0
-                    visibleHeight = 205.0
+                    visibleHeight = 215.0
                     NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
                 } else if self.appState.islandState == .resting {
                     if self.appState.isNotchMediaDisplayEnabled, let m = self.appState.currentMedia, m.isPlaying {
-                        visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 260.0
+                        visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
                         visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0
                     } else {
                         visibleWidth = Self.calculateClosedNotchWidth(for: screen)
@@ -244,9 +244,9 @@ public final class NotchHUDWindowController: NSWindowController {
                 let visibleHeight: CGFloat
                 if self.appState.isNotchMediaDisplayEnabled && self.appState.isMediaExpanded {
                     visibleWidth = 480.0
-                    visibleHeight = 205.0
+                    visibleHeight = 215.0
                 } else if self.appState.isNotchMediaDisplayEnabled, let m = media, m.isPlaying {
-                    visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 260.0
+                    visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
                     visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0
                 } else {
                     visibleWidth = Self.calculateClosedNotchWidth(for: screen)
@@ -270,7 +270,7 @@ public final class NotchHUDWindowController: NSWindowController {
                 let visibleWidth: CGFloat
                 let visibleHeight: CGFloat
                 if enabled, let m = self.appState.currentMedia, m.isPlaying {
-                    visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 260.0
+                    visibleWidth = Self.calculateClosedNotchWidth(for: screen) + 100.0
                     visibleHeight = Self.calculateClosedNotchHeight(for: screen) + 6.0
                 } else {
                     visibleWidth = Self.calculateClosedNotchWidth(for: screen)

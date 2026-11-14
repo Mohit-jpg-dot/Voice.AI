@@ -7,12 +7,12 @@
   'use strict';
 
   const FALLBACK_METADATA = {
-    version: '1.0.0',
-    buildNumber: '42',
-    fileName: 'Voice.AI-1.0.0.dmg',
-    fileSizeBytes: 7348540,
-    sha256: '720247d4f456461d0ea4f725718df27d6c5ee15bb4e7f69a172f2e7ade4b69dc',
-    downloadUrl: 'downloads/Voice.AI-1.0.0.dmg'
+    version: '1.1.0',
+    buildNumber: '43',
+    fileName: 'Voice.AI-1.1.0.dmg',
+    fileSizeBytes: 16207681,
+    sha256: 'b4605fe4cda2d2b2001588d9d1c4eb2f469e20ceecdf6811fb926563050b4509',
+    downloadUrl: 'downloads/Voice.AI-1.1.0.dmg'
   };
 
   async function loadReleaseMetadata() {

@@ -522,26 +522,22 @@ body.scrolled .btn-nav-download {
   border-radius: 18px 18px 0 0;
   object-fit: cover;
   pointer-events: none;
-  -webkit-mask-image: linear-gradient(
-    180deg,
-    #000 0%,
-    #000 82%,
-    rgba(0, 0, 0, 0.95) 86%,
-    rgba(0, 0, 0, 0.75) 90%,
-    rgba(0, 0, 0, 0.45) 94%,
-    rgba(0, 0, 0, 0.15) 97%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    180deg,
-    #000 0%,
-    #000 82%,
-    rgba(0, 0, 0, 0.95) 86%,
-    rgba(0, 0, 0, 0.75) 90%,
-    rgba(0, 0, 0, 0.45) 94%,
-    rgba(0, 0, 0, 0.15) 97%,
-    transparent 100%
-  );
+  -webkit-mask-image: linear-gradient(180deg,
+      #000 0%,
+      #000 82%,
+      rgba(0, 0, 0, 0.95) 86%,
+      rgba(0, 0, 0, 0.75) 90%,
+      rgba(0, 0, 0, 0.45) 94%,
+      rgba(0, 0, 0, 0.15) 97%,
+      transparent 100%);
+  mask-image: linear-gradient(180deg,
+      #000 0%,
+      #000 82%,
+      rgba(0, 0, 0, 0.95) 86%,
+      rgba(0, 0, 0, 0.75) 90%,
+      rgba(0, 0, 0, 0.45) 94%,
+      rgba(0, 0, 0, 0.15) 97%,
+      transparent 100%);
 }
 
 /* ==========================================================================

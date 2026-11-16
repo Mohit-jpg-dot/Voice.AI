@@ -43,13 +43,13 @@ public final class ScreenSelectionOverlayController: NSWindowController {
             defer: false
         )
 
-        panel.level = .screenSaver
+        panel.level = .statusBar
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.ignoresMouseEvents = false
         panel.acceptsMouseMovedEvents = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
 
         super.init(window: panel)
 

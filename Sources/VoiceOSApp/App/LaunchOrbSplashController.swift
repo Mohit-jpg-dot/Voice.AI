@@ -106,6 +106,10 @@ private struct LaunchOrbSplashView: View {
         ZStack {
             Color.black.opacity(backdropOpacity)
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    triggerFinish()
+                }
 
             // Stage 1: "THE WORLD'S FIRST / voice operating system" + Glowing Liquid Orb
             VStack(spacing: 22) {
@@ -316,12 +320,12 @@ public final class LaunchOrbSplashController {
             backing: .buffered,
             defer: false
         )
-        win.level = .screenSaver
+        win.level = .floating
         win.backgroundColor = .clear
         win.isOpaque = false
         win.hasShadow = false
         win.ignoresMouseEvents = false
-        win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
 
         let view = LaunchOrbSplashView(screenHeight: screen.frame.height) { [weak self] in
             DispatchQueue.main.async {

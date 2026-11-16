@@ -117,6 +117,8 @@ cat <<EOF > "${CONTENTS_DIR}/Info.plist"
     <false/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSPrefersDisplaySafeAreaCompatibilityMode</key>
+    <false/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Voice.AI needs microphone access to dictate and process voice commands.</string>
     <key>NSScreenCaptureUsageDescription</key>

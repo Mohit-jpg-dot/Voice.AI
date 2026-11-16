@@ -3667,6 +3667,109 @@ assertTrue(postForgetSearch.isEmpty, "Forgotten fact no longer found in FTS5")
 
 print("Suite 61: Conversation Memory & Follow-Up Resolution passed successfully.")
 
+// ==============================================================================
+// [Suite 62] Rolling Session Summaries & Episodic Memory (Phase 2)
+// ==============================================================================
+print("\n[Suite 62] Rolling Session Summaries & Episodic Memory (Phase 2)")
+
+// 1. RollingSessionSummaryEngine: Deterministic extraction of decisions, questions, numbers
+let summaryEngine = RollingSessionSummaryEngine.shared
+assertTrue(summaryEngine.shouldSummarize(turnCount: 8, lastSummarizedTurn: 0), "shouldSummarize triggers after 5 turns")
+assertTrue(!summaryEngine.shouldSummarize(turnCount: 3, lastSummarizedTurn: 0), "shouldSummarize does not trigger prematurely on short sessions")
+
+let testMessages: [MessageRecordItem] = [
+    MessageRecordItem(role: "user", content: "How do we scale our database to 100k users?"),
+    MessageRecordItem(role: "assistant", content: "We can use PostgreSQL with read replicas and Redis caching."),
+    MessageRecordItem(role: "user", content: "We agreed to use PostgreSQL for the database and set budget to $500/mo."),
+    MessageRecordItem(role: "assistant", content: "Understood. That fits well within the 99.9% uptime SLA by March 15."),
+    MessageRecordItem(role: "user", content: "What is the expected latency for queries?")
+]
+
+let summaryRecord = summaryEngine.deterministicSummary(for: testMessages, conversationId: "session_summary_test")
+assertTrue(!summaryRecord.summaryText.isEmpty, "Generated summary text is not empty")
+assertTrue(summaryRecord.keyDecisions.contains { $0.contains("agreed to use PostgreSQL") }, "Extracted key decision: agreed to use PostgreSQL")
+assertTrue(summaryRecord.openQuestions.contains { $0.contains("How do we scale") } || summaryRecord.openQuestions.contains { $0.contains("expected latency") }, "Extracted open questions")
+assertTrue(summaryRecord.numbersAndDates.contains("$500") || summaryRecord.numbersAndDates.contains("99.9%") || summaryRecord.numbersAndDates.contains { $0.contains("100") }, "Extracted numbers and metrics")
+
+let promptFormattedSummary = summaryRecord.promptFormatted()
+assertTrue(promptFormattedSummary.contains("Session Summary:"), "Formatted summary contains Session Summary header")
+assertTrue(promptFormattedSummary.contains("Decisions:"), "Formatted summary contains Decisions section")
+
+// 2. EpisodicMemoryManager: Smart Session Title Generation
+let episodicMgr = EpisodicMemoryManager.shared
+let title1 = episodicMgr.generateSessionTitle(from: "can you please summarize the quarterly financial report")
+assertEqual(title1, "Quarterly Financial Report", "Smart title strips polite prefixes and formats cleanly")
+
+let title2 = episodicMgr.generateSessionTitle(from: "bro how to build a swift app on macos")
+assertEqual(title2, "Build A Swift App On Macos", "Smart title strips casual 'bro' starter")
+
+let title3 = episodicMgr.generateSessionTitle(from: "hey jarvis what is quantum computing")
+assertEqual(title3, "Quantum Computing", "Smart title strips wake word starter")
+
+// 3. EpisodicMemoryManager: Temporal Scope Detection (English & Hinglish)
+let (win1, _) = episodicMgr.detectTemporalWindow(query: "what did we talk about yesterday?")
+assertEqual(win1, .yesterday, "Detected temporal window: yesterday")
+
+let (winHinglish, _) = episodicMgr.detectTemporalWindow(query: "kal humne kya baat ki thi?")
+assertEqual(winHinglish, .yesterday, "Detected Hinglish temporal window: yesterday (kal)")
+
+let (winToday, _) = episodicMgr.detectTemporalWindow(query: "what did we do earlier today?")
+assertEqual(winToday, .today, "Detected temporal window: today (earlier today)")
+
+let (winWeek, _) = episodicMgr.detectTemporalWindow(query: "what did we work on last week?")
+assertEqual(winWeek, .pastWeek, "Detected temporal window: past week")
+
+let (winTopic, topicStr) = episodicMgr.detectTemporalWindow(query: "what was that restaurant I asked about?")
+assertEqual(winTopic, .anyTime, "General query detected as anyTime")
+assertTrue(topicStr.contains("restaurant"), "Topic string extracts 'restaurant'")
+
+// 4. Episodic Memory Retrieval Across Past Sessions
+let cal = Calendar.current
+let startToday = cal.startOfDay(for: Date())
+let yesterdayDate = cal.date(byAdding: .hour, value: -12, to: startToday)! // Yesterday afternoon
+let todayEarlierDate = cal.date(byAdding: .hour, value: 2, to: startToday)! // Earlier this morning
+
+let pastSessions: [ConversationSessionRecord] = [
+    ConversationSessionRecord(
+        id: "sess_yesterday_1",
+        accountId: "test_acc",
+        title: "Japanese Restaurant Recommendation",
+        createdAt: yesterdayDate,
+        updatedAt: yesterdayDate,
+        rollingSummary: "Recommended Sushi Sho in downtown with 4.8 stars.",
+        messages: [
+            MessageRecordItem(role: "user", content: "Find a good Japanese restaurant nearby", timestamp: yesterdayDate),
+            MessageRecordItem(role: "assistant", content: "Sushi Sho has great reviews and is open till 10 PM.", timestamp: yesterdayDate)
+        ]
+    ),
+    ConversationSessionRecord(
+        id: "sess_today_1",
+        accountId: "test_acc",
+        title: "Swift Build Script Optimization",
+        createdAt: todayEarlierDate,
+        updatedAt: todayEarlierDate,
+        rollingSummary: "Fixed module cache paths in build-app.sh.",
+        messages: [
+            MessageRecordItem(role: "user", content: "How to fix the Swift compiler module cache?", timestamp: todayEarlierDate),
+            MessageRecordItem(role: "assistant", content: "Add -module-cache-path /tmp/clang_cache to swiftc.", timestamp: todayEarlierDate)
+        ]
+    )
+]
+
+let recallYesterday = episodicMgr.recallPastConversation(query: "what did we talk about yesterday?", sessions: pastSessions)
+assertTrue(recallYesterday.matchedCount >= 1, "Recall found yesterday's session")
+assertTrue(recallYesterday.answer.contains("Japanese Restaurant Recommendation"), "Answer includes yesterday's session title")
+assertTrue(recallYesterday.answer.contains("Sushi Sho"), "Answer includes yesterday's summary")
+
+let recallRestaurant = episodicMgr.recallPastConversation(query: "what was that restaurant I asked about?", sessions: pastSessions)
+assertTrue(recallRestaurant.matchedCount >= 1, "Recall by topic found restaurant session")
+assertTrue(recallRestaurant.answer.contains("Japanese Restaurant Recommendation"), "Topic match returns Japanese Restaurant Recommendation")
+
+let recallEmpty = episodicMgr.recallPastConversation(query: "what did we do last month?", sessions: [])
+assertEqual(recallEmpty.matchedCount, 0, "Empty sessions return 0 matches with polite message")
+
+print("Suite 62: Rolling Session Summaries & Episodic Memory passed successfully.")
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

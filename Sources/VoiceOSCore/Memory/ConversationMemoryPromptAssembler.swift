@@ -46,7 +46,22 @@ public final class ConversationMemoryPromptAssembler: @unchecked Sendable {
             memorySections.append("Relevant Long-Term Facts:\n\(factLines)")
         }
         
-        // 3b. Active Conversation State
+        // 3b. Rolling Session Summary
+        if let sessionSummary = RollingSessionSummaryEngine.shared.getCachedSummary(for: sessionId) {
+            memorySections.append(sessionSummary.promptFormatted())
+        }
+        
+        // 3c. Episodic Memory (Past Conversations)
+        let (window, cleanTopic) = EpisodicMemoryManager.shared.detectTemporalWindow(query: rawUserQuery)
+        if window != .anyTime || (!cleanTopic.isEmpty && (rawUserQuery.lowercased().contains("last time") || rawUserQuery.lowercased().contains("previous") || rawUserQuery.lowercased().contains("we discussed"))) {
+            let allSessions = EncryptedChatHistoryManager.shared.listConversations()
+            let episodicResult = EpisodicMemoryManager.shared.recallPastConversation(query: rawUserQuery, sessions: allSessions)
+            if episodicResult.matchedCount > 0 {
+                memorySections.append("Episodic Memory (Past Conversations):\n\(episodicResult.answer)")
+            }
+        }
+        
+        // 3d. Active Conversation State
         var stateParts: [String] = []
         if let topic = state.currentTopic, !topic.isEmpty {
             stateParts.append("Current Topic: \(topic)")

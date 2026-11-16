@@ -16,7 +16,8 @@
 7. [Web Research, Notes & Knowledge](#7-web-research-notes--knowledge)
 8. [Multi-Step Autonomous Chains](#8-multi-step-autonomous-chains)
 9. [Speak in English, Hindi, or Hinglish](#9-speak-in-english-hindi-or-hinglish)
-10. [Safety & Privacy by Design](#10-safety--privacy-by-design)
+10. [Follow-Ups, Past Chats & Living Memory](#10-follow-ups-past-chats--living-memory)
+11. [Safety & Privacy by Design](#11-safety--privacy-by-design)
 
 ---
 
@@ -168,7 +169,53 @@ Voice.AI’s `HinglishParser` understands natural conversational phrasing:
 
 ---
 
-## 10. Safety & Privacy by Design
+## 10. Follow-Ups, Past Chats & Living Memory
+
+You never have to re-explain context or start from scratch. Voice.AI remembers your previous questions, past sessions, and current workspace state:
+
+### 💬 Natural Follow-Up Questions (Zero Re-Explaining)
+* **1-Based Ordinal Follow-Ups:**
+  * 🗣️ *"Find the quarterly reports on my desktop."*
+  * (Voice.AI lists 3 reports in the Notch)
+  * 🗣️ *"What about the second one?"* or 🗣️ *"Dusra wala open karo"*
+  * Voice.AI automatically opens the second file without asking you to name it.
+* **Pronouns & Demonstratives:**
+  * 🗣️ *"Look up David's email address."*
+  * 🗣️ *"Send that document to him."* or 🗣️ *"Isko David ko bhej do."*
+  * Correctly resolves *"that"* to your active document and *"him"* to David.
+* **Repetition & Action Transfer:**
+  * 🗣️ *"Organize the screenshots on my desktop."*
+  * 🗣️ *"Again."* or 🗣️ *"Wahi dobara karo."*
+  * 🗣️ *"Do the same for Downloads."* (applies the organization verb to your Downloads folder).
+* **Smart Ambiguity Clarification:**
+  * If two files have equal relevance, Voice.AI doesn't guess—it politely asks: *"Did you mean Annual_Report.pdf or Quarterly_Taxes.pdf?"*.
+
+### 🕰️ Past Conversation & Episodic Recall
+Ask about previous conversations across days and weeks:
+* 🗣️ *"What did we talk about yesterday?"* / 🗣️ *"Kal humne kya baat ki thi?"*
+  * Voice.AI summarizes yesterday's topics, key decisions, and open questions.
+* 🗣️ *"What was that Japanese restaurant I asked about last week?"*
+  * Instantly retrieves the name, recommendation, and rating from past sessions.
+* 🗣️ *"Continue where we left off."*
+  * Automatically resumes your last session with full context.
+
+### 🛡️ Truthful Task Ledger ("Did it work?")
+* Voice.AI never hallucinates task success.
+* When you ask: 🗣️ *"Did it work?"* or 🗣️ *"Is the file created?"*, the assistant consults verified disk evidence and exit codes. If an action failed or is still waiting for approval, it tells you honestly.
+
+### 🔒 Living Memory with Explicit Consent & Total Privacy
+* **Consent Gated:** Casual preference statements trigger: *"Do you want me to remember that you prefer dark mode?"*. Nothing permanent is stored without your approval.
+* **Explicit Memory:** 🗣️ *"Remember that my manager is Sarah."* (saved instantly).
+* **Conflict-Free Updates:** Saying 🗣️ *"I moved to New York City"* automatically updates your location without duplicate or conflicting facts.
+* **Complete Control:**
+  * 🗣️ *"What do you remember about me?"* (returns a full audit of your saved preferences).
+  * 🗣️ *"Forget that"* or 🗣️ *"Forget my manager's name"*.
+  * 🗣️ *"Pause memory"* or 🗣️ *"Private mode"* (incognito with zero disk persistence).
+  * All memories are AES-256 encrypted at rest on your Mac with Keychain protection.
+
+---
+
+## 11. Safety & Privacy by Design
 
 * **Zero-Strain on Your Mac:** Claude runs on cloud infrastructure. Your Mac's 16 GB unified RAM stays completely free for your own creative apps, with **zero fan noise and maximum battery life**.
 * **Human-in-the-Loop Confirmation:** High-stakes actions (sending an email, deleting files, posting messages, executing shell commands) display an approval card in the notch. Nothing irreversible happens without your explicit consent.

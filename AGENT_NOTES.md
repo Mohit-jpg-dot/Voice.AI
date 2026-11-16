@@ -129,3 +129,25 @@
 19. GitHub Pages Deployment: `scripts/deploy-gh-pages.sh` syncs CSS tokens, copies `app/` companion, splits `website/` subtree to `gh-pages` branch, and force pushes to origin.
 20. Live Web Distribution: The website serves from `https://mohit-jpg-dot.github.io/Voice.AI/` linking directly to downloads in `website/downloads/`.
 
+## Conversation Memory & Context Architecture Notes (Step 0)
+1. Three overlapping stores exist: `LocalChatMemoryManager` (unencrypted `chat_history.json`), `LocalMemoryManager` (unencrypted `memory.json` / markdown files), and `MemoryStore` (AES-256 encrypted `memory_<hash>.enc` with embeddings), plus session records in `EncryptedChatHistoryManager`.
+2. Plaintext at rest defect: `LocalChatMemoryManager` and `LocalMemoryManager` persist raw chat turns and memory entries in unencrypted JSON files in Application Support, unlike `MemoryStore` and `EncryptedChatHistoryManager`.
+3. Working context window defect: Context assembly uses a hardcoded 8-turn raw message limit (`LocalChatMemoryManager.shared.getRecentContextText(limit: 8)`), lacking model-specific token budgets or rolling summarization of older turns.
+4. Prompt injection vulnerability: `AutonomousAgentExecutor.swift` appends raw memory items directly into the system prompt string rather than encapsulating them as untrusted context data in `<MEMORY_DATA>` delimiters.
+5. Embedding representation defect: `LocalEmbeddingProvider.swift` relies on a 128-dimension deterministic FNV-1a hash vector by default; semantic embeddings via Ollama are disabled (`allowLocalOllamaEmbeddings = false`), and Apple NaturalLanguage sentence embeddings are missing.
+6. Zero follow-up resolution: System has no entity/salience tracking, no result list index memory, no pronoun resolution ("the second one", "send that to David", "isko bhej do"), and no rewrite mechanism for follow-up turns.
+7. Task status decoupling: No task ledger exists; model responses often conflate user requests with verified execution outcomes without verification evidence (exit codes, message IDs, disk paths).
+8. Episodic session recall missing: Past sessions lack structured titles, rolling summaries, and time-scoped episodic search ("what did we talk about yesterday?").
+9. Consent & supersede defect: Memory additions lack explicit user consent gating ("remember ...") and allow duplicate/conflicting facts rather than superseding older values.
+10. Consolidation plan: Build a unified encrypted SQLite database (`ConversationMemoryDatabase.swift`) with FTS5, migrating legacy JSON, enc, and chat records without data loss.
+11. Working context engine: Introduce `WorkingContextManager` enforcing model-specific token budgets (e.g. 1500 tokens for local 3B, 4000+ for cloud) with tool call/result summarization.
+12. Conversation state object: Implement `ConversationState` tracking active topic, entities with decaying salience, 1-based result lists, last actions/outcomes, pending drafts, and active app/window.
+13. Task ledger engine: Implement `TaskLedger` with strictly verified status transitions (`requested`, `inProgress`, `waitingForApproval`, `succeeded`, `failed`, `cancelled`) requiring concrete evidence.
+14. Follow-up resolver: Build `FollowUpResolver` using fast deterministic resolution (indices, pronouns, repetitions, Hindi/Hinglish "wahi dobara karo", "isko bhej do") with fallback disambiguation questions.
+15. Episodic & rolling summaries: Implement `RollingSummaryEngine` generating progressive session summaries linked to raw transcript turns, enabling natural past-session recall.
+16. Hybrid retrieval: Combine SQLite FTS5 full-text keyword search and vector embeddings with recency-weighted scoring for long-term facts and episodic conversations.
+17. Semantic embeddings ladder: Implement Apple `NLEmbedding` sentence embeddings primary, Ollama local model secondary, and 128-dim hash vector fallback.
+18. Prompt assembly contract: Centralize prompt construction outside system prompts, strictly packaging memory inside `<MEMORY_DATA>` with instructions prioritizing user overrides.
+19. Memory privacy controls: Support incognito/private mode (zero disk persistence), memory pause, explicit fact forgetting, and "What do you remember about me?" audits.
+20. Cross-platform parity: Mirror database models, follow-up resolution, and task ledger in `windows/VoiceAI.Core` and verify with comprehensive test suites.
+

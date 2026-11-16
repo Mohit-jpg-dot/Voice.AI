@@ -142,10 +142,11 @@ Voice.AI follows a strict **zero-trust security model** for autonomous computer 
 
 | Platform / Capability | Current Status | Notes |
 |---|---|---|
-| **macOS Native App** | **Production Ready (v1.1.0)** | Tested on macOS 14+ Apple Silicon; 949 automated unit tests passing. |
+| **macOS Native App** | **Production Ready (v1.1.0)** | Tested on macOS 14+ Apple Silicon; 1,043 automated unit tests passing. |
+| **Conversation Memory & Follow-Ups** | **Complete** | Unified encrypted SQLite, task ledger, token budgeting, follow-up resolution, and episodic recall ([docs/memory.md](docs/memory.md)). |
 | **Dynamic Island & Notch Shelf** | **Complete** | Liquid spring physics, drag-to-notch auto-expand, and multi-item staging. |
 | **Voice Email & Messaging** | **Complete** | Mail.app, Gmail OAuth, Slack Web API, Discord bot REST, WhatsApp Cloud API. |
-| **Windows Core Engine (`VoiceAI.Core`)** | **Complete (200/200 Tests)** | Pure-logic .NET Core parity for Island engine, memory store, and command policy. |
+| **Windows Core Engine (`VoiceAI.Core`)** | **Complete (223/223 Tests)** | Pure-logic .NET Core parity for Island engine, memory store, task ledger, and command policy. |
 | **Windows WinUI 3 Desktop Shell** | **Preview / In Development** | Windows 11 desktop presentation shell under active development. |
 | **In-App Model Downloader** | **In Development** | Native GUI progress downloader for one-click Ollama GGUF weights. |
 

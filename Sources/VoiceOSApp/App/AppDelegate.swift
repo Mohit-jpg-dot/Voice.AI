@@ -67,14 +67,25 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             screenSelectionController = ScreenSelectionOverlayController(appState: appState)
         }
 
-        LaunchOrbSplashController.shared.presentAndTransition { [weak self] in
-            guard let self else { return }
+        let splashAlreadyShown = UserDefaults.standard.bool(forKey: "voiceos.launch_splash.completed")
+        if splashAlreadyShown {
             self.appState.isNotchHUDVisible = true
             self.notchHUDController?.positionUnderNotch()
             self.notchHUDController?.window?.orderFrontRegardless()
             self.mainWindow?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             self.triggerProactiveGreeting()
+        } else {
+            LaunchOrbSplashController.shared.presentAndTransition { [weak self] in
+                guard let self else { return }
+                UserDefaults.standard.set(true, forKey: "voiceos.launch_splash.completed")
+                self.appState.isNotchHUDVisible = true
+                self.notchHUDController?.positionUnderNotch()
+                self.notchHUDController?.window?.orderFrontRegardless()
+                self.mainWindow?.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                self.triggerProactiveGreeting()
+            }
         }
         
         // Pre-warm Kokoro worker & Whisper diagnostics off main thread for instant first response
@@ -395,6 +406,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         window.isOpaque = false
         window.backgroundColor = .clear
         window.minSize = NSSize(width: 880, height: 600)
+        window.collectionBehavior = [.fullScreenNone]
         window.delegate = self
         
         let hostingView = NSHostingView(rootView: MainWindowView(appState: appState))

@@ -84,6 +84,7 @@ namespace VoiceAI.Core.Tests
             await TestMessagingConnectors();
             TestNotchShelfLogic();
             TestDynamicIslandEngine();
+            TestConversationMemoryPhase3();
 
             Console.WriteLine("\n=================================================================");
             Console.WriteLine($"Test Run Completed: {_passed} PASSED, {_failed} FAILED");
@@ -1002,6 +1003,88 @@ namespace VoiceAI.Core.Tests
             AssertEqual(center.GetResolvedLeading(center.Activities[0])?.Text, "Secret Contract", "Enabling preview setting unmasks sensitive content");
 
             Console.WriteLine("  ✓ PASS: Dynamic Island Engine Priority, Safety Lanes, and Alert Timing");
+        }
+
+        // -------------------------------------------------------------
+        // Suite 20: Conversation Memory Parity & Follow-Up Tests
+        // -------------------------------------------------------------
+        private static void TestConversationMemoryPhase3()
+        {
+            Console.WriteLine("\n[Suite 20] Conversation Memory Parity, Follow-Ups & Task Ledger");
+
+            // 1. Conversation State & Salience Decay
+            var state = new ConversationStateRecord("test_session_win");
+            state.MentionEntity("Project_Budget.xlsx", EntityKind.File);
+            state.MentionEntity("Alice", EntityKind.Person);
+            AssertEqual(state.Entities.Count, 2, "Windows core tracks mentioned entities");
+            AssertEqual(state.MostSalientEntity()?.Name, "Alice", "Most recently mentioned entity has highest salience");
+
+            state.DecaySalience(0.8);
+            AssertTrue(state.Entities[0].Salience < 1.0, "Salience decays across turns");
+
+            state.SetResultList(new[]
+            {
+                ("Q1_Report.pdf", "/docs/q1.pdf", EntityKind.File),
+                ("Revenue_Analysis.xlsx", "/docs/rev.xlsx", EntityKind.File),
+                ("Summary.txt", "/docs/summary.txt", EntityKind.File)
+            });
+            AssertEqual(state.LastResultList.Count, 3, "Result list populated with 3 items");
+            AssertEqual(state.ItemAtIndex(2)?.Title, "Revenue_Analysis.xlsx", "1-based index 2 retrieves Revenue_Analysis.xlsx");
+
+            // 2. FollowUpResolver (Index, Pronouns, Hinglish, Repetition)
+            var resolver = FollowUpResolver.Shared;
+            var resIndex = resolver.Resolve("what about the second one?", state);
+            AssertTrue(resIndex.WasRewritten, "Follow-up 'the second one' was rewritten");
+            AssertTrue(resIndex.RewrittenText.Contains("Revenue_Analysis.xlsx"), "Rewritten text resolved to Revenue_Analysis.xlsx");
+
+            var resHinglish = resolver.Resolve("dusra wala open karo", state);
+            AssertTrue(resHinglish.WasRewritten, "Hinglish 'dusra wala' was rewritten");
+            AssertTrue(resHinglish.RewrittenText.Contains("Revenue_Analysis.xlsx"), "Hinglish index resolved to Revenue_Analysis.xlsx");
+
+            var resPronoun = resolver.Resolve("send that to David", state);
+            AssertTrue(resPronoun.WasRewritten, "Pronoun 'that' was rewritten");
+            AssertTrue(resPronoun.RewrittenText.Contains("Q1_Report.pdf"), "Pronoun 'that' resolved to top result");
+
+            state.LastActionTool = "organize_folder";
+            state.LastActionTarget = "Downloads";
+            state.LastActionSuccess = true;
+
+            var resAgain = resolver.Resolve("wahi dobara karo", state);
+            AssertTrue(resAgain.WasRewritten, "Repetition 'wahi dobara karo' resolved to last tool action");
+            AssertTrue(resAgain.RewrittenText.Contains("organize_folder"), "Repetition calls organize_folder");
+
+            var resAnalogy = resolver.Resolve("do the same for Desktop", state);
+            AssertTrue(resAnalogy.WasRewritten, "Analogy 'do the same for Desktop' was rewritten");
+            AssertEqual(resAnalogy.RewrittenText, "organize_folder for Desktop", "Analogy applied last action to Desktop");
+
+            // 3. Task Ledger (Truthful Execution & Status)
+            var ledger = TaskLedger.Shared;
+            ledger.Clear();
+            var task = ledger.RecordRequested("session_win", "export data to csv", "export_csv()");
+            AssertEqual(task.Status, TaskLedgerStatus.Requested, "Initial task status is Requested");
+
+            ledger.RecordStatus(task.Id, TaskLedgerStatus.Succeeded, "Exit code 0, 1024 bytes written");
+            string ledgerPrompt = ledger.FormatForPrompt("session_win");
+            AssertTrue(ledgerPrompt.Contains("User requested: \"export data to csv\""), "Ledger prompt states user request");
+            AssertTrue(ledgerPrompt.Contains("Verified outcome: SUCCESS. Evidence: Exit code 0"), "Ledger prompt states verified outcome honestly");
+
+            // 4. Hybrid Search & Consent Gating
+            var searcher = HybridMemorySearcher.Shared;
+            searcher.AutoRememberSimplePreferences = false;
+            bool saved = false;
+            var proposal = searcher.ProposeFact("I prefer tea over coffee", () => saved = true);
+            AssertTrue(!proposal.savedImmediately, "Preference is not saved immediately without consent when auto-remember is OFF");
+            AssertTrue(proposal.prompt != null && proposal.prompt.Contains("Do you want me to remember that"), "Returns consent prompt");
+
+            var confirmed = searcher.ResolveConsent(true, () => saved = true);
+            AssertTrue(confirmed.confirmed, "Affirmative user response confirms fact");
+            AssertTrue(saved, "Fact saved upon explicit consent");
+
+            double scoreHigh = searcher.CalculateHybridScore(0.9, 0.85, DateTime.UtcNow);
+            double scoreLow = searcher.CalculateHybridScore(0.1, 0.2, DateTime.UtcNow.AddDays(-60));
+            AssertTrue(scoreHigh > scoreLow, "Hybrid scoring prioritizes high keyword, semantic similarity, and recency");
+
+            Console.WriteLine("  ✓ PASS: Conversation Memory Parity, Follow-Ups, Task Ledger, and Hybrid Search");
         }
     }
 }

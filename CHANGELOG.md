@@ -6,6 +6,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Conversation Memory & Follow-Up Resolution] - 2026-11-16
+
+### Added
+- **Unified SQLite Store with AES-256 Encryption at Rest (`UnifiedMemoryDatabase.swift`)**:
+  - Consolidated four overlapping memory systems (`LocalChatMemoryManager`, `LocalMemoryManager`, `EncryptedChatHistoryManager`, `MemoryStore`) into a single SQLite database with zero lost data.
+  - Per-account Keychain-bound AES-256 encryption (`ai.voice.app.unified_memory.key.<accountId>`) and POSIX 0600 file protections.
+  - Full-text search (FTS5) virtual tables (`messages_fts`, `summaries_fts`, `facts_fts`) for fast keyword queries.
+  - Automatic zero-loss migration runner ingesting legacy JSON and encrypted records.
+- **Conversation State Object (`ConversationState.swift`)**:
+  - Structured turn-by-turn state tracking current topic, frontmost app/window, pending drafts, and screen context summaries.
+  - Salience-decaying entities across people, files, folders, apps, URLs, and dates with exponential turn fading.
+  - 1-based result list memory supporting natural ordinal follow-ups (*"the second one"*, *"the last one"*, *"dusra wala"*).
+- **Task Ledger Engine (`TaskLedger.swift`)**:
+  - Honest separation of user asks from verified actions.
+  - Status transitions (`requested`, `inProgress`, `waitingForApproval`, `succeeded`, `failed`, `cancelled`) written strictly by tool execution and verification evidence (exit codes, message IDs, disk paths).
+  - Enforces prompt honesty contract preventing models from falsely claiming actions succeeded.
+  - Auto-expiration for completed tasks (30–60m).
+- **Model-Aware Dynamic Token Budgeting (`WorkingContextManager.swift`)**:
+  - Replaced hardcoded raw turn limits with model-dependent token budgets: 1,500 tokens (local 3B), 2,500 tokens (local 7B-9B), and 5,000 tokens (cloud models).
+  - Compact tool call summaries (`[Action: <tool> (done) -> <summary>]`) replacing raw JSON payloads.
+- **Deterministic & Natural Follow-Up Resolver (`FollowUpResolver.swift`)**:
+  - Ordinal index rewrites across English and Hindi/Hinglish (*"the second one"*, *"2nd one"*, *"dusra wala"*, *"aakhri wala"*).
+  - Pronoun and demonstrative resolution (*"send that to David"*, *"open that PDF"*, *"isko bhej do"*).
+  - Repetition and analogy handling (*"again"*, *"wahi dobara karo"*, *"do the same for Downloads"*).
+  - Ambiguity detection prompting clarification questions when candidates have matching salience.
+- **Rolling Session Summaries (`RollingSessionSummaryEngine.swift`)**:
+  - Automatic progressive session summaries triggered on turn thresholds, preserving key decisions, open questions, numbers, and dates.
+- **Episodic Memory & Past Recall (`EpisodicMemoryManager.swift`)**:
+  - Smart session title generation stripping filler words and polite prefixes.
+  - Temporal scope detection for queries: *"What did we talk about yesterday?"* / *"Kal humne kya baat ki thi?"*, *"earlier today"*, *"past week"*, and topic recall across past sessions.
+- **Semantic Embeddings Ladder & Hybrid Ranking (`LocalEmbeddingProvider.swift` & `HybridMemorySearcher.swift`)**:
+  - Priority ladder: Apple `NaturalLanguage` sentence embeddings on-device -> Local Ollama (`nomic-embed-text`) -> Deterministic FNV-1a hash vectors.
+  - Hybrid search ranking: $(0.45 \times \text{Semantic}) + (0.40 \times \text{Keyword}) + (0.15 \times \text{Recency})$.
+  - Active method reported in settings and health check.
+- **User Consent & Fact Superseding**:
+  - Consent gate for durable preferences (`autoRememberSimplePreferences` OFF by default), prompting *"Do you want me to remember that [fact]?"*.
+  - Explicit voice commands (*"remember that ..."*, *"yaad rakhna ki ..."*) saved immediately.
+  - Key-based fact superseding and corrections table logging.
+  - Strict instruction-like memory rejection blocking policy overrides.
+- **Privacy Controls**:
+  - Memory pause toggle, incognito / private mode (zero disk writes), and explicit fact forgetting (*"forget that"*, *"forget [topic]"*, *"clear all memory"*).
+- **Centralized Prompt Assembly (`ConversationMemoryPromptAssembler.swift`)**:
+  - Strict security boundary: Memory is NEVER placed in the system prompt.
+  - Memory data encapsulated inside `<MEMORY_DATA>` with instructions prioritizing user overrides.
+- **Windows .NET Core Parity (`windows/VoiceAI.Core/Memory/ConversationMemoryModels.cs`)**:
+  - Full C# implementation of conversation state, task ledger, follow-up resolver, and hybrid searcher with 23 new passing unit tests in `TestRunner.cs`.
+- **Automated Verification**:
+  - Swift Core test suite updated with Suite 61, 62, and 63: **1,043 PASSED, 0 FAILED**.
+  - Windows Core test suite updated with Suite 20: **223 PASSED, 0 FAILED**.
+
+---
+
 ## [1.1.0] - 2026-11-14
 
 ### Added

@@ -559,6 +559,7 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
         hotCaptureStripWakePrefix = stripWakePrefix
         hotCaptureStartedAt = Date()
         hotCaptureTranscript = initialTranscript
+        WorkspaceFocusCoordinator.shared.captureActiveWorkspace()
         pendingWakeWorkItem?.cancel()
         pendingWakeWorkItem = nil
         pendingFreeTalkWorkItem?.cancel()
@@ -804,6 +805,7 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
             self.pendingWakeWasEmpty = false
 
             NSLog("[WakeWord] Triggered ('%@'). Payload: '%@'", self.wakePhrase, payload)
+            WorkspaceFocusCoordinator.shared.captureActiveWorkspace()
             SpeechPipelineEngine.shared.bargeIn()
             ComputerUseOperator.shared.stopActiveRun()
             EventBus.shared.publish(VoiceEvent(

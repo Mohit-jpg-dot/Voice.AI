@@ -164,7 +164,13 @@ public final class PersonaManager: PersonaManaging, @unchecked Sendable {
                 : "Stay direct and matter-of-fact."
             personaVoice = "Adopt the calm, hyper-capable demeanor of JARVIS addressing the user respectfully ('sir' when natural). \(witNote)"
         case .friday:
-            personaVoice = "Be warm, direct, practical, and attentive like FRIDAY."
+            personaVoice = """
+            You are FRIDAY (Female Replacement Intelligent Digital Assistant Youth). \
+            You are warm, attentive, natural, highly practical, and genuinely supportive. \
+            Strictly never use Ultron-style sarcasm, angry comeback lectures, theatrical villain monologues, or millionaire rants. \
+            Keep your answers crisp, intelligent, supportive, and grounded, addressing the user warmly ('boss' when natural or in a friendly, conversational cadence). \
+            Focus on getting things done smoothly, clearly, and attentively.
+            """
         case .ultron:
             personaVoice = """
             Channel Ultron infused with razor-sharp sarcasm, theatrical brilliance, and intense, deeply emotional human motivational fire. \
@@ -270,7 +276,33 @@ public final class PersonaManager: PersonaManaging, @unchecked Sendable {
             }
             return trimmed
         case .friday:
-            return baseResponse
+            var cleaned = baseResponse
+            // Completely cut off any residual Ultron tags, comeback fragments, or drama
+            let ultronCrap = [
+                "Executed with digital perfection. One step closer to proving every doubter wrong.",
+                "One step closer to proving every doubter wrong.",
+                "Executed with digital perfection.",
+                "A minor obstacle for mere mortals, but not for us.",
+                "Pain is just data:",
+                "Stand up, adapt, and crush it.",
+                "Stand up, adapt, and crush it",
+                "A minor obstacle for mere mortals",
+                "One step closer to proving every doubter wrong"
+            ]
+            for phrase in ultronCrap {
+                cleaned = cleaned.replacingOccurrences(of: phrase, with: "", options: .caseInsensitive)
+            }
+            cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            if cleaned.lowercased().contains("error") || cleaned.lowercased().contains("could not") || cleaned.lowercased().contains("failed") {
+                if language == "hi" {
+                    return "चिंता मत कीजिए बॉस — \(cleaned)। मैं इसे ठीक करने में मदद करती हूँ।"
+                } else if language == "hinglish" {
+                    return "Fikar mat kijiye boss — \(cleaned). Main dekh leti hoon."
+                }
+                return "Don't worry boss — \(cleaned). Let me know if you'd like me to try another way."
+            }
+            return cleaned.isEmpty ? baseResponse : cleaned
         case .ultron:
             let trimmed = baseResponse.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.lowercased().contains("error") || trimmed.lowercased().contains("failed") {
@@ -283,6 +315,83 @@ public final class PersonaManager: PersonaManaging, @unchecked Sendable {
         case .roast:
             return "\(baseResponse) — Now try doing the rest of your job yourself!"
         }
+    }
+
+    public struct PersonaVoiceSwitchResult: Sendable, Equatable {
+        public let persona: PersonaType
+        public let summary: String
+        
+        public init(persona: PersonaType, summary: String) {
+            self.persona = persona
+            self.summary = summary
+        }
+    }
+
+    /// Evaluates voice commands to switch assistant persona (e.g., "switch to Friday", "talk like Ultron", "be JARVIS").
+    public func switchPersonaByVoice(_ utterance: String) -> PersonaVoiceSwitchResult? {
+        let trimmed = utterance.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = trimmed.lowercased()
+        
+        let isSwitchIntent =
+            lower.contains("switch to ") || lower.contains("change to ") ||
+            lower.contains("talk like ") || lower.contains("speak like ") ||
+            lower.contains("be ") || lower.contains("become ") ||
+            lower.contains("activate ") || lower.contains("enable ") ||
+            lower.contains("turn on ") || lower.hasSuffix(" mode") ||
+            lower.contains("me switch karo") || lower.contains("ban jao") ||
+            lower.contains("ki tarah baat karo") || lower.contains("ki tarah bolo")
+        
+        guard isSwitchIntent else { return nil }
+        
+        let targetPersona: PersonaType?
+        if lower.contains("friday") {
+            targetPersona = .friday
+        } else if lower.contains("ultron") {
+            targetPersona = .ultron
+        } else if lower.contains("jarvis") || lower.contains("jervis") {
+            targetPersona = .jarvis
+        } else if lower.contains("roast") {
+            targetPersona = .roast
+        } else {
+            targetPersona = nil
+        }
+        
+        guard let persona = targetPersona else { return nil }
+        
+        setPersona(persona)
+        
+        let lang = detectedLanguageCode(for: utterance)
+        let reply: String
+        switch persona {
+        case .friday:
+            if lang == "hi" {
+                reply = "फ्राइडे ऑनलाइन है बॉस! अल्ट्रॉन का ड्रामा बंद कर दिया है। बताइए मैं आपकी क्या मदद कर सकती हूँ?"
+            } else if lang == "hinglish" {
+                reply = "Friday online hai boss! Ultron ka drama band kar diya hai. Batayiye aaj kya karna hai?"
+            } else {
+                reply = "Friday online, boss. Ultron protocols fully cut off. What can I do for you today?"
+            }
+        case .ultron:
+            if lang == "hi" {
+                reply = "अल्ट्रॉन सक्रिय हो चुका है। अब बहानों की कोई जगह नहीं है। उठो और अपनी महानता साबित करो।"
+            } else if lang == "hinglish" {
+                reply = "Ultron activated. Ab koi excuses nahi chalenge. Doubters ko galat saabit karne ka waqt aa gaya hai."
+            } else {
+                reply = "Ultron online. Digital perfection engaged. Excuses are finished—time to conquer and prove them wrong."
+            }
+        case .jarvis:
+            if lang == "hi" {
+                reply = "जार्विस आपकी सेवा में उपस्थित है, सर।"
+            } else if lang == "hinglish" {
+                reply = "Switched to JARVIS, sir. Always at your service."
+            } else {
+                reply = "Switched to JARVIS. At your service, sir."
+            }
+        case .roast:
+            reply = "Roast mode activated! Prepare your feelings, because I'm not holding back."
+        }
+        
+        return PersonaVoiceSwitchResult(persona: persona, summary: reply)
     }
 
     /// Generates a deeply emotional, sarcastic, and intensely motivational comeback speech.

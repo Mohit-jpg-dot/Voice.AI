@@ -150,6 +150,8 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                 if targetApp.isEmpty {
                     if let current = NowPlayingMediaManager.shared.currentMedia {
                         targetApp = current.source == .youtube ? "YouTube" : (current.source == .appleMusic ? "Music" : "Spotify")
+                    } else if let dynamicApp = WorkspaceFocusCoordinator.shared.dynamicallyResolveRunningMediaPlayer() {
+                        targetApp = dynamicApp
                     } else {
                         targetApp = "Spotify"
                     }
@@ -200,7 +202,8 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                     )
                 }
 
-                let success = AccessibilityControlEngine.shared.controlMedia(app: targetApp, action: action, query: query)
+                let effectiveBackground = WorkspaceFocusCoordinator.shared.shouldRunInBackgroundPreservingFocus()
+                let success = AccessibilityControlEngine.shared.controlMedia(app: targetApp, action: action, query: query, inBackground: effectiveBackground)
                 let trackInfo = AccessibilityControlEngine.shared.verifyMediaPlaybackState(app: targetApp)
                 let trackSummary: String
                 switch action {
@@ -214,13 +217,17 @@ public final class AgentActionDispatcher: @unchecked Sendable {
                     if !success {
                         trackSummary = "Could not press play on \(targetApp). Make sure the window is open or Accessibility permission is enabled."
                     } else if let track = trackInfo.track {
-                        trackSummary = "Now playing: \(track)"
+                        trackSummary = effectiveBackground
+                            ? "Now playing in the background: \(track)"
+                            : "Now playing: \(track)"
                     } else if let query = query {
-                        trackSummary = "Playing \"\(query)\" on \(targetApp)"
+                        trackSummary = effectiveBackground
+                            ? "Playing \"\(query)\" in the background on \(targetApp)"
+                            : "Playing \"\(query)\" on \(targetApp)"
                     } else {
                         trackSummary = usedScreenContext
                             ? "Pressed play on \(targetApp) using current screen context."
-                            : "Playing on \(targetApp)"
+                            : (effectiveBackground ? "Playing in the background on \(targetApp)" : "Playing on \(targetApp)")
                     }
                 }
                 return DispatchedActionResult(
@@ -317,7 +324,19 @@ public final class AgentActionDispatcher: @unchecked Sendable {
             case .openUrl(let urlStr, let browser):
                 if let url = URL(string: urlStr) {
                     BrowserTabPoolManager.shared.recordQueryActivity(for: url)
-                    if let browser = browser {
+                    let effectiveBackground = WorkspaceFocusCoordinator.shared.shouldRunInBackgroundPreservingFocus()
+                    if effectiveBackground {
+                        let proc = Process()
+                        proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                        if let browser = browser {
+                            proc.arguments = ["-g", "-a", browser, urlStr]
+                        } else {
+                            proc.arguments = ["-g", urlStr]
+                        }
+                        try? proc.run()
+                        WorkspaceFocusCoordinator.shared.restoreActiveWorkspaceFocus()
+                        WorkspaceFocusCoordinator.shared.scheduleFocusGuard(delay: 0.3)
+                    } else if let browser = browser {
                         let proc = Process()
                         proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
                         proc.arguments = ["-a", browser, urlStr]
@@ -1107,10 +1126,11 @@ public final class AgentActionDispatcher: @unchecked Sendable {
         return nil
     }
 
-    private func openApplication(named appName: String) -> DispatchedActionResult {
+    public func openApplication(named appName: String, inBackground: Bool? = nil) -> DispatchedActionResult {
         let ws = NSWorkspace.shared
         let isDryOrTest = ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" ||
                           ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1"
+        let effectiveBackground = inBackground ?? WorkspaceFocusCoordinator.shared.shouldRunInBackgroundPreservingFocus()
 
         if let resolved = resolveApplication(named: appName) {
             if resolved.name == "Google Chrome" || resolved.name == "Safari" {
@@ -1118,18 +1138,29 @@ public final class AgentActionDispatcher: @unchecked Sendable {
             }
             if !isDryOrTest {
                 let config = NSWorkspace.OpenConfiguration()
-                config.activates = true
+                config.activates = !effectiveBackground
+                config.addsToRecentItems = true
                 ws.openApplication(at: resolved.url, configuration: config, completionHandler: nil)
 
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-                process.arguments = ["-a", resolved.name]
+                process.arguments = effectiveBackground ? ["-g", "-a", resolved.name] : ["-a", resolved.name]
                 try? process.run()
             }
+            if effectiveBackground {
+                WorkspaceFocusCoordinator.shared.restoreActiveWorkspaceFocus()
+                WorkspaceFocusCoordinator.shared.scheduleFocusGuard(delay: 0.3)
+            }
             let verified = isDryOrTest || AccessibilityControlEngine.shared.verifyAppRunningAndFrontmost(named: resolved.name, timeout: 1.0)
+            let summaryText: String
+            if effectiveBackground {
+                summaryText = "Opened \(resolved.name) in the background so your workflow is not interrupted."
+            } else {
+                summaryText = verified ? "Opened \(resolved.name) on your Mac." : "Opening \(resolved.name)..."
+            }
             return DispatchedActionResult(
                 success: true,
-                summary: verified ? "Opened \(resolved.name) on your Mac." : "Opening \(resolved.name)...",
+                summary: summaryText,
                 appName: resolved.name,
                 deepLinkURL: resolved.url
             )
@@ -1138,19 +1169,26 @@ public final class AgentActionDispatcher: @unchecked Sendable {
         // Known standard desktop apps that might only live in user Applications or alternate locations in CI
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = ["-a", appName]
+        process.arguments = effectiveBackground ? ["-g", "-a", appName] : ["-a", appName]
         let pipe = Pipe()
         process.standardError = pipe
         do {
             try process.run()
             process.waitUntilExit()
+            if effectiveBackground {
+                WorkspaceFocusCoordinator.shared.restoreActiveWorkspaceFocus()
+                WorkspaceFocusCoordinator.shared.scheduleFocusGuard(delay: 0.3)
+            }
             if process.terminationStatus == 0 {
                 if appName == "Google Chrome" || appName == "Safari" {
                     ConversationSessionContext.shared.setActiveBrowser(appName)
                 }
+                let summaryText = effectiveBackground ?
+                    "Opened \(appName) in the background so your workflow is not interrupted." :
+                    "Opened \(appName) on your Mac."
                 return DispatchedActionResult(
                     success: true,
-                    summary: "Opened \(appName) on your Mac.",
+                    summary: summaryText,
                     appName: appName
                 )
             }

@@ -164,6 +164,10 @@ public final class NotchHUDWindowController: NSWindowController {
                 
                 switch state {
                 case .resting:
+                    if !self.appState.isTypingFocused && self.appState.activeEmailDraft == nil {
+                        panel.allowsKeyFocus = false
+                        panel.resignKey()
+                    }
                     isClosed = !self.appState.isMediaExpanded
                     if self.appState.isNotchMediaDisplayEnabled && self.appState.isMediaExpanded {
                         visibleWidth = 480.0
@@ -176,6 +180,10 @@ public final class NotchHUDWindowController: NSWindowController {
                         visibleHeight = Self.calculateClosedNotchHeight(for: screen)
                     }
                 case .voiceCompact:
+                    if !self.appState.isTypingFocused {
+                        panel.allowsKeyFocus = false
+                        panel.resignKey()
+                    }
                     isClosed = false
                     let count = self.appState.currentTranscript.count
                     visibleWidth = count > 60 ? 560.0 : 480.0

@@ -273,8 +273,10 @@ Voice.AI features a modular multi-tier Text-to-Speech (TTS) engine:
 * **macOS System Synthesizer (`AVSpeechSynthesizer`):** High-efficiency fallback for all locales including Hindi (`hi-IN`).
 * **Persona & Emotional Dynamics (`PersonaManager.swift`):**
   * **Ultron Comeback Fire:** Infused with razor-sharp sarcasm, millionaire ambition prompts, and raw human motivational comeback monologues reminding users of their struggles, doubters, and peak potential.
+  * **FRIDAY Persona & Instant Ultron Cutoff:**
+    * Switch via voice: *"switch to friday"*, *"talk like friday"*, *"be friday"*, *"friday mode"*, or in Hinglish (*"friday ban jao"*, *"friday ki tarah baat karo"*), or through the Settings persona selector.
+    * Completely cuts off all Ultron sarcasm, anger monologues, and doubter perfection tags, immediately adopting a warm, grounded, supportive, and respectful tone (*"Right away, boss"*).
   * **JARVIS:** British butler wit and polite risk cautions.
-  * **FRIDAY:** Warm, supportive, and direct.
   * **Roast Mode:** Playful banter with safety guardrails.
 
 ---
@@ -296,4 +298,23 @@ Local LLMs (e.g. Ollama Llama-3.2, Mistral, Qwen) traditionally suffer from fixe
 * **Tool Integration & UI Controls:**
   * Exposes the `web_search_live` read-only tool in `ToolRegistry.swift`.
   * Dedicated toggle in **Settings → AI Models & Providers** (`voiceos.live_internet_superpower_enabled`) to enable or disable internet grounding at any time.
+
+---
+
+## 13. Non-Interruptive Background Multitasking & Workspace Focus Preservation (`WorkspaceFocusCoordinator.swift`)
+
+A hallmark of desktop AI capability is multitasking without interrupting the user's manual physical work. Voice.AI implements dynamic, system-level workspace focus preservation:
+
+* **Zero Hardcoded Applications:**
+  * No hardcoded list of IDEs or editors (`NSWorkspace.shared.frontmostApplication` is dynamically inspected).
+  * Any active interactive regular GUI application (e.g., VS Code, Xcode, JetBrains, Terminal, ChatGPT, Claude, Cursor, Obsidian, Figma, Notion) is recognized as the user's active workspace.
+* **Focus Theft Prevention:**
+  * When a voice command is triggered while typing or working in an active application, Voice.AI preserves frontmost workspace ownership.
+  * Ambient listening and speech processing run strictly with `panel.allowsKeyFocus = false`, ensuring keystrokes are never intercepted or diverted away from the editor.
+* **Headless & Background App Execution:**
+  * Background app launching: uses `NSWorkspace.OpenConfiguration.activates = false` and LaunchServices `/usr/bin/open -g -a <AppName>` (`-g` prevents bringing the app to the foreground).
+  * Headless Media Control: controls Spotify, Apple Music, and YouTube playback entirely through non-activating AppleScript commands—omitting `activate` and frontmost-stealing window scripts so music starts playing without window popups.
+* **Focus Guard Restoration:**
+  * If an asynchronous macOS event or external daemon momentarily steals focus, `WorkspaceFocusCoordinator.shared.restoreActiveWorkspaceFocus()` immediately reactivates the user's active workspace (`.activateIgnoringOtherApps`), ensuring continuous typing without a single dropped keystroke.
+
 

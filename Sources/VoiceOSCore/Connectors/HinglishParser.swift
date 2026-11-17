@@ -46,7 +46,8 @@ public enum HinglishParser {
             "likh do", "likho", "batao", "dikhao", "dhoondo", "karo", "namaste", "shukriya",
             "dhanyawad", "sab badhiya", "tum kaun", "aap kaun", "mausam", "naya tab", "whatsapp",
             "open karo", "chalu karo", "chala do", "badhao", "ghatao", "yaad rakhna", "bhool jao",
-            "darwaza", "jalao", "bujhao", "padho", "bhejo", "meri health", "suraksha", "cad banao", "agents chala"
+            "darwaza", "jalao", "bujhao", "padho", "bhejo", "meri health", "suraksha", "cad banao", "agents chala",
+            "ban jao", "baat karo", "switch karo", "bolo"
         ]
         return hinglishMarkers.contains { lower.contains($0) }
     }

@@ -464,13 +464,15 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
         onPartialReply: (@Sendable (String) -> Void)? = nil,
         onProgress: (@Sendable (String) -> Void)? = nil
     ) async -> AutonomousExecutionResult {
-        let result = await executePlanCore(
-            taskDescription: taskDescription,
-            triggerMode: triggerMode,
-            screenCrop: screenCrop,
-            onPartialReply: onPartialReply,
-            onProgress: onProgress
-        )
+        let result = await WorkspaceFocusCoordinator.shared.performPreservingActiveWorkspace {
+            await executePlanCore(
+                taskDescription: taskDescription,
+                triggerMode: triggerMode,
+                screenCrop: screenCrop,
+                onPartialReply: onPartialReply,
+                onProgress: onProgress
+            )
+        }
         let cleanedInput = AgentToolParser.stripCasualPrefix(taskDescription)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if !cleanedInput.isEmpty && !result.summary.isEmpty && !Self.isSelfQuitCommand(cleanedInput) {
@@ -832,6 +834,25 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
             let routineRes = await RoutineManager.shared.runRoutine(matchedRoutine, onProgress: onProgress)
             await MemoryStore.shared.remember(content: "Ran routine '\(matchedRoutine.name)'", scope: .shortTerm, kind: .turn, tags: ["routine"])
             return routineRes
+        }
+
+        // -------------------------------------------------------------
+        // Step -0.45: Voice-Controlled AI Persona Switching ("switch to Friday", "be Ultron", "talk like JARVIS")
+        // -------------------------------------------------------------
+        if let personaSwitch = PersonaManager.shared.switchPersonaByVoice(trimmed) {
+            await MemoryStore.shared.remember(
+                content: "Switched persona: \(personaSwitch.summary)",
+                scope: .shortTerm,
+                kind: .turn,
+                tags: ["persona_switch", personaSwitch.persona.rawValue]
+            )
+            return AutonomousExecutionResult(
+                success: true,
+                summary: personaSwitch.summary,
+                targetAppName: "Persona (\(personaSwitch.persona.rawValue))",
+                targetURL: nil,
+                executedSteps: ["Switched active persona to \(personaSwitch.persona.rawValue)"]
+            )
         }
 
         // -------------------------------------------------------------

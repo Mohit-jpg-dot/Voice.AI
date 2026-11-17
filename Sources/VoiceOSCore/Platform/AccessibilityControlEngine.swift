@@ -21,12 +21,19 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
     
     // MARK: - Layer 1: Native macOS APIs & Scripting
     
-    public func launchApp(named appName: String) -> Bool {
+    public func launchApp(named appName: String, inBackground: Bool? = nil) -> Bool {
+        if ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" ||
+           ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1" {
+            return true
+        }
+        let effectiveBackground = inBackground ?? WorkspaceFocusCoordinator.shared.shouldRunInBackgroundPreservingFocus()
+        
         // 1. Try NSWorkspace openApplication with explicit bundle lookup
         if let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: appName) ??
                         findApplicationUrl(named: appName) {
             let config = NSWorkspace.OpenConfiguration()
-            config.activates = true
+            config.activates = !effectiveBackground
+            config.addsToRecentItems = true
             var opened = false
             let sema = DispatchSemaphore(value: 0)
             
@@ -35,15 +42,25 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                 sema.signal()
             }
             _ = sema.wait(timeout: .now() + 1.2)
-            if opened { return true }
+            if opened {
+                if effectiveBackground {
+                    WorkspaceFocusCoordinator.shared.restoreActiveWorkspaceFocus()
+                    WorkspaceFocusCoordinator.shared.scheduleFocusGuard(delay: 0.3)
+                }
+                return true
+            }
         }
         
-        // 2. LaunchServices CLI fallback via /usr/bin/open -a
+        // 2. LaunchServices CLI fallback via /usr/bin/open
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = ["-a", appName]
+        process.arguments = effectiveBackground ? ["-g", "-a", appName] : ["-a", appName]
         try? process.run()
         process.waitUntilExit()
+        if effectiveBackground {
+            WorkspaceFocusCoordinator.shared.restoreActiveWorkspaceFocus()
+            WorkspaceFocusCoordinator.shared.scheduleFocusGuard(delay: 0.3)
+        }
         return process.terminationStatus == 0
     }
     
@@ -158,12 +175,27 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
     
     // MARK: - Media Controls (Spotify / YouTube / Apple Music)
     
-    public func controlMedia(app: String = "Spotify", action: String, query: String? = nil) -> Bool {
+    public func controlMedia(app: String = "Spotify", action: String, query: String? = nil, inBackground: Bool? = nil) -> Bool {
+        if ProcessInfo.processInfo.environment["VOICE_AI_DRY_RUN"] == "1" ||
+           ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] == "1" {
+            return true
+        }
+        let effectiveBackground = inBackground ?? WorkspaceFocusCoordinator.shared.shouldRunInBackgroundPreservingFocus()
+        
         if app.lowercased().contains("youtube") || app.lowercased().contains("video") {
             if let q = query, !q.isEmpty, action == "play" {
                 let encoded = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
                 if let url = URL(string: "https://www.youtube.com/results?search_query=\(encoded)") {
-                    NSWorkspace.shared.open(url)
+                    if effectiveBackground {
+                        let process = Process()
+                        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                        process.arguments = ["-g", url.absoluteString]
+                        try? process.run()
+                        WorkspaceFocusCoordinator.shared.restoreActiveWorkspaceFocus()
+                        WorkspaceFocusCoordinator.shared.scheduleFocusGuard(delay: 0.3)
+                    } else {
+                        NSWorkspace.shared.open(url)
+                    }
                 }
                 return true
             }
@@ -179,7 +211,7 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
             $0.localizedName?.lowercased() == targetApp.lowercased()
         }
         if !isRunning {
-            _ = launchApp(named: targetApp)
+            _ = launchApp(named: targetApp, inBackground: effectiveBackground)
             Thread.sleep(forTimeInterval: 0.8)
         }
         
@@ -189,9 +221,10 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
             let script: String
             if targetApp == "Spotify" {
                 if isGeneric {
+                    let activateCmd = effectiveBackground ? "" : "activate"
                     script = """
                     tell application "Spotify"
-                        activate
+                        \(activateCmd)
                         try
                             if player state is paused then
                                 play
@@ -207,43 +240,61 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                     """
                 } else {
                     let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
-                    script = """
-                    tell application "Spotify"
-                        activate
-                        open location "spotify:search:\(encoded)"
-                    end tell
-                    delay 0.8
-                    tell application "System Events"
-                        tell process "Spotify"
-                            set frontmost to true
+                    if effectiveBackground {
+                        // Background playback: headless control via Spotify AppleScript URI without stealing frontmost focus
+                        script = """
+                        tell application "Spotify"
                             try
-                                -- Commit search
-                                key code 36
-                                delay 0.2
-                                -- Focus and select top result track
-                                key code 125
-                                delay 0.1
-                                -- Play selected track
-                                key code 36
-                                delay 0.2
+                                play track "spotify:search:\(encoded)"
                             on error
-                                key code 49
+                                try
+                                    open location "spotify:search:\(encoded)"
+                                    delay 0.5
+                                    play
+                                end try
                             end try
                         end tell
-                    end tell
-                    tell application "Spotify"
-                        try
-                            if player state is not playing then
-                                play
-                            end if
-                        end try
-                    end tell
-                    """
+                        """
+                    } else {
+                        script = """
+                        tell application "Spotify"
+                            activate
+                            open location "spotify:search:\(encoded)"
+                        end tell
+                        delay 0.8
+                        tell application "System Events"
+                            tell process "Spotify"
+                                set frontmost to true
+                                try
+                                    -- Commit search
+                                    key code 36
+                                    delay 0.2
+                                    -- Focus and select top result track
+                                    key code 125
+                                    delay 0.1
+                                    -- Play selected track
+                                    key code 36
+                                    delay 0.2
+                                on error
+                                    key code 49
+                                end try
+                            end tell
+                        end tell
+                        tell application "Spotify"
+                            try
+                                if player state is not playing then
+                                    play
+                                end if
+                            end try
+                        end tell
+                        """
+                    }
                 }
             } else {
+                let activateCmd = effectiveBackground ? "" : "activate"
                 script = """
                 tell application "Music"
-                    activate
+                    \(activateCmd)
                     try
                         play playlist "\(query)"
                     on error
@@ -253,6 +304,10 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
                 """
             }
             let res = executeAppleScript(script).success
+            if effectiveBackground {
+                WorkspaceFocusCoordinator.shared.restoreActiveWorkspaceFocus()
+                WorkspaceFocusCoordinator.shared.scheduleFocusGuard(delay: 0.3)
+            }
             NowPlayingMediaManager.shared.pollMediaState()
             return res
         }
@@ -295,14 +350,19 @@ public final class AccessibilityControlEngine: @unchecked Sendable {
             end tell
             """
         } else {
+            let activateCmd = effectiveBackground ? "" : "activate"
             script = """
             tell application "\(targetApp)"
-                activate
+                \(activateCmd)
                 \(scriptAction)
             end tell
             """
         }
         let res = executeAppleScript(script).success
+        if effectiveBackground {
+            WorkspaceFocusCoordinator.shared.restoreActiveWorkspaceFocus()
+            WorkspaceFocusCoordinator.shared.scheduleFocusGuard(delay: 0.3)
+        }
         NowPlayingMediaManager.shared.pollMediaState()
         return res
     }

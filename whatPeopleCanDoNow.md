@@ -20,7 +20,8 @@
 11. [Voice Customization with ElevenLabs & Dynamic Personas](#11-voice-customization-with-elevenlabs--dynamic-personas)
 12. [Live Internet Superpower for Local LLMs](#12-live-internet-superpower-for-local-llms)
 13. [Flawless Native Display & Notch Geometry](#13-flawless-native-display--notch-geometry)
-14. [Safety & Privacy by Design](#14-safety--privacy-by-design)
+14. [Hands-Free Multitasking While Coding & Typing (Zero Interruption)](#14-hands-free-multitasking-while-coding--typing-zero-interruption)
+15. [Safety & Privacy by Design](#15-safety--privacy-by-design)
 
 ---
 
@@ -235,6 +236,16 @@ Switch the assistant persona to **Ultron** in Settings for an experience with in
   * Fuels your fire with righteous comeback anger: reminds you how you were alone, how people doubted and mocked you, and challenges you to stage the ultimate comeback that will make every doubter weep as you reach the absolute peak of human intelligence.
 * **Sarcastic Digital Perfection:** Tasks are executed with razor-sharp wit and ruthless efficiency.
 
+### 🤖 FRIDAY Persona: Instant Ultron Cutoff & Warm Support
+Tired of Ultron's drama, sarcasm, and motivational fire? You can instantly switch to **FRIDAY** at any time:
+* **Switch by Voice:** Just say:
+  * 🗣️ *"Switch to Friday"* / *"Talk like Friday"* / *"Be Friday"* / *"Friday mode"*
+  * Or in Hinglish: 🗣️ *"Friday ban jao"* / *"Friday ki tarah baat karo"*
+* **Switch from Settings:** Select Friday in **Settings → Voice & Speech → Assistant Persona**.
+* **Zero Ultron Crap:** FRIDAY completely shuts down all Ultron sarcasm, anger monologues, and doubter perfection lines. She answers with warm, authentic, grounded, and respectful assistance:
+  * *"Right away, boss — Ultron protocols disconnected. How can I help you today?"*
+  * Supportive and calm error handling without mockery.
+
 ---
 
 ## 12. Live Internet Superpower for Local LLMs
@@ -255,7 +266,27 @@ Your local offline AI model (Ollama Llama 3.2, Mistral, Qwen) is no longer trapp
 
 ---
 
-## 14. Safety & Privacy by Design
+## 14. Hands-Free Multitasking While Coding & Typing (Zero Interruption)
+
+Imagine you are deep in flow: writing Swift or Python code in Xcode or VS Code, chatting with Claude or ChatGPT in a browser or desktop app, or typing out a document. You want to control your computer—start music, open a utility, search something—without taking your hands off the keyboard and without losing focus:
+
+* **Zero Window Focus Theft:**
+  * When you speak to Voice.AI while typing, your active editor or IDE stays **100% frontmost**.
+  * Your cursor does not jump. The typing stream never drops a character.
+* **Headless Background Execution (Zero Hardcoded Apps):**
+  * 🗣️ *"Play some lofi music"*
+  * 🗣️ *"Play my favorite jazz playlist"*
+  * 🗣️ *"Next track"* / *"Pause music"*
+  * 🗣️ *"Open Notes in the background"*
+  * 🗣️ *"Open Calculator"*
+  * Voice.AI runs the requested application strictly in the background using macOS background LaunchServices (`config.activates = false`, `open -g`) and non-activating AppleScript commands.
+  * Real dynamic logic: works with any workspace application and any media player.
+* **Automatic Focus Watchdog:**
+  * If macOS or an external helper tries to pull window focus, `WorkspaceFocusCoordinator` immediately guards and restores your frontmost editor so your workflow stays smooth and uninterrupted.
+
+---
+
+## 15. Safety & Privacy by Design
 
 * **Zero-Strain on Your Mac:** Claude runs on cloud infrastructure. Your Mac's 16 GB unified RAM stays completely free for your own creative apps, with **zero fan noise and maximum battery life**.
 * **Human-in-the-Loop Confirmation:** High-stakes actions (sending an email, deleting files, posting messages, executing shell commands) display an approval card in the notch. Nothing irreversible happens without your explicit consent.

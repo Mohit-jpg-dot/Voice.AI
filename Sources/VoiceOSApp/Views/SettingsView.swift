@@ -101,6 +101,7 @@ public struct SettingsView: View {
     @State private var healthProbeResult: String = ""
     @State private var isSoundEnabled: Bool = BoringSoundEngine.shared.isSoundEnabled
     @State private var isLiveInternetEnabled: Bool = LiveWebGroundingEngine.shared.isEnabled
+    @State private var selectedPersona: PersonaType = PersonaManager.shared.getActivePersona()
     
     // Local AI Auto-Connection State
     @State private var isConnectingLocalModels: Bool = false
@@ -223,6 +224,7 @@ public struct SettingsView: View {
             self.profileName = appState.userName
             self.profileEmail = appState.userEmail
             self.isSoundEnabled = BoringSoundEngine.shared.isSoundEnabled
+            self.selectedPersona = PersonaManager.shared.getActivePersona()
             self.currentAccount = AccountAuthService.shared.currentAccount
             if activeMode == .local || activeMode == .hybrid {
                 connectLocalAIModels()
@@ -579,6 +581,37 @@ public struct SettingsView: View {
                             .foregroundColor(DesignTokens.Monochrome.textMuted)
                             .padding(.top, 2)
                     }
+                }
+            }
+            
+            // 4. Assistant Persona & Personality Card
+            settingsCard(title: "Assistant Persona & Personality", icon: "theatermasks.fill") {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Active Personality Tone")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                            Text("Switch between Friday (warm, clear & supportive), Ultron (sarcasm & comeback fire), JARVIS, or Roast Mode.")
+                                .font(.system(size: 11))
+                                .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        }
+                        Spacer()
+                        Picker("", selection: $selectedPersona) {
+                            ForEach(PersonaType.allCases) { p in
+                                Text(p.rawValue).tag(p)
+                            }
+                        }
+                        .frame(width: 180)
+                        .onChange(of: selectedPersona) { _, newPersona in
+                            PersonaManager.shared.setPersona(newPersona)
+                            showNotice("Switched persona to \(newPersona.rawValue)")
+                        }
+                    }
+                    
+                    Text(selectedPersona.description)
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textSecondary)
                 }
             }
         }

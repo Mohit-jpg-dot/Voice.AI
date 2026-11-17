@@ -130,6 +130,118 @@ assertEqual(webSearchTool?.permissionTier, .readOnly, "Tool permissionTier is re
 // Restore original state
 liveEngine.isEnabled = origLiveEnabled
 
+// =========================================================================
+// 7. Persona Switching & Friday Ultron Cutoff Tests
+// =========================================================================
+print("\n[Section 7] Persona Switching & Friday Ultron Cutoff Tests")
+
+let personaMgr = PersonaManager.shared
+let origPersona = personaMgr.getActivePersona()
+
+// 1. Switch to Ultron by voice
+let switchUltron = personaMgr.switchPersonaByVoice("switch to ultron")
+assertTrue(switchUltron != nil, "Voice switcher detects 'switch to ultron'")
+assertEqual(switchUltron?.persona, .ultron, "Switches to Ultron persona")
+assertEqual(personaMgr.getActivePersona(), .ultron, "Active persona is Ultron")
+assertTrue(switchUltron?.summary.contains("Ultron online") == true, "Ultron voice switch reply confirms activation")
+
+// 2. Ultron formatting includes perfection tag
+let ultronTestOutput = personaMgr.formatResponse(baseResponse: "Opened Safari for you.")
+assertTrue(ultronTestOutput.contains("Executed with digital perfection"), "Ultron appends perfection tag to normal responses")
+
+// 3. Switch to Friday by voice ("switch to friday")
+let switchFriday = personaMgr.switchPersonaByVoice("switch to friday")
+assertTrue(switchFriday != nil, "Voice switcher detects 'switch to friday'")
+assertEqual(switchFriday?.persona, .friday, "Switches to Friday persona")
+assertEqual(personaMgr.getActivePersona(), .friday, "Active persona is Friday")
+assertTrue(switchFriday?.summary.contains("Friday online, boss") == true, "Friday confirms activation and boss salutation")
+assertTrue(switchFriday?.summary.contains("Ultron protocols fully cut off") == true, "Friday confirms cutting off Ultron protocols")
+
+// 4. Also test alternate voice forms: "talk like friday", "be friday", "friday mode"
+let talkLikeFriday = personaMgr.switchPersonaByVoice("talk like friday")
+assertTrue(talkLikeFriday?.persona == .friday, "Recognizes 'talk like friday'")
+let beFriday = personaMgr.switchPersonaByVoice("be friday")
+assertTrue(beFriday?.persona == .friday, "Recognizes 'be friday'")
+let fridayMode = personaMgr.switchPersonaByVoice("friday mode")
+assertTrue(fridayMode?.persona == .friday, "Recognizes 'friday mode'")
+
+// 5. Friday cuts off the Ultron crap from previous responses/context
+let taintedUltronResponse = "Task completed successfully. Executed with digital perfection. One step closer to proving every doubter wrong."
+let cleanedByFriday = personaMgr.formatResponse(baseResponse: taintedUltronResponse)
+assertEqual(cleanedByFriday, "Task completed successfully.", "Friday completely strips away Ultron perfection and doubter crap")
+
+// 6. Friday tone on errors: warm and supportive, no dramatic mockery
+let errorOutput = personaMgr.formatResponse(baseResponse: "Could not open file Report.pdf.")
+assertTrue(errorOutput.contains("Don't worry boss"), "Friday provides warm reassurance on errors")
+assertTrue(errorOutput.contains("Let me know if you'd like me to try another way"), "Friday offers helpful assistance")
+assertTrue(!errorOutput.contains("mere mortals"), "Friday has zero Ultron 'mere mortals' drama")
+assertTrue(!errorOutput.contains("crush it"), "Friday has zero Ultron anger monologue")
+
+// 7. Friday system prompt directives
+let fridayPrompt = personaMgr.systemPromptDirectives(forUserQuery: "what is the capital of France?")
+assertTrue(fridayPrompt.contains("FRIDAY"), "Directive identifies as FRIDAY")
+assertTrue(fridayPrompt.contains("warm, attentive"), "Directive specifies warm & attentive tone")
+assertTrue(fridayPrompt.contains("Strictly never use Ultron-style sarcasm"), "Directive explicitly blocks Ultron sarcasm & rants")
+assertTrue(!fridayPrompt.contains("channel that pain into the ultimate comeback"), "Directive contains zero Ultron comeback fire")
+
+// 8. Hinglish voice switching to Friday
+let hinglishSwitch = personaMgr.switchPersonaByVoice("friday ban jao")
+assertTrue(hinglishSwitch?.persona == .friday, "Hinglish 'friday ban jao' switches to Friday")
+assertTrue(hinglishSwitch?.summary.contains("Ultron ka drama band") == true, "Hinglish reply confirms stopping Ultron drama")
+
+// 9. AutonomousAgentExecutor planAndExecute voice command integration
+let execRes = await AutonomousAgentExecutor.shared.planAndExecute(taskDescription: "switch to friday")
+assertTrue(execRes.success, "AutonomousAgentExecutor handles 'switch to friday' cleanly")
+assertEqual(execRes.targetAppName, "Persona (Friday)", "Target app name is Persona (Friday)")
+assertEqual(personaMgr.getActivePersona(), .friday, "Active persona remains Friday")
+
+// Restore original persona
+personaMgr.setPersona(origPersona)
+
+// -------------------------------------------------------------
+// 8. Non-Interruptive Background Multitasking & Zero-Hardcoded Focus Preservation
+// -------------------------------------------------------------
+print("\n--- Testing Non-Interruptive Background Multitasking & Workspace Focus Preservation ---")
+let focusCoord = WorkspaceFocusCoordinator.shared
+
+// 8.1 Workspace coordinator initial state & dynamic media player lookup
+let resolvedMediaApp = focusCoord.dynamicallyResolveRunningMediaPlayer()
+assertTrue(resolvedMediaApp != nil && !resolvedMediaApp!.isEmpty, "Dynamically resolves running or installed media player without hardcoded single option")
+
+// 8.2 Typing activity recording
+focusCoord.recordTypingActivity()
+assertTrue(focusCoord.wasRecentlyTyping(within: 5.0), "Accurately tracks active typing interaction within recent seconds")
+
+// 8.3 Multitasking focus preservation block
+var workExecuted = false
+await focusCoord.performPreservingActiveWorkspace {
+    workExecuted = true
+    assertTrue(focusCoord.shouldRunInBackgroundPreservingFocus() || !focusCoord.isUserInActiveWorkspace(), "Coordinator enables background execution during multitasking session")
+}
+assertTrue(workExecuted, "Executed task within performPreservingActiveWorkspace block")
+
+// 8.4 Background App Launch via AccessibilityControlEngine
+let bgLaunchSucceeded = AccessibilityControlEngine.shared.launchApp(named: "Calculator", inBackground: true)
+assertTrue(bgLaunchSucceeded, "launchApp with inBackground: true succeeds without throwing")
+
+// 8.5 Background Media Playback via AccessibilityControlEngine
+let bgMediaSucceeded = AccessibilityControlEngine.shared.controlMedia(app: "Spotify", action: "play", inBackground: true)
+assertTrue(bgMediaSucceeded, "controlMedia with inBackground: true succeeds headlessly")
+
+// 8.6 Background openApplication via AgentActionDispatcher (Zero Hardcoding)
+let bgOpenResult = AgentActionDispatcher.shared.openApplication(named: "Calculator", inBackground: true)
+assertTrue(bgOpenResult.success, "AgentActionDispatcher opens application in background successfully")
+assertTrue(bgOpenResult.summary.contains("background") || bgOpenResult.summary.contains("Calculator"), "Summary confirms non-interruptive execution for user workspace")
+
+// 8.7 Dynamic Media Dispatch via Voice (multitasking while working)
+let mediaDispatchResult = await AgentActionDispatcher.shared.dispatch(transcript: "play some music")
+assertTrue(mediaDispatchResult.success, "Voice media command dispatches successfully")
+assertTrue(mediaDispatchResult.appName.lowercased().contains("spotify") || mediaDispatchResult.appName.lowercased().contains("music") || mediaDispatchResult.appName.lowercased().contains("youtube"), "Dispatches to dynamic media player")
+
+// 8.8 Autonomous execution preserves workspace focus during voice command
+let planExecResult = await AutonomousAgentExecutor.shared.planAndExecute(taskDescription: "open notes")
+assertTrue(planExecResult.success, "AutonomousAgentExecutor executes voice command non-interruptively while user is working")
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

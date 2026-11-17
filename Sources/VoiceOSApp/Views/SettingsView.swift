@@ -90,6 +90,7 @@ public struct SettingsView: View {
     @State private var activeMode: ModelMode = ModelRouter.shared.currentMode
     @State private var openAIKey: String = KeychainService.shared.get(.openAIApiKey) ?? ""
     @State private var claudeKey: String = KeychainService.shared.get(.anthropicApiKey) ?? ""
+    @State private var elevenLabsKey: String = KeychainService.shared.get(.elevenLabsApiKey) ?? ""
     @State private var searchKey: String = KeychainService.shared.get(.searchProviderKey) ?? ""
     @State private var googleApiKey: String = KeychainService.shared.get(.googleSearchApiKey) ?? ""
     @State private var googleEngineId: String = KeychainService.shared.get(.googleSearchEngineId) ?? ""
@@ -569,6 +570,13 @@ public struct SettingsView: View {
                         .disabled(isAuditioningVoice)
                         
                         Spacer()
+                    }
+
+                    if !ElevenLabsProvider.shared.isConfigured {
+                        Text("💡 Tip: Enter your ElevenLabs API Key in the AI Models & Providers tab to unlock custom voice clones and ultra-expressive neural speech.")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(DesignTokens.Monochrome.textMuted)
+                            .padding(.top, 2)
                     }
                 }
             }
@@ -1064,6 +1072,25 @@ public struct SettingsView: View {
                         Button("Save") {
                             KeychainService.shared.set(claudeKey, for: .anthropicApiKey)
                             showNotice("Claude Key Saved")
+                        }
+                    }
+
+                    HStack {
+                        Text("ElevenLabs Key:")
+                            .font(.system(size: 12))
+                            .frame(width: 100, alignment: .leading)
+                            .foregroundColor(DesignTokens.Monochrome.textSecondary)
+                        SecureField("xi-api-key...", text: $elevenLabsKey)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Save") {
+                            KeychainService.shared.set(elevenLabsKey, for: .elevenLabsApiKey)
+                            showNotice("ElevenLabs Key Saved")
+                            Task {
+                                _ = try? await ElevenLabsProvider.shared.fetchRemoteVoices()
+                                await MainActor.run {
+                                    self.availableVoices = VoiceAuditionManager.shared.listAllAvailableVoices()
+                                }
+                            }
                         }
                     }
                     

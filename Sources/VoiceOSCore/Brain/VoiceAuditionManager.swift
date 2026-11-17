@@ -72,6 +72,12 @@ public final class VoiceAuditionManager: NSObject, @unchecked Sendable, AVSpeech
             }
         }
         
+        // 3. ElevenLabs Voices (curated previews & remote cloned voices)
+        let elevenVoices = ElevenLabsProvider.shared.cachedOrPreconfiguredVoices()
+        for v in elevenVoices {
+            results.append(v)
+        }
+        
         // Sort: neural / enhanced first, then by name
         return results.sorted {
             if $0.isNeural != $1.isNeural {
@@ -138,6 +144,19 @@ public final class VoiceAuditionManager: NSObject, @unchecked Sendable, AVSpeech
                     self.audioPlayer?.play()
                 } catch {
                     print("[VoiceAudition] Playback error: \(error)")
+                }
+            }
+        } else if voice.provider == "ElevenLabs" {
+            let mp3Data = try await ElevenLabsProvider.shared.synthesizeSpeech(
+                text: sampleText,
+                voiceId: voice.identifier
+            )
+            await MainActor.run {
+                do {
+                    self.audioPlayer = try AVAudioPlayer(data: mp3Data)
+                    self.audioPlayer?.play()
+                } catch {
+                    print("[VoiceAudition] ElevenLabs Playback error: \(error)")
                 }
             }
         } else {

@@ -3860,6 +3860,41 @@ assertEqual(nycCount, 1, "New York City fact is active")
 
 print("Suite 63: Semantic Embeddings, Hybrid Ranking & Consent Management passed successfully.")
 
+// =========================================================================
+// [Suite 64] ElevenLabs Cloud Voice Provider & Custom Neural Voices
+// =========================================================================
+print("\n[Suite 64] ElevenLabs Voice Provider & Custom TTS Integration")
+
+let elevenLabs = ElevenLabsProvider.shared
+let curatedElevenVoices = elevenLabs.cachedOrPreconfiguredVoices()
+assertTrue(!curatedElevenVoices.isEmpty, "ElevenLabs provider exposes preconfigured voices")
+assertTrue(curatedElevenVoices.contains { $0.name.contains("Rachel") }, "Contains Rachel voice")
+assertTrue(curatedElevenVoices.contains { $0.name.contains("Adam") }, "Contains Adam voice")
+assertTrue(curatedElevenVoices.contains { $0.name.contains("Arnold") }, "Contains Arnold voice")
+assertEqual(curatedElevenVoices.first?.provider, "ElevenLabs", "Provider identifier is ElevenLabs")
+
+assertTrue(elevenLabs.isElevenLabsVoiceId("elevenlabs:21m00Tcm4TlvDq8ikWAM"), "Recognizes elevenlabs: prefixed ID")
+assertTrue(elevenLabs.isElevenLabsVoiceId("21m00Tcm4TlvDq8ikWAM"), "Recognizes raw ElevenLabs voice ID")
+assertTrue(!elevenLabs.isElevenLabsVoiceId("com.apple.speech.synthesis.voice.Alex"), "Does not misidentify Apple voice as ElevenLabs")
+assertEqual(elevenLabs.extractRawVoiceId(from: "elevenlabs:21m00Tcm4TlvDq8ikWAM"), "21m00Tcm4TlvDq8ikWAM", "Extracts clean voice ID")
+
+// Key storage & audition discovery
+let prevElevenKey = KeychainService.shared.get(.elevenLabsApiKey)
+KeychainService.shared.set("test-xi-api-key-12345", for: .elevenLabsApiKey)
+assertTrue(elevenLabs.isConfigured, "ElevenLabs isConfigured reports true when key is present")
+assertEqual(KeychainService.shared.get(.elevenLabsApiKey), "test-xi-api-key-12345", "Keychain accurately stores ElevenLabs API key")
+
+let allAuditionVoices = VoiceAuditionManager.shared.listAllAvailableVoices()
+assertTrue(allAuditionVoices.contains { $0.provider == "ElevenLabs" }, "VoiceAuditionManager lists ElevenLabs voices")
+
+if let prev = prevElevenKey {
+    KeychainService.shared.set(prev, for: .elevenLabsApiKey)
+} else {
+    KeychainService.shared.delete(.elevenLabsApiKey)
+}
+
+print("Suite 64: ElevenLabs Cloud Voice Provider passed successfully.")
+
 print("\n=================================================================")
 print("Results: \(passed) PASSED, \(failed) FAILED")
 print("=================================================================")

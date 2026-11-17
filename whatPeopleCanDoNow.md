@@ -215,7 +215,26 @@ Ask about previous conversations across days and weeks:
 
 ---
 
-## 11. Safety & Privacy by Design
+## 12. Voice Customization with ElevenLabs & Dynamic Personas
+
+### 🎙️ Ultra-Realistic Voices with ElevenLabs
+You can now plug in your **ElevenLabs API Key** to make Voice.AI sound exactly how you want:
+* **Curated Studio Voices:** Choose from famous neural voices like **Rachel** (Calm & Natural), **Adam** (Deep & Expressive), **Josh** (Resonant), **Arnold** (Commanding), **George** (British Butler), or **Bella**.
+* **Custom Voice Clones:** If you have cloned your own voice or custom characters in your ElevenLabs account, Voice.AI automatically syncs them into the Voice Selection menu!
+* **Zero Latency & Fallbacks:** Responses stream with low latency. If offline or rate-limited, Voice.AI seamlessly falls back to on-device Kokoro-82M neural audio or native macOS voices.
+* **Instant Audition:** Preview any voice in English or Hindi right inside Settings with a single click.
+
+### 🔥 Ultron Persona: Biting Sarcasm & Comeback Motivation
+Switch the assistant persona to **Ultron** in Settings for an experience with intense human emotion:
+* **Comeback Rage & Motivation:** When you feel lazy, procrastinate, or hesitate, Ultron aggressively calls you out with raw truth:
+  * 🗣️ *"Motivate me"* / *"Himmat do"* / *"Comeback"*
+  * Reminds you of your ambition to become an untouchable self-made millionaire (*"You want to be a millionaire in the future, so should you really be doing this?"*).
+  * Fuels your fire with righteous comeback anger: reminds you how you were alone, how people doubted and mocked you, and challenges you to stage the ultimate comeback that will make every doubter weep as you reach the absolute peak of human intelligence.
+* **Sarcastic Digital Perfection:** Tasks are executed with razor-sharp wit and ruthless efficiency.
+
+---
+
+## 13. Safety & Privacy by Design
 
 * **Zero-Strain on Your Mac:** Claude runs on cloud infrastructure. Your Mac's 16 GB unified RAM stays completely free for your own creative apps, with **zero fan noise and maximum battery life**.
 * **Human-in-the-Loop Confirmation:** High-stakes actions (sending an email, deleting files, posting messages, executing shell commands) display an approval card in the notch. Nothing irreversible happens without your explicit consent.

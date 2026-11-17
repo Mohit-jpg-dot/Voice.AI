@@ -15,7 +15,7 @@ public enum SpeechEngineState: Equatable, Sendable {
 /// Captures microphone audio, streams real-time audio power metering levels for the Notch HUD waveform,
 /// performs speech-to-text transcription via on-device SpeechRecognizer,
 /// and speaks back responses with AVSpeechSynthesizer.
-public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeechRecognizerDelegate, AVSpeechSynthesizerDelegate {
+public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeechRecognizerDelegate, AVSpeechSynthesizerDelegate, AVAudioPlayerDelegate {
     public static let shared = SpeechPipelineEngine()
 
     private let audioEngine = AVAudioEngine()
@@ -23,6 +23,7 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private let speechSynthesizer = AVSpeechSynthesizer()
+    private var cloudAudioPlayer: AVAudioPlayer?
 
     public private(set) var currentState: SpeechEngineState = .idle
     private var currentMode: VoiceTriggerMode = .dictation
@@ -467,6 +468,10 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
         if speechSynthesizer.isSpeaking {
             speechSynthesizer.stopSpeaking(at: .immediate)
         }
+        if let player = cloudAudioPlayer, player.isPlaying {
+            player.stop()
+            cloudAudioPlayer = nil
+        }
         KokoroTTSEngine.shared.stop()
 
         self.currentState = .idle
@@ -522,6 +527,10 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
 
         if speechSynthesizer.isSpeaking {
             speechSynthesizer.stopSpeaking(at: .immediate)
+        }
+        if let player = cloudAudioPlayer, player.isPlaying {
+            player.stop()
+            cloudAudioPlayer = nil
         }
         KokoroTTSEngine.shared.stop()
         markTTSEnded(flushAmbientAfter: nil)
@@ -622,6 +631,10 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
         if speechSynthesizer.isSpeaking {
             speechSynthesizer.stopSpeaking(at: .immediate)
         }
+        if let player = cloudAudioPlayer, player.isPlaying {
+            player.stop()
+            cloudAudioPlayer = nil
+        }
         KokoroTTSEngine.shared.stop()
 
         let isHinglish = HinglishParser.isHinglishQuery(text)
@@ -649,6 +662,12 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
 
         let hasDevanagari = spokenText.unicodeScalars.contains { scalar in
             scalar.value >= 0x0900 && scalar.value <= 0x097F
+        }
+
+        let savedVoiceId = UserDefaults.standard.string(forKey: "voiceos.selected_voice_id") ?? ""
+        if ElevenLabsProvider.shared.isElevenLabsVoiceId(savedVoiceId) && ElevenLabsProvider.shared.isConfigured {
+            speakWithElevenLabs(spokenText: spokenText, voiceId: savedVoiceId, generation: gen)
+            return
         }
 
         if KokoroTTSEngine.shared.isPreferredForTTS && KokoroTTSEngine.shared.diagnostics().isFullyReady && !hasDevanagari {
@@ -1039,6 +1058,55 @@ public final class SpeechPipelineEngine: NSObject, @unchecked Sendable, SFSpeech
         DispatchQueue.main.async { [weak self] in
             self?.onAudioLevelsUpdated?(levels)
             VoiceOSIPCSurface.shared.send(channel: "onVolumeUpdate", args: ["levels": levels, "peak": levels.max() ?? 0.0])
+        }
+    }
+
+    private func speakWithElevenLabs(spokenText: String, voiceId: String, generation: UInt64) {
+        Task { [weak self] in
+            guard let self = self, generation == self.currentTTSGeneration() else { return }
+            do {
+                let mp3Data = try await ElevenLabsProvider.shared.synthesizeSpeech(
+                    text: spokenText,
+                    voiceId: voiceId
+                )
+                guard generation == self.currentTTSGeneration() else { return }
+                await MainActor.run {
+                    guard generation == self.currentTTSGeneration() else { return }
+                    do {
+                        let player = try AVAudioPlayer(data: mp3Data)
+                        player.delegate = self
+                        player.prepareToPlay()
+                        player.play()
+                        self.cloudAudioPlayer = player
+                    } catch {
+                        self.enqueueAllSystemUtterances(chunks: [(text: spokenText, isHinglish: false)], generation: generation)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    guard generation == self.currentTTSGeneration() else { return }
+                    self.enqueueAllSystemUtterances(chunks: [(text: spokenText, isHinglish: false)], generation: generation)
+                }
+            }
+        }
+    }
+
+    // MARK: - AVAudioPlayerDelegate
+
+    public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        let finishInfo = ttsLock.withLock { () -> (cb: (@Sendable () -> Void)?, gen: UInt64) in
+            cloudAudioPlayer = nil
+            let cb = ttsCompletionCallback
+            ttsCompletionCallback = nil
+            isProcessingTTSQueue = false
+            return (cb, ttsGeneration)
+        }
+        markTTSEnded(flushAmbientAfter: 0.25)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, finishInfo.gen == self.currentTTSGeneration() else { return }
+            self.currentState = .idle
+            self.onStateChanged?(.idle)
+            finishInfo.cb?()
         }
     }
 

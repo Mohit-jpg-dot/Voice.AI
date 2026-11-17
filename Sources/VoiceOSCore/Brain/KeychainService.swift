@@ -36,6 +36,7 @@ public final class KeychainService: @unchecked Sendable {
         case whatsappPhoneNumberId = "whatsapp_phone_number_id"
         case whatsappBusinessAccountId = "whatsapp_business_account_id"
         case notionToken = "notion_api_token"
+        case elevenLabsApiKey = "elevenlabs_api_key"
     }
 
     public static let authNamespace = "ai.voice.app.auth"

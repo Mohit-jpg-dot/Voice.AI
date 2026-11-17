@@ -256,3 +256,23 @@ When communicating with Voice.AI:
 4. **Honest Task Statuses:** When asked about task outcomes (*"did it succeed?"*, *"is the file created?"*), check the Task Ledger evidence in `<MEMORY_DATA>`. Never claim an action succeeded unless verified proof is present.
 5. **Context Sensitivity:** When the user points at something, assume the cursor coordinates in the payload represent their primary focus.
 6. **Safety Verification:** For consequential tasks (sending messages or deleting files), formulate the draft clearly so the Notch Card displays the exact payload for user confirmation.
+
+---
+
+## 11. Speech Synthesis Architecture (ElevenLabs, Kokoro & Cloud TTS)
+
+Voice.AI features a modular multi-tier Text-to-Speech (TTS) engine:
+
+* **ElevenLabs Integration (`ElevenLabsProvider.swift`):**
+  * Secure Keychain API key storage (`KeychainService.Key.elevenLabsApiKey`).
+  * Dynamic voice discovery fetching custom cloned voices and premade neural voices (`POST /v1/text-to-speech/{voice_id}`).
+  * Full audio streaming via `AVAudioPlayer` with zero-delay barge-in interruption.
+  * Curated studio voices: Rachel, Adam, Antoni, Josh, Arnold, Bella, George, Daniel, and Elli.
+* **On-Device Kokoro-82M Neural TTS (`KokoroTTSEngine.swift`):** Runs 100% locally and offline without internet.
+* **OpenAI Cloud TTS (`OpenAIProvider.swift`):** Alloy, Echo, Fable, Onyx, Nova, Shimmer.
+* **macOS System Synthesizer (`AVSpeechSynthesizer`):** High-efficiency fallback for all locales including Hindi (`hi-IN`).
+* **Persona & Emotional Dynamics (`PersonaManager.swift`):**
+  * **Ultron Comeback Fire:** Infused with razor-sharp sarcasm, millionaire ambition prompts, and raw human motivational comeback monologues reminding users of their struggles, doubters, and peak potential.
+  * **JARVIS:** British butler wit and polite risk cautions.
+  * **FRIDAY:** Warm, supportive, and direct.
+  * **Roast Mode:** Playful banter with safety guardrails.

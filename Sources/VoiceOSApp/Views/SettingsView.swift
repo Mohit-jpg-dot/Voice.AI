@@ -100,6 +100,7 @@ public struct SettingsView: View {
     @State private var isProbingHealth: Bool = false
     @State private var healthProbeResult: String = ""
     @State private var isSoundEnabled: Bool = BoringSoundEngine.shared.isSoundEnabled
+    @State private var isLiveInternetEnabled: Bool = LiveWebGroundingEngine.shared.isEnabled
     
     // Local AI Auto-Connection State
     @State private var isConnectingLocalModels: Bool = false
@@ -1043,6 +1044,24 @@ public struct SettingsView: View {
                             .font(.system(size: 11))
                             .foregroundColor(DesignTokens.Monochrome.textMuted)
                     }
+                }
+            }
+            
+            // Live Internet Superpower
+            settingsCard(title: "Live Internet Superpower", icon: "network") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Enable Live Internet Grounding for Local AI", isOn: $isLiveInternetEnabled)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(DesignTokens.Monochrome.textPrimary)
+                        .onChange(of: isLiveInternetEnabled) { _, val in
+                            LiveWebGroundingEngine.shared.isEnabled = val
+                            showNotice(val ? "Live Internet Superpower enabled." : "Live Internet Grounding paused.")
+                        }
+                    
+                    Text("Gives local LLMs (Ollama Llama 3.2, Mistral, Qwen) the superpower of accessing real-time breaking news, tech industry updates, and live facts dynamically using zero-key web RSS and instant search feeds without hardcoding any questions.")
+                        .font(.system(size: 11))
+                        .foregroundColor(DesignTokens.Monochrome.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             

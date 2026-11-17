@@ -163,6 +163,10 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
             lastStatusNote = "Hands-free listening is turned off"
             return
         }
+        if ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] != nil {
+            lastStatusNote = "Ambient listening skipped in test runner"
+            return
+        }
         guard Bundle.main.bundleIdentifier != nil, Bundle.main.infoDictionary?["NSSpeechRecognitionUsageDescription"] != nil else {
             lastStatusNote = "Unavailable outside app bundle"
             return
@@ -926,8 +930,10 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest = nil
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        if audioEngine.isRunning {
+            audioEngine.stop()
+            audioEngine.inputNode.removeTap(onBus: 0)
+        }
     }
     
     public func resumeFromRecording() {
@@ -952,8 +958,10 @@ public final class TheVoiceAmbientListener: NSObject, WakeWordDetecting, @unchec
         pendingWakeWorkItem = nil
         pendingFreeTalkWorkItem?.cancel()
         pendingFreeTalkWorkItem = nil
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        if audioEngine.isRunning {
+            audioEngine.stop()
+            audioEngine.inputNode.removeTap(onBus: 0)
+        }
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
         recognitionTask = nil

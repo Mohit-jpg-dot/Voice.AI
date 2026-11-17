@@ -745,6 +745,35 @@ public final class ToolRegistry: ToolRegistryProtocol, @unchecked Sendable {
         })
 
         register(RegisteredTool(
+            name: "web_search_live",
+            appName: "Live Internet",
+            description: "Retrieve real-time live internet information, breaking news, tech trends, and facts dynamically using Google News RSS, DuckDuckGo Instant, or configured search engines.",
+            inputSchema: RegisteredToolSchema(
+                properties: ["query": ToolSchemaProperty(description: "Information query or keywords to look up live on the web")],
+                required: ["query"]
+            ),
+            permissionTier: .readOnly
+        ) { args in
+            let query = args["query"] ?? ""
+            if query.isEmpty {
+                return ToolInvocationResult(success: false, summary: "Search query is empty.")
+            }
+            if let liveContext = await LiveWebGroundingEngine.shared.fetchLiveContext(for: query) {
+                return ToolInvocationResult(
+                    success: true,
+                    summary: liveContext,
+                    data: ["query": query]
+                )
+            } else {
+                return ToolInvocationResult(
+                    success: false,
+                    summary: "No live web results retrieved for \"\(query)\".",
+                    data: ["query": query]
+                )
+            }
+        })
+
+        register(RegisteredTool(
             name: "rag_search_files",
             appName: "Local Knowledge",
             description: "Search locally indexed folders and files using on-device semantic embeddings (RAG).",

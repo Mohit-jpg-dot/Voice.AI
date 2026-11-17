@@ -1108,10 +1108,22 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                 basePrompt: "You are Voice.AI, a fast, capable personal assistant for macOS.",
                 forQuery: trimmed
             )
+            
+            var effectiveChatSystem = chatSystem
+            var executedSteps = ["Consulted \(chatModel.providerName) (\(chatModel.modelIdentifier))", "Recalled memory & applied persona"]
+            
+            if LiveWebGroundingEngine.shared.shouldAugmentWithInternet(trimmed) {
+                onProgress?("Searching live web data...")
+                if let liveContext = await LiveWebGroundingEngine.shared.fetchLiveContext(for: trimmed) {
+                    effectiveChatSystem = "\(chatSystem)\n\n\(liveContext)"
+                    executedSteps.append("Grounded with live web data")
+                }
+            }
+            
             do {
                 let text = try await generateChatResponse(
                     model: chatModel,
-                    systemPrompt: chatSystem,
+                    systemPrompt: effectiveChatSystem,
                     userPrompt: trimmed,
                     onPartialReply: onPartialReply
                 )
@@ -1128,7 +1140,7 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                         summary: styled,
                         targetAppName: "Voice.AI Brain",
                         targetURL: nil,
-                        executedSteps: ["Consulted \(chatModel.providerName) (\(chatModel.modelIdentifier))", "Recalled memory & applied persona"]
+                        executedSteps: executedSteps
                     )
                 }
             } catch {

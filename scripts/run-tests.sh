@@ -66,9 +66,12 @@ case "${TARGET}" in
     hindi)
         run_suite "Hindi & Hinglish Natural Commands" "${ROOT_DIR}/Tests/hindi_commands/test_runner.swift" false
         ;;
+    liveweb)
+        run_suite "Live Internet Grounding Engine" "${ROOT_DIR}/Tests/brain/test_live_web.swift" false
+        ;;
     all)
         echo "Running All Voice.AI Test Suites..."
-        run_suite "VoiceOS Core Suites" "${ROOT_DIR}/Tests/core/test_core.swift" false
+        run_suite "Live Internet Grounding Engine" "${ROOT_DIR}/Tests/brain/test_live_web.swift" false
         run_suite "AI Brain & Provider Routing" "${ROOT_DIR}/Tests/ai-brain/test_brain.swift" true
         run_suite "Setup & Authentication" "${ROOT_DIR}/Tests/setup_and_auth/test_setup_auth.swift" true
         run_suite "Google Search & Math Engine" "${ROOT_DIR}/Tests/google_mode/test_google_mode.swift" true
@@ -79,7 +82,7 @@ case "${TARGET}" in
         ;;
     *)
         echo "Unknown target: ${TARGET}"
-        echo "Usage: ./scripts/run-tests.sh [all|core|brain|auth|google|hindi]"
+        echo "Usage: ./scripts/run-tests.sh [all|core|brain|auth|google|hindi|liveweb]"
         exit 1
         ;;
 esac

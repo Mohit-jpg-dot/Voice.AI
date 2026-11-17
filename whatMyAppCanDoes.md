@@ -276,3 +276,24 @@ Voice.AI features a modular multi-tier Text-to-Speech (TTS) engine:
   * **JARVIS:** British butler wit and polite risk cautions.
   * **FRIDAY:** Warm, supportive, and direct.
   * **Roast Mode:** Playful banter with safety guardrails.
+
+---
+
+## 12. Live Internet Grounding Superpower for Local LLMs (`LiveWebGroundingEngine.swift`)
+
+Local LLMs (e.g. Ollama Llama-3.2, Mistral, Qwen) traditionally suffer from fixed training knowledge cutoffs and cannot answer questions about current events, breaking news, or real-time tech industry developments. Voice.AI solves this natively without requiring cloud LLMs:
+
+* **Generalized Intent Detection (Zero Hardcoded Questions):**
+  * Intelligently distinguishes between local macOS OS/hardware actions (*"turn up volume"*, *"open Safari"*, *"dark mode"*) and informational, curiosity, trending, or temporal queries (*"what is going on in the tech industry"*, *"latest news on quantum computing"*, *"who won the match yesterday"*, *"kya chal raha hai tech world me"*).
+  * Absolutely **no hardcoded questions** are used; queries are analyzed using intent heuristics, temporal indicators, and question markers.
+* **Multi-Source Real-Time Ingestion:**
+  * **Google News RSS:** Zero API key required, sub-200ms XML parser extracting breaking headlines, clean publication dates, summaries, and source URLs.
+  * **DuckDuckGo Instant Answer API:** Provides concise encyclopedic facts and related topic clusters with zero keys.
+  * **Google Custom Search API:** Supported if user adds optional custom search credentials.
+* **Prompt Augmentation (`<LIVE_INTERNET_DATA>`):**
+  * Gathers live web snippets, deduplicates them, and injects them under a structured `<LIVE_INTERNET_DATA>` block directly into the local model's prompt.
+  * Local LLM answers with grounded, real-time facts while keeping complete on-device privacy.
+* **Tool Integration & UI Controls:**
+  * Exposes the `web_search_live` read-only tool in `ToolRegistry.swift`.
+  * Dedicated toggle in **Settings → AI Models & Providers** (`voiceos.live_internet_superpower_enabled`) to enable or disable internet grounding at any time.
+

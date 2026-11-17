@@ -17,7 +17,10 @@
 8. [Multi-Step Autonomous Chains](#8-multi-step-autonomous-chains)
 9. [Speak in English, Hindi, or Hinglish](#9-speak-in-english-hindi-or-hinglish)
 10. [Follow-Ups, Past Chats & Living Memory](#10-follow-ups-past-chats--living-memory)
-11. [Safety & Privacy by Design](#11-safety--privacy-by-design)
+11. [Voice Customization with ElevenLabs & Dynamic Personas](#11-voice-customization-with-elevenlabs--dynamic-personas)
+12. [Live Internet Superpower for Local LLMs](#12-live-internet-superpower-for-local-llms)
+13. [Flawless Native Display & Notch Geometry](#13-flawless-native-display--notch-geometry)
+14. [Safety & Privacy by Design](#14-safety--privacy-by-design)
 
 ---
 
@@ -215,7 +218,7 @@ Ask about previous conversations across days and weeks:
 
 ---
 
-## 12. Voice Customization with ElevenLabs & Dynamic Personas
+## 11. Voice Customization with ElevenLabs & Dynamic Personas
 
 ### 🎙️ Ultra-Realistic Voices with ElevenLabs
 You can now plug in your **ElevenLabs API Key** to make Voice.AI sound exactly how you want:
@@ -234,7 +237,25 @@ Switch the assistant persona to **Ultron** in Settings for an experience with in
 
 ---
 
-## 13. Safety & Privacy by Design
+## 12. Live Internet Superpower for Local LLMs
+Your local offline AI model (Ollama Llama 3.2, Mistral, Qwen) is no longer trapped behind fixed training cutoff dates!
+* **Zero Hardcoded Questions:** Voice.AI dynamically detects when any query requires fresh, real-time knowledge:
+  * 🗣️ *"What is going on in the tech industry right now?"*
+  * 🗣️ *"Tell me the latest news on Apple M4 chips and AI accelerators."*
+  * 🗣️ *"Who won yesterday's football match?"*
+  * 🗣️ *"Kya chal raha hai tech world me?"*
+* **Real-Time Live Web Ingestion:** Automatically fetches and digests breaking headlines from Google News RSS feeds and DuckDuckGo Instant Answers in under 200ms—requiring **zero API keys** and zero subscription fees.
+* **100% Local Privacy:** Live internet context is ingested directly into your on-device local model, so your questions and private files never leave your Mac.
+* **One-Click Toggle:** Enable or disable Live Internet Grounding anytime in **Settings → AI Models & Providers**.
+
+---
+
+## 13. Flawless Native Display & Notch Geometry
+* **No Screen Shrinking or Resolution Downscaling:** Older notch overlay architectures could cause macOS to downscale or compress the active desktop viewport into a smaller frame. Voice.AI guarantees full native display scaling (`NSPrefersDisplaySafeAreaCompatibilityMode = false`), keeping your full screen crisp, expansive, and pixel-perfect across external monitors and built-in Retina displays.
+
+---
+
+## 14. Safety & Privacy by Design
 
 * **Zero-Strain on Your Mac:** Claude runs on cloud infrastructure. Your Mac's 16 GB unified RAM stays completely free for your own creative apps, with **zero fan noise and maximum battery life**.
 * **Human-in-the-Loop Confirmation:** High-stakes actions (sending an email, deleting files, posting messages, executing shell commands) display an approval card in the notch. Nothing irreversible happens without your explicit consent.

@@ -105,6 +105,9 @@ public final class OllamaProvider: ChatModel, VisionModel, @unchecked Sendable {
     
     /// Launches the Ollama application or background daemon process (never both simultaneously to avoid port 11434 races)
     public func launchOllamaDaemon() {
+        if ProcessInfo.processInfo.environment["VOICE_AI_TEST_MODE"] != nil {
+            return
+        }
         if let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.ollama.ollama") {
             NSWorkspace.shared.openApplication(at: appUrl, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
             return

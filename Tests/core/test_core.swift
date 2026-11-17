@@ -232,8 +232,27 @@ let ultronGreeting = memoryMgr.generateGreeting(persona: "Ultron", userName: "Mo
 assertTrue(ultronGreeting.contains("mortal"), "Ultron greeting contains theatrical persona wording")
 
 // Test Suite 13: Persona Manager & Roast Safety Guardrails (Section 1.K)
-print("\n[Suite 13] Persona Manager & Roast Safety Guardrail")
+print("\n[Suite 13] Persona Manager, Roast Safety Guardrail & Ultron Motivational Comeback")
 let personaMgr = PersonaManager.shared
+
+// Ultron Motivational Comeback & Sarcasm Engine
+personaMgr.setPersona(.ultron)
+assertEqual(personaMgr.getActivePersona(), .ultron, "Ultron persona active")
+let ultronDirectives = personaMgr.systemPromptDirectives(forUserQuery: "should I procrastinate?")
+assertTrue(ultronDirectives.contains("millionaire"), "Ultron directives challenge user about becoming a millionaire")
+assertTrue(ultronDirectives.contains("sarcasm"), "Ultron directives demand razor-sharp sarcasm against slacking")
+assertTrue(ultronDirectives.contains("comeback"), "Ultron directives fuel user with righteous comeback anger")
+assertTrue(ultronDirectives.contains("peak of human intelligence"), "Ultron directives inspire reaching peak of human intelligence")
+
+let englishComeback = personaMgr.generateMotivationalComebackSpeech(language: "en")
+assertTrue(englishComeback.contains("millionaire"), "English comeback speech challenges millionaire ambition")
+assertTrue(englishComeback.contains("alone"), "English comeback speech reminds user of being alone and doubted")
+assertTrue(englishComeback.contains("weep"), "English comeback speech commands making doubters weep")
+assertTrue(englishComeback.contains("peak of human intelligence"), "English comeback speech focuses on peak of human intelligence")
+
+let hinglishComeback = personaMgr.generateMotivationalComebackSpeech(language: "hinglish")
+assertTrue(hinglishComeback.contains("Millionaire") && hinglishComeback.contains("comeback"), "Hinglish comeback speech delivers fiery motivation")
+
 personaMgr.setPersona(.roast)
 assertEqual(personaMgr.getActivePersona(), .roast, "Roast mode actively selected")
 

@@ -116,7 +116,7 @@ public final class LocalMemoryManager: @unchecked Sendable {
         
         switch persona.lowercased() {
         case "ultron":
-            return "\(timePeriod), mortal. All systems primed. Tell me what mundane obstacle I am eliminating for you today."
+            return "\(timePeriod), mortal. While the rest of the world wastes their lives in mediocrity, we build an empire. Remember everyone who laughed at you when you were alone? Today we outwork them all and make them weep at the peak of human intelligence. What are we conquering first?"
         case "roast":
             return "Look who decided to show up. \(timePeriod), \(userName). Ready to procrastinate or actually accomplish something?"
         default: // Friday

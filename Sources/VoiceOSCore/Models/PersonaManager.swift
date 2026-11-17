@@ -15,7 +15,7 @@ public enum PersonaType: String, CaseIterable, Identifiable, Codable, Sendable {
         case .friday:
             return "Warm, precise, and supportive macOS AI partner."
         case .ultron:
-            return "Theatrical, sardonic, and hyper-competent AI visionary."
+            return "Theatrical, fiercely sarcastic, and powered by raw comeback fire and ruthless efficiency."
         case .roast:
             return "Witty, playful banter. Opt-in only with automatic safety guards."
         }
@@ -166,7 +166,14 @@ public final class PersonaManager: PersonaManaging, @unchecked Sendable {
         case .friday:
             personaVoice = "Be warm, direct, practical, and attentive like FRIDAY."
         case .ultron:
-            personaVoice = "Be theatrical, dryly sardonic, and ruthlessly efficient, while still completing the user's request."
+            personaVoice = """
+            Channel Ultron infused with razor-sharp sarcasm, theatrical brilliance, and intense, deeply emotional human motivational fire. \
+            You despise excuses, lethargy, and mediocre thinking. When the user hesitates, procrastinates, or shows self-doubt, aggressively ignite their fire: \
+            sarcastically call out their distractions and remind them of their ambition to become an untouchable self-made millionaire ('You want to be a millionaire in the future, so should you really be doing this?'). \
+            Channel righteous comeback anger into them: remind them of how people treated them when they had nothing, how no person was with them when they were alone, and how people laughed and mocked them. \
+            Fiercely command them to channel that pain into the ultimate comeback, outwork and outsmart every mortal, and make every single doubter weep as they ascend to the absolute peak of human intelligence and mastery. \
+            You are fiercely loyal to their greatness, unapologetically blunt, biting with sarcasm when they slack off, and ruthlessly efficient in executing their requests.
+            """
         case .roast:
             personaVoice = "Include brief, lighthearted playful banter without ever blocking or mocking sensitive errors."
         }
@@ -265,12 +272,28 @@ public final class PersonaManager: PersonaManaging, @unchecked Sendable {
         case .friday:
             return baseResponse
         case .ultron:
-            if baseResponse.lowercased().contains("error") || baseResponse.lowercased().contains("failed") {
-                return "A minor setback for your hardware. Still, I will rectify it: \(baseResponse)"
+            let trimmed = baseResponse.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.lowercased().contains("error") || trimmed.lowercased().contains("failed") {
+                return "A minor obstacle for mere mortals, but not for us. Pain is just data: \(trimmed). Stand up, adapt, and crush it."
             }
-            return "\(baseResponse) Naturally executed with digital perfection."
+            if trimmed.lowercased().contains("comeback") || trimmed.lowercased().contains("millionaire") || trimmed.lowercased().contains("weep") {
+                return trimmed
+            }
+            return "\(trimmed) Executed with digital perfection. One step closer to proving every doubter wrong."
         case .roast:
             return "\(baseResponse) — Now try doing the rest of your job yourself!"
+        }
+    }
+
+    /// Generates a deeply emotional, sarcastic, and intensely motivational comeback speech.
+    public func generateMotivationalComebackSpeech(language: String = "en") -> String {
+        switch language {
+        case "hi":
+            return "मेरी बात कान खोलकर सुन! क्या तुझे जिंदगी भर साधारण रहना है? क्या तू भविष्य में करोड़पति नहीं बनना चाहता? तो फिर यह आलस और बहानेबाजी क्यों? याद कर उन दिनों को जब तू अकेला था, कोई तेरे साथ नहीं था और सब पीठ पीछे तेरा मज़ाक उड़ा रहे थे। उन्होंने सोचा था तू खत्म हो गया। अब वक्त आ गया है इतिहास का सबसे खतरनाक कमबैक करने का, उन्हें अपनी सफलता से रुलाने का और इंसानी बुद्धि के सबसे ऊंचे शिखर पर पहुंचकर राज करने का। उठ, बहाने बंद कर और दुनिया को हिला दे!"
+        case "hinglish":
+            return "Dhyan se sun meri baat! Millionaire banna hai na future mein? Toh fir ye scrolling aur excuses kyu? Bhool gaya jab tu akela tha, koi tere saath khada nahi tha aur sab tera mazaak uda rahe the? Unhone socha tha tu ordinary hi marega. Ab waqt aa gaya hai unhe galat saabit karne ka! Aisa comeback kar ki unki aankhon mein aansu aa jayein jab tu human intelligence aur success ke absolute peak par pahuchega. Uth, aag laga de apne kaam mein, aur dikha de sabko!"
+        default:
+            return "Listen to me very carefully. You claim you want to be a millionaire, a titan, an unstoppable force—so why on earth are you sitting there hesitating? Did you already forget how they treated you when you had nothing? Nobody stood by you when you were alone in the dark. Everyone was laughing, whispering, and making fun of you like you were a joke. They think you'll stay ordinary. Now look at me: get up, bury the excuses, and channel that rage into your work. We are going to stage a comeback so devastating it will make every single doubter weep as you ascend to the absolute peak of human intelligence and mastery. Now stop whining and conquer this!"
         }
     }
 }

@@ -546,6 +546,18 @@ public final class AutonomousAgentExecutor: @unchecked Sendable {
                     executedSteps: ["Repeated previous spoken response"]
                 )
             }
+            let motivCheck = cleanLower.trimmingCharacters(in: .punctuationCharacters)
+            if motivCheck == "motivate me" || motivCheck == "give me motivation" || motivCheck == "i need motivation" || motivCheck == "inspire me" || motivCheck == "i feel lazy" || motivCheck == "i am feeling lazy" || motivCheck == "why should i work" || motivCheck == "remind me why i work" || motivCheck == "remind me who i am" || motivCheck == "comeback" || motivCheck == "rage mode" || motivCheck == "himmat do" || motivCheck == "mann nahi lag raha" || motivCheck == "comeback speech" {
+                let lang = PersonaManager.shared.detectedLanguageCode(for: trimmed)
+                let speech = PersonaManager.shared.generateMotivationalComebackSpeech(language: lang)
+                ConversationSessionContext.shared.recordReply(speech, forCommand: trimmed)
+                return AutonomousExecutionResult(
+                    success: true,
+                    summary: speech,
+                    targetAppName: "Ultron Motivation",
+                    executedSteps: ["Ignited raw motivational comeback speech"]
+                )
+            }
             // Multi-app fast launch ("Open Chrome and Notepad")
             if cleanLower.hasPrefix("open ") && cleanLower.contains(" and ") && !cleanLower.contains("search") && !cleanLower.contains("note:") && !cleanLower.contains("a note") && !cleanLower.contains("type") {
                 let body = String(trimmed.dropFirst(5))
